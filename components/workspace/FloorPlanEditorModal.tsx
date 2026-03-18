@@ -1,0 +1,100 @@
+'use client'
+
+/**
+ * components/workspace/FloorPlanEditorModal.tsx
+ *
+ * Modal wrapper that opens the floor plan editor fullscreen,
+ * converts the result to SceneJSON on save, and passes it to
+ * WorkspaceCanvas — keeping the existing extraction logic intact.
+ */
+
+import dynamic from 'next/dynamic'
+import { useCallback, useState } from 'react'
+import type { SceneJSON } from '@/types/workspace'
+import type { FloorPlanState } from '@/components/workspace/FloorPlanEditor'
+import { createSupabaseAdmin } from '@/lib/supabase/admin'
+import { floorPlanStateToSceneJSON } from '@/lib/workspace/floorPlanConvertor'
+
+// Lazy-load the editor (Three.js is heavy)
+const FloorPlanEditor = dynamic(
+    () => import('@/components/workspace/FloorPlanEditor'),
+    {
+        ssr: false, loading: () => (
+            <div style={{
+                width: '100vw', height: '100vh', display: 'grid', placeItems: 'center',
+                background: '#0F0E0C', color: 'rgba(148,163,184,0.6)', fontSize: 13,
+            }}>
+                Loading editor…
+            </div>
+        )
+    }
+)
+
+type Props = {
+    projectId: string
+    onSaved: (sceneJSON: SceneJSON) => void
+    onClose: () => void
+}
+
+export default function FloorPlanEditorModal({ projectId, onSaved, onClose }: Props) {
+    const [saving, setSaving] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    const handleSave = useCallback(async (fp: FloorPlanState) => {
+        setSaving(true)
+        setError(null)
+        try {
+            const sceneJSON = floorPlanStateToSceneJSON(fp)
+
+            // Save to DB via API route (same endpoint as AI extraction)
+            const res = await fetch('/api/workspace/save-manual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_id: projectId, scene_json: sceneJSON }),
+            })
+
+            if (!res.ok) {
+                const body = await res.json() as { error?: string }
+                throw new Error(body.error ?? 'Failed to save')
+            }
+
+            onSaved(sceneJSON)
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to save')
+        } finally {
+            setSaving(false)
+        }
+    }, [projectId, onSaved])
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 100,
+        }}>
+            {saving && (
+                <div style={{
+                    position: 'absolute', inset: 0, zIndex: 200,
+                    background: 'rgba(10,9,7,0.7)', display: 'grid', placeItems: 'center',
+                }}>
+                    <div style={{ fontSize: 14, color: 'rgba(165,168,255,0.9)' }}>Saving floor plan…</div>
+                </div>
+            )}
+
+            {error && (
+                <div style={{
+                    position: 'absolute', top: 60, left: '50%', transform: 'translateX(-50%)',
+                    zIndex: 200, background: 'rgba(239,68,68,0.15)',
+                    border: '1px solid rgba(239,68,68,0.4)',
+                    borderRadius: 8, padding: '8px 16px', fontSize: 12,
+                    color: 'rgba(248,113,113,0.9)',
+                }}>
+                    {error}
+                </div>
+            )}
+
+            <FloorPlanEditor
+                onSave={handleSave}
+                onClose={onClose}
+            />
+        </div>
+    )
+}

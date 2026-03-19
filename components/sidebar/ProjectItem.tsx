@@ -1,10 +1,10 @@
+// UI REVAMP - frontend only, no logic changes
 "use client";
 
 import type { Project } from "@/lib/models";
 import { formatProjectDate } from "@/lib/format";
 
-import { VIEWER, WORKSPACE } from "@/constants/content";
-
+import { WORKSPACE } from "@/constants/content";
 import StatusBadge from "@/components/ui/StatusBadge";
 
 type Props = {
@@ -48,6 +48,13 @@ function FloorplanIcon() {
 export default function ProjectItem({ project, active, onClick }: Props) {
   const hasStyleContext = Boolean(project.style_context && project.style_context.trim().length > 0);
 
+  // Status dot color
+  const statusColor =
+    project.status === "completed" ? "#10B981" :
+    project.status === "rendering" ? "#F59E0B" :
+    project.status === "failed" ? "#EF4444" :
+    "#94A3B8";
+
   return (
     <div
       className="ra-projectItem"
@@ -59,25 +66,88 @@ export default function ProjectItem({ project, active, onClick }: Props) {
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onClick();
       }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 10px",
+        borderRadius: 10,
+        cursor: "pointer",
+        transition: "all 100ms ease",
+        borderLeft: active ? "3px solid #4F46E5" : "3px solid transparent",
+        background: active ? "#EEF2FF" : "transparent",
+        marginBottom: 2,
+        height: "auto",
+        minHeight: 52,
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.background = "#F8FAFC";
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.background = "transparent";
+      }}
     >
-      <div className="ra-thumbShell">
+      {/* Thumbnail */}
+      <div style={{ position: "relative", flexShrink: 0 }}>
         {project.render_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img className="ra-thumb" src={project.render_url} alt="" />
+          <img
+            src={project.render_url}
+            alt=""
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 8,
+              objectFit: "cover",
+              border: "1px solid rgba(15,23,42,0.08)",
+              display: "block",
+            }}
+          />
         ) : (
-          <div className="ra-thumb">
+          <div style={{
+            width: 40,
+            height: 40,
+            borderRadius: 8,
+            background: "#F1F5F9",
+            border: "1px solid rgba(15,23,42,0.08)",
+            display: "grid",
+            placeItems: "center",
+            color: "#94A3B8",
+          }}>
             <FloorplanIcon />
           </div>
         )}
-        {hasStyleContext ? <span className="ra-styleDot" aria-hidden="true" /> : null}
+        {hasStyleContext ? (
+          <span className="ra-styleDot" aria-hidden="true" style={{
+            position: "absolute",
+            top: -2,
+            right: -2,
+            width: 9,
+            height: 9,
+            borderRadius: 999,
+            background: "conic-gradient(from 180deg, #4f46e5, #0ea5e9, #22c55e, #4f46e5)",
+            border: "2px solid white",
+          }} />
+        ) : null}
         {project.workspace_enabled ? (
           <div
-            className="absolute bottom-1 right-1 w-4 h-4 rounded bg-indigo-500/80 flex items-center justify-center"
+            style={{
+              position: "absolute",
+              bottom: 1,
+              right: 1,
+              width: 14,
+              height: 14,
+              borderRadius: 4,
+              background: "rgba(79,70,229,0.8)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
             title={WORKSPACE.buttonTooltip}
           >
             <svg
-              width="10"
-              height="10"
+              width="8"
+              height="8"
               viewBox="0 0 24 24"
               fill="none"
               stroke="white"
@@ -90,30 +160,54 @@ export default function ProjectItem({ project, active, onClick }: Props) {
         ) : null}
       </div>
 
-      <div className="ra-projectMeta">
-        <div className="ra-projectNameRow">
-          {project.status === "rendering" ? (
-            <span className="ra-renderingDot" aria-hidden="true" />
-          ) : null}
-          <div className="ra-projectName">{project.name}</div>
+      {/* Meta */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          minWidth: 0,
+        }}>
+          <div style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "#0F172A",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            maxWidth: 120,
+          }}>
+            {project.name}
+          </div>
         </div>
 
-        <div className="ra-assetDots" aria-hidden="true">
-          {project.floorplan_url ? (
-            <span className="ra-assetDot" data-kind="floorplan" title={VIEWER.assets.floorplanLabel} />
-          ) : null}
-          {project.render_url ? (
-            <span className="ra-assetDot" data-kind="render" title={VIEWER.assets.renderLabel} />
-          ) : null}
-          {project.video_url ? (
-            <span className="ra-assetDot" data-kind="video" title={VIEWER.assets.videoLabel} />
-          ) : null}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          marginTop: 3,
+        }}>
+          {/* Status indicator */}
+          <span style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: statusColor,
+            flexShrink: 0,
+            animation: project.status === "rendering" ? "dot-pulse 1s ease-in-out infinite" : "none",
+          }} />
+          <span style={{
+            fontSize: 11,
+            color: statusColor,
+            fontWeight: 500,
+          }}>
+            {project.status}
+          </span>
+          <span style={{ fontSize: 11, color: "#94A3B8" }}>
+            · {formatProjectDate(project.created_at)}
+          </span>
         </div>
-
-        <div className="ra-projectDate">{formatProjectDate(project.created_at)}</div>
       </div>
-
-      <StatusBadge status={project.status} />
     </div>
   );
 }

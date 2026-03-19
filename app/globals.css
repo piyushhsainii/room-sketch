@@ -2,27 +2,31 @@
 
 @import "tailwindcss";
 
-/* :root {
-  --color-bg: #f6f7fb;
+:root {
+  --color-bg: #F8FAFC;
   --color-surface: rgba(255, 255, 255, 0.86);
   --color-surface-2: rgba(255, 255, 255, 1);
-  --color-border: rgba(15, 23, 42, 0.12);
+  --color-border: #E2E8F0;
 
-  --color-text-primary: rgba(15, 23, 42, 0.92);
-  --color-text-secondary: rgba(15, 23, 42, 0.70);
-  --color-text-tertiary: rgba(15, 23, 42, 0.52);
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #64748B;
+  --color-text-tertiary: #94A3B8;
 
-  --color-accent: #4f46e5;
+  --color-accent: #4F46E5;
+  --color-accent-hover: #4338CA;
   --color-accent-light: rgba(79, 70, 229, 0.14);
 
-  --color-success: #22c55e;
-  --color-success-light: rgba(34, 197, 94, 0.14);
+  --color-success: #10B981;
+  --color-success-light: rgba(16, 185, 129, 0.14);
   --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --color-danger: #EF4444;
   --color-danger-light: rgba(239, 68, 68, 0.14);
 
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-elevated: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.15);
   --shadow-soft: 0 20px 60px rgba(15, 23, 42, 0.12);
-} */
+}
 
 /* ── Secondary color palette ───────────────────────────────────────────── */
 :root {
@@ -234,7 +238,7 @@ body {
 }
 
 .ra-content {
-  padding-left: 260px;
+  padding-left: 220px;
 }
 
 .ra-main {
@@ -259,10 +263,10 @@ body {
   position: fixed;
   top: 0;
   left: 0;
-  width: 260px;
+  width: 220px;
   height: 100vh;
-  background: var(--color-bg);
-  border-right: 1px solid var(--color-border);
+  background: #FFFFFF;
+  border-right: 1px solid #E2E8F0;
   display: flex;
   flex-direction: column;
   z-index: 10;
@@ -2298,6 +2302,9 @@ body {
   .ra-mobileTopbar {
     display: flex;
   }
+  .ra-revamp-hamburger {
+    display: inline-flex !important;
+  }
   .ra-sidebar {
     transform: translateX(-110%);
     transition: transform 200ms ease;
@@ -2316,6 +2323,40 @@ body {
   .ra-floorplanRef {
     width: 190px;
   }
+}
+
+/* ── UI Revamp: animations ──────────────────────────────────────────── */
+@keyframes revampFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Spark icon hover rotation on CTA button */
+button:hover .ra-sparkIcon {
+  transform: rotate(15deg);
+}
+
+/* Shimmer skeleton for loading states */
+@keyframes revampShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.ra-skeleton {
+  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background-size: 200% 100%;
+  animation: revampShimmer 1.5s infinite;
+  border-radius: 8px;
 }
 
 @media (max-width: 420px) {

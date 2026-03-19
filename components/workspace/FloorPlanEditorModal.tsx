@@ -29,14 +29,14 @@ const FloorPlanEditor = dynamic(
         )
     }
 )
-
 type Props = {
     projectId: string
-    onSaved: (sceneJSON: SceneJSON) => void
+    initialFloorPlanState?: any | null
+    onSaved: (sceneJSON: any) => void
     onClose: () => void
 }
 
-export default function FloorPlanEditorModal({ projectId, onSaved, onClose }: Props) {
+export default function FloorPlanEditorModal({ projectId, initialFloorPlanState, onSaved, onClose }: Props) {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
@@ -46,7 +46,7 @@ export default function FloorPlanEditorModal({ projectId, onSaved, onClose }: Pr
         try {
             const sceneJSON = floorPlanStateToSceneJSON(fp)
 
-            // Save to DB via API route (same endpoint as AI extraction)
+            // 1. Save SceneJSON for the 3D workspace viewer (existing behaviour)
             const res = await fetch('/api/workspace/save-manual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -58,6 +58,17 @@ export default function FloorPlanEditorModal({ projectId, onSaved, onClose }: Pr
                 throw new Error(body.error ?? 'Failed to save')
             }
 
+            // 2. Save raw FloorPlanState into workspace_config so the editor
+            //    can reload it next time the user clicks "Draw Floor Plan"
+            await fetch('/api/workspace/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project_id: projectId,
+                    config: { floorPlanState: fp },
+                }),
+            })
+
             onSaved(sceneJSON)
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to save')
@@ -65,6 +76,7 @@ export default function FloorPlanEditorModal({ projectId, onSaved, onClose }: Pr
             setSaving(false)
         }
     }, [projectId, onSaved])
+
 
     return (
         <div style={{
@@ -94,6 +106,7 @@ export default function FloorPlanEditorModal({ projectId, onSaved, onClose }: Pr
             <FloorPlanEditor
                 onSave={handleSave}
                 onClose={onClose}
+                initialState={initialFloorPlanState ?? undefined}
             />
         </div>
     )

@@ -176,6 +176,9 @@ export default function GeneratePanel({
             {editorOpen && project?.id && (
               <FloorPlanEditorModal
                 projectId={project.id}
+                initialFloorPlanState={
+                  (project as any).workspace_config?.floorPlanState ?? null
+                }
                 onSaved={(sceneJSON) => {
                   setEditorOpen(false)
                 }}

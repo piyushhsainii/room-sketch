@@ -29,6 +29,7 @@ type Props = {
   onSelectProject: (projectId: string) => void;
   onSignOut: () => void;
   onSignIn: () => void;
+  onNewProject?: () => void;
 };
 
 export default function Sidebar({
@@ -42,6 +43,7 @@ export default function Sidebar({
   onSelectProject,
   onSignOut,
   onSignIn,
+  onNewProject,
 }: Props) {
   const renderOnly = GENERATE.options.renderOnly;
   const renderVideo = GENERATE.options.renderVideo;
@@ -70,7 +72,27 @@ export default function Sidebar({
         <div className="ra-logoText">{APP.name}</div>
       </div>
 
-      <div className="ra-projectsLabel">{APP.projectsLabel}</div>
+      <div className="ra-projectsLabel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 4 }}>
+        <span>{APP.projectsLabel}</span>
+        {onNewProject && (
+          <button
+            type="button"
+            onClick={onNewProject}
+            title="New project"
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 20, height: 20, borderRadius: 5,
+              background: 'rgba(99,102,241,0.12)',
+              border: '1px solid rgba(99,102,241,0.3)',
+              color: 'rgba(99,102,241,0.9)',
+              cursor: 'pointer', flexShrink: 0, fontSize: 15, lineHeight: 1,
+              padding: 0,
+            }}
+          >
+            +
+          </button>
+        )}
+      </div>
 
       <div className="ra-projectList">
         {projects.length === 0 ? (

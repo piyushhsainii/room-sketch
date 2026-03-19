@@ -1848,7 +1848,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
             </div>
 
             {/* ── Body ─────────────────────────────────────────────────────────── */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0, maxHeight: 'calc(100vh - 48px)' }}>
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
                 {/* ── Left tool panel — BIGGER ────────────────────────────────── */}
                 <div style={{
@@ -1903,7 +1903,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                 </div>
 
                 {/* 2D canvas */}
-                <div ref={canvasDivRef} style={{ cursor: canvasCursor, flex: 1, minWidth: '55%', position: 'relative', overflow: 'hidden' }}>
+                <div ref={canvasDivRef} style={{ cursor: canvasCursor, flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden', alignSelf: 'stretch' }}>
                     <canvas
                         ref={canvasRef}
                         style={{

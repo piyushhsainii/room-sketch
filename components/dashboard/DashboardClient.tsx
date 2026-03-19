@@ -248,6 +248,22 @@ export default function DashboardClient() {
         onSelectProject={(id) => { setActiveProjectId(id); setSidebarOpen(false); }}
         onSignOut={handleSignOut}
         onSignIn={() => setAuthDialogOpen(true)}
+        onNewProject={async () => {
+          try {
+            const res = await fetch('/api/projects', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: 'New Project' }),
+            })
+            if (res.ok) {
+              const data = await res.json()
+              // Reload projects — or push the new project into state
+              window.location.reload()
+            }
+          } catch (err) {
+            console.error('Failed to create project', err)
+          }
+        }}
       />
 
       {sidebarOpen && (

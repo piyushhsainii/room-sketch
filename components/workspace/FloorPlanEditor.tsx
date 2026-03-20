@@ -37,16 +37,29 @@ export type ClosedShape = { id: string; nodeIds: string[]; label: string; color:
 
 export type Annotation = { id: string; x: number; z: number; text: string; fontSize: number }
 
+export type FurnitureType = 'sofa' | 'bed' | 'dining_table' | 'desk' | 'wardrobe' | 'bathtub' | 'toilet' | 'plant' | 'chair' | 'coffee_table'
+
+export type PlacedFurniture = {
+    id: string
+    type: FurnitureType
+    x: number       // world metres
+    z: number
+    rotation: number // radians Y-axis
+    scale: number   // 1.0 = default
+}
+
 export type FloorPlanState = {
     rooms: EditorRoom[]; openings: EditorOpening[]; roomHeight: number
     lineNodes: LineNode[]; lineSegments: LineSegment[]; closedShapes: ClosedShape[]
     annotations: Annotation[]
+    furniture: PlacedFurniture[]
 }
 
 const DEFAULT_FP: FloorPlanState = {
     rooms: [], openings: [], roomHeight: 2.7,
     lineNodes: [], lineSegments: [], closedShapes: [],
     annotations: [],
+    furniture: [],
 }
 
 export type LineNode = {
@@ -62,10 +75,42 @@ export type LineSegment = {
     closed: boolean
 }
 
-type EditorTool = 'select' | 'pan' | 'room' | 'door' | 'window' | 'delete' | 'pencil' | 'line' | 'bend' | 'annotate'
+type EditorTool = 'select' | 'pan' | 'room' | 'door' | 'window' | 'delete' | 'pencil' | 'line' | 'bend' | 'annotate' | 'furniture'
 const GRID_M = 0.5
 const PX_PER_M = 40
 const MIN_ROOM = 1.0
+
+const FURNITURE_FOOTPRINTS: Record<FurnitureType, { w: number; d: number }> = {
+    sofa: { w: 2.2, d: 0.95 },
+    bed: { w: 1.7, d: 2.1 },
+    dining_table: { w: 1.5, d: 1.5 },
+    desk: { w: 1.4, d: 0.7 },
+    wardrobe: { w: 1.9, d: 0.62 },
+    bathtub: { w: 0.82, d: 1.6 },
+    toilet: { w: 0.46, d: 0.68 },
+    plant: { w: 0.4, d: 0.4 },
+    chair: { w: 0.55, d: 0.55 },
+    coffee_table: { w: 1.2, d: 0.65 },
+}
+
+const FURNITURE_COLORS: Record<FurnitureType, string> = {
+    sofa: 'rgba(160,148,130,0.88)',
+    bed: 'rgba(130,120,155,0.88)',
+    dining_table: 'rgba(155,125,95,0.88)',
+    desk: 'rgba(110,130,155,0.88)',
+    wardrobe: 'rgba(70,60,50,0.88)',
+    bathtub: 'rgba(140,175,185,0.88)',
+    toilet: 'rgba(200,200,200,0.88)',
+    plant: 'rgba(65,140,65,0.88)',
+    chair: 'rgba(145,135,115,0.88)',
+    coffee_table: 'rgba(140,118,88,0.88)',
+}
+
+const FURNITURE_LABELS: Record<FurnitureType, string> = {
+    sofa: 'Sofa', bed: 'Bed', dining_table: 'Table', desk: 'Desk',
+    wardrobe: 'WRB', bathtub: 'Bath', toilet: 'WC', plant: '♣',
+    chair: 'Chr', coffee_table: 'C.T',
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -488,26 +533,69 @@ function draw2D(
         }
         ctx.restore()
     }
-    for (const ann of fp.annotations ?? []) {
-        const ax = toCanvas(ann.x, pan.x, zoom)
-        const az = toCanvas(ann.z, pan.y, zoom)
+    // ── Furniture overlays (2D top-down icons) ────────────────────────────────
+    for (const f of fp.furniture ?? []) {
+        const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+        const fw = fp2.w * scale
+        const fd = fp2.d * scale
+        const fx = toCanvas(f.x, pan.x, zoom)
+        const fz = toCanvas(f.z, pan.y, zoom)
+        const isSel = selectedId === f.id
+        const isHov = hoveredId === f.id
+
         ctx.save()
-        const fs = Math.max(10, (ann.fontSize ?? 13) * zoom)
-        ctx.font = `600 ${fs}px system-ui`
-        const tw = ctx.measureText(ann.text).width
-        // Badge background
-        ctx.fillStyle = 'rgba(99,102,241,0.18)'
+        ctx.translate(fx, fz)
+        ctx.rotate(f.rotation)
+
+        // Drop shadow
         ctx.beginPath()
-        ctx.roundRect(ax - tw / 2 - 6, az - fs / 2 - 4, tw + 12, fs + 8, 4)
+        ctx.rect(-fw / 2 + 2, -fd / 2 + 2, fw, fd)
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'
         ctx.fill()
-        ctx.strokeStyle = 'rgba(99,102,241,0.4)'
-        ctx.lineWidth = 1
+
+        // Body fill
+        ctx.beginPath()
+        ctx.rect(-fw / 2, -fd / 2, fw, fd)
+        ctx.fillStyle = isSel
+            ? 'rgba(99,102,241,0.55)'
+            : isHov
+                ? (FURNITURE_COLORS[f.type] ?? 'rgba(180,160,130,0.9)').replace('0.88', '1.0')
+                : FURNITURE_COLORS[f.type] ?? 'rgba(180,160,130,0.88)'
+        ctx.fill()
+
+        // Border
+        ctx.strokeStyle = isSel ? 'rgba(165,168,255,0.9)' : 'rgba(255,255,255,0.35)'
+        ctx.lineWidth = isSel ? 1.5 : 1
         ctx.stroke()
-        // Text
-        ctx.fillStyle = 'rgba(200,205,255,0.95)'
+
+        // Direction indicator (small notch on "front" edge)
+        ctx.beginPath()
+        ctx.moveTo(-fw * 0.2, -fd / 2)
+        ctx.lineTo(0, -fd / 2 - 5)
+        ctx.lineTo(fw * 0.2, -fd / 2)
+        ctx.fillStyle = 'rgba(255,255,255,0.5)'
+        ctx.fill()
+
+        // Label
+        const fs = Math.max(8, Math.min(11, (fw / 4)))
+        ctx.font = `600 ${fs}px system-ui`
+        ctx.fillStyle = 'rgba(255,255,255,0.95)'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ctx.fillText(ann.text, ax, az)
+        ctx.fillText(FURNITURE_LABELS[f.type] ?? f.type, 0, 0)
+
+        // Selection rotation handles
+        if (isSel) {
+            ctx.beginPath()
+            ctx.arc(-fw / 2 - 10, -fd / 2 - 10, 5, 0, Math.PI * 2)
+            ctx.fillStyle = 'rgba(99,102,241,0.9)'
+            ctx.fill()
+            ctx.beginPath()
+            ctx.arc(fw / 2 + 10, -fd / 2 - 10, 5, 0, Math.PI * 2)
+            ctx.fillStyle = 'rgba(99,102,241,0.9)'
+            ctx.fill()
+        }
+
         ctx.restore()
     }
     // ── Live measurement rubber band ──────────────────────────────────────────
@@ -817,6 +905,157 @@ function Room3D({ room, openings, roomHeight }: { room: EditorRoom; openings: Ed
         </group>
     )
 }
+function FurnitureMesh({ f }: { f: PlacedFurniture }) {
+    const s = f.scale ?? 1
+    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+
+    return (
+        <group position={[f.x, 0, f.z]} rotation={[0, f.rotation, 0]}>
+            {f.type === 'sofa' && (
+                <group>
+                    {/* Base */}
+                    <mesh position={[0, 0.20 * s, 0]} castShadow receiveShadow>
+                        <boxGeometry args={[2.2 * s, 0.40 * s, 0.92 * s]} />
+                        <meshStandardMaterial color="#C8C0B0" roughness={0.85} />
+                    </mesh>
+                    {/* Back */}
+                    <mesh position={[0, 0.58 * s, 0.38 * s]} castShadow>
+                        <boxGeometry args={[2.2 * s, 0.52 * s, 0.14 * s]} />
+                        <meshStandardMaterial color="#B8B0A0" roughness={0.85} />
+                    </mesh>
+                    {/* Arms */}
+                    <mesh position={[-1.05 * s, 0.42 * s, 0]} castShadow><boxGeometry args={[0.14 * s, 0.40 * s, 0.92 * s]} /><meshStandardMaterial color="#B0A898" roughness={0.8} /></mesh>
+                    <mesh position={[1.05 * s, 0.42 * s, 0]} castShadow><boxGeometry args={[0.14 * s, 0.40 * s, 0.92 * s]} /><meshStandardMaterial color="#B0A898" roughness={0.8} /></mesh>
+                    {/* Cushions */}
+                    <mesh position={[-0.52 * s, 0.44 * s, -0.08 * s]} castShadow><boxGeometry args={[0.82 * s, 0.12 * s, 0.68 * s]} /><meshStandardMaterial color="#D8D0C4" roughness={0.95} /></mesh>
+                    <mesh position={[0.52 * s, 0.44 * s, -0.08 * s]} castShadow><boxGeometry args={[0.82 * s, 0.12 * s, 0.68 * s]} /><meshStandardMaterial color="#D8D0C4" roughness={0.95} /></mesh>
+                    {/* Legs */}
+                    {([-0.95, 0.95] as number[]).flatMap(x => [-0.38, 0.38].map(z => (
+                        <mesh key={`${x}${z}`} position={[x * s, 0.05 * s, z * s]}><boxGeometry args={[0.07 * s, 0.10 * s, 0.07 * s]} /><meshStandardMaterial color="#6B5B4E" roughness={0.5} metalness={0.1} /></mesh>
+                    )))}
+                </group>
+            )}
+            {f.type === 'bed' && (
+                <group>
+                    {/* Frame */}
+                    <mesh position={[0, 0.15 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.7 * s, 0.28 * s, 2.1 * s]} /><meshStandardMaterial color="#4A3A2E" roughness={0.7} /></mesh>
+                    {/* Mattress */}
+                    <mesh position={[0, 0.34 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.58 * s, 0.22 * s, 1.95 * s]} /><meshStandardMaterial color="#EDE8E0" roughness={0.95} /></mesh>
+                    {/* Headboard */}
+                    <mesh position={[0, 0.74 * s, -0.92 * s]} castShadow><boxGeometry args={[1.7 * s, 0.82 * s, 0.10 * s]} /><meshStandardMaterial color="#8A8280" roughness={0.7} /></mesh>
+                    {/* Footboard */}
+                    <mesh position={[0, 0.52 * s, 0.92 * s]} castShadow><boxGeometry args={[1.7 * s, 0.42 * s, 0.08 * s]} /><meshStandardMaterial color="#4A3A2E" roughness={0.7} /></mesh>
+                    {/* Pillows */}
+                    <mesh position={[-0.38 * s, 0.48 * s, -0.72 * s]} castShadow><boxGeometry args={[0.58 * s, 0.11 * s, 0.38 * s]} /><meshStandardMaterial color="#F0EBE4" roughness={0.9} /></mesh>
+                    <mesh position={[0.38 * s, 0.48 * s, -0.72 * s]} castShadow><boxGeometry args={[0.58 * s, 0.11 * s, 0.38 * s]} /><meshStandardMaterial color="#F0EBE4" roughness={0.9} /></mesh>
+                    {/* Duvet */}
+                    <mesh position={[0, 0.48 * s, 0.35 * s]} castShadow><boxGeometry args={[1.52 * s, 0.10 * s, 1.15 * s]} /><meshStandardMaterial color="#E8E0D4" roughness={0.95} /></mesh>
+                </group>
+            )}
+            {f.type === 'dining_table' && (
+                <group>
+                    {/* Tabletop */}
+                    <mesh position={[0, 0.76 * s, 0]} castShadow receiveShadow>
+                        <boxGeometry args={[1.5 * s, 0.05 * s, 1.5 * s]} />
+                        <meshStandardMaterial color="#EAE6E0" roughness={0.2} metalness={0.04} />
+                    </mesh>
+                    {/* Legs */}
+                    {([-0.62, 0.62] as number[]).flatMap(x => [-0.62, 0.62].map(z => (
+                        <mesh key={`${x}${z}`} position={[x * s, 0.38 * s, z * s]} castShadow>
+                            <boxGeometry args={[0.06 * s, 0.76 * s, 0.06 * s]} />
+                            <meshStandardMaterial color="#C8B898" roughness={0.4} />
+                        </mesh>
+                    )))}
+                </group>
+            )}
+            {f.type === 'desk' && (
+                <group>
+                    <mesh position={[0, 0.76 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.4 * s, 0.04 * s, 0.7 * s]} /><meshStandardMaterial color="#C8B898" roughness={0.3} /></mesh>
+                    {([-0.62, 0.62] as number[]).flatMap(x => [-0.3, 0.3].map(z => (
+                        <mesh key={`${x}${z}`} position={[x * s, 0.38 * s, z * s]} castShadow><boxGeometry args={[0.05 * s, 0.76 * s, 0.05 * s]} /><meshStandardMaterial color="#A09080" roughness={0.4} /></mesh>
+                    )))}
+                    {/* Monitor */}
+                    <mesh position={[0, 1.08 * s, -0.22 * s]} castShadow><boxGeometry args={[0.52 * s, 0.30 * s, 0.03 * s]} /><meshStandardMaterial color="#1A1A1A" roughness={0.3} /></mesh>
+                    <mesh position={[0, 0.82 * s, -0.22 * s]} castShadow><boxGeometry args={[0.08 * s, 0.12 * s, 0.08 * s]} /><meshStandardMaterial color="#2A2A2A" roughness={0.4} /></mesh>
+                </group>
+            )}
+            {f.type === 'wardrobe' && (
+                <group>
+                    <mesh position={[0, 0.95 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.9 * s, 1.9 * s, 0.62 * s]} /><meshStandardMaterial color="#3A2E22" roughness={0.6} /></mesh>
+                    {/* Door panels */}
+                    <mesh position={[-0.48 * s, 0.95 * s, 0.32 * s]}><boxGeometry args={[0.88 * s, 1.82 * s, 0.02 * s]} /><meshStandardMaterial color="#4E3C28" roughness={0.4} /></mesh>
+                    <mesh position={[0.48 * s, 0.95 * s, 0.32 * s]}><boxGeometry args={[0.88 * s, 1.82 * s, 0.02 * s]} /><meshStandardMaterial color="#4E3C28" roughness={0.4} /></mesh>
+                    {/* Handles */}
+                    <mesh position={[-0.08 * s, 0.95 * s, 0.33 * s]}><boxGeometry args={[0.03 * s, 0.12 * s, 0.03 * s]} /><meshStandardMaterial color="#C0A870" roughness={0.2} metalness={0.6} /></mesh>
+                    <mesh position={[0.08 * s, 0.95 * s, 0.33 * s]}><boxGeometry args={[0.03 * s, 0.12 * s, 0.03 * s]} /><meshStandardMaterial color="#C0A870" roughness={0.2} metalness={0.6} /></mesh>
+                </group>
+            )}
+            {f.type === 'bathtub' && (
+                <group>
+                    {/* Outer shell */}
+                    <mesh position={[0, 0.28 * s, 0]} castShadow receiveShadow><boxGeometry args={[0.82 * s, 0.56 * s, 1.6 * s]} /><meshStandardMaterial color="#F0EEEA" roughness={0.12} /></mesh>
+                    {/* Inner hollow (water surface) */}
+                    <mesh position={[0, 0.48 * s, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                        <planeGeometry args={[0.60 * s, 1.38 * s]} />
+                        <meshStandardMaterial color="#A8D4E0" roughness={0.04} metalness={0.05} transparent opacity={0.85} />
+                    </mesh>
+                    {/* Tap */}
+                    <mesh position={[0, 0.62 * s, -0.72 * s]} castShadow><boxGeometry args={[0.06 * s, 0.15 * s, 0.06 * s]} /><meshStandardMaterial color="#C8C8C8" roughness={0.2} metalness={0.7} /></mesh>
+                </group>
+            )}
+            {f.type === 'toilet' && (
+                <group>
+                    <mesh position={[0, 0.22 * s, 0]} castShadow receiveShadow><boxGeometry args={[0.46 * s, 0.44 * s, 0.68 * s]} /><meshStandardMaterial color="#EEEEEE" roughness={0.2} /></mesh>
+                    <mesh position={[0, 0.52 * s, -0.26 * s]} castShadow><boxGeometry args={[0.38 * s, 0.24 * s, 0.18 * s]} /><meshStandardMaterial color="#E8E8E8" roughness={0.2} /></mesh>
+                    {/* Seat */}
+                    <mesh position={[0, 0.45 * s, 0.04 * s]}><boxGeometry args={[0.42 * s, 0.04 * s, 0.52 * s]} /><meshStandardMaterial color="#FFFFFF" roughness={0.15} /></mesh>
+                </group>
+            )}
+            {f.type === 'plant' && (
+                <group>
+                    {/* Pot */}
+                    <mesh position={[0, 0.14 * s, 0]} castShadow receiveShadow>
+                        <cylinderGeometry args={[0.14 * s, 0.10 * s, 0.28 * s, 16]} />
+                        <meshStandardMaterial color="#8B5E3C" roughness={0.7} />
+                    </mesh>
+                    {/* Soil */}
+                    <mesh position={[0, 0.28 * s, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                        <circleGeometry args={[0.13 * s, 16]} />
+                        <meshStandardMaterial color="#3D2B1A" roughness={0.95} />
+                    </mesh>
+                    {/* Foliage — layered spheres */}
+                    <mesh position={[0, 0.50 * s, 0]} castShadow><sphereGeometry args={[0.18 * s, 12, 12]} /><meshStandardMaterial color="#2D7A2D" roughness={0.9} /></mesh>
+                    <mesh position={[-0.10 * s, 0.58 * s, 0.06 * s]} castShadow><sphereGeometry args={[0.13 * s, 10, 10]} /><meshStandardMaterial color="#3A9A3A" roughness={0.9} /></mesh>
+                    <mesh position={[0.08 * s, 0.62 * s, -0.06 * s]} castShadow><sphereGeometry args={[0.11 * s, 10, 10]} /><meshStandardMaterial color="#259025" roughness={0.9} /></mesh>
+                </group>
+            )}
+            {f.type === 'chair' && (
+                <group>
+                    {/* Seat */}
+                    <mesh position={[0, 0.44 * s, 0]} castShadow receiveShadow><boxGeometry args={[0.50 * s, 0.05 * s, 0.50 * s]} /><meshStandardMaterial color="#C0B8A8" roughness={0.7} /></mesh>
+                    {/* Back */}
+                    <mesh position={[0, 0.72 * s, 0.22 * s]} castShadow><boxGeometry args={[0.50 * s, 0.52 * s, 0.05 * s]} /><meshStandardMaterial color="#B0A898" roughness={0.7} /></mesh>
+                    {/* Legs */}
+                    {([-0.20, 0.20] as number[]).flatMap(x => [-0.20, 0.20].map(z => (
+                        <mesh key={`${x}${z}`} position={[x * s, 0.22 * s, z * s]} castShadow><boxGeometry args={[0.04 * s, 0.44 * s, 0.04 * s]} /><meshStandardMaterial color="#8A7868" roughness={0.5} /></mesh>
+                    )))}
+                </group>
+            )}
+            {f.type === 'coffee_table' && (
+                <group>
+                    {/* Top */}
+                    <mesh position={[0, 0.38 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.2 * s, 0.05 * s, 0.65 * s]} /><meshStandardMaterial color="#EAE6E0" roughness={0.15} metalness={0.05} /></mesh>
+                    {/* Shelf */}
+                    <mesh position={[0, 0.18 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.1 * s, 0.03 * s, 0.55 * s]} /><meshStandardMaterial color="#D8D4CC" roughness={0.3} /></mesh>
+                    {/* Legs */}
+                    {([-0.52, 0.52] as number[]).flatMap(x => [-0.28, 0.28].map(z => (
+                        <mesh key={`${x}${z}`} position={[x * s, 0.18 * s, z * s]} castShadow><boxGeometry args={[0.04 * s, 0.36 * s, 0.04 * s]} /><meshStandardMaterial color="#C0B090" roughness={0.3} /></mesh>
+                    )))}
+                </group>
+            )}
+        </group>
+    )
+}
 
 function Scene3D({ fp }: { fp: FloorPlanState }) {
     return (
@@ -828,11 +1067,14 @@ function Scene3D({ fp }: { fp: FloorPlanState }) {
                 <Room3D key={room.id} room={room} openings={fp.openings.filter(o => o.roomId === room.id)} roomHeight={fp.roomHeight} />
             ))}
             <LineWalls3D fp={fp} />
+            {/* Placed furniture */}
+            {(fp.furniture ?? []).map(f => <FurnitureMesh key={f.id} f={f} />)}
             <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
             <gridHelper args={[50, 50, '#1C1A17', '#1C1A17']} position={[0, -0.01, 0]} />
         </>
     )
 }
+
 
 // ── Properties panel ──────────────────────────────────────────────────────────
 
@@ -846,8 +1088,9 @@ function PropsPanel({ fp, selectedId, onChange, onDelete }: {
     const opening = fp.openings.find(o => o.id === selectedId)
     const node = fp.lineNodes.find(n => n.id === selectedId)
     const seg = fp.lineSegments.find(s => s.id === selectedId)
+    const furniture = (fp.furniture ?? []).find(f => f.id === selectedId)
 
-    if (!room && !opening && !node && !seg) return (
+    if (!room && !opening && !node && !seg && !furniture) return (
         <div style={{ padding: 16, fontSize: 11, color: 'rgba(100,116,139,0.5)', textAlign: 'center' }}>
             Select a room, wall, node or opening to edit properties
         </div>
@@ -865,7 +1108,7 @@ function PropsPanel({ fp, selectedId, onChange, onDelete }: {
     return (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
-                {room ? 'ROOM' : opening ? opening.type.toUpperCase() : node ? 'WALL NODE' : 'WALL SEGMENT'}
+                {room ? 'ROOM' : opening ? opening.type.toUpperCase() : node ? 'WALL NODE' : furniture ? 'FURNITURE' : 'WALL SEGMENT'}
             </div>
 
             {room && <>
@@ -904,8 +1147,56 @@ function PropsPanel({ fp, selectedId, onChange, onDelete }: {
                 )}
             </>}
 
+            {furniture && <>
+                <PropField label="Type">
+                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
+                        {FURNITURE_LABELS[furniture.type] ?? furniture.type}
+                    </span>
+                </PropField>
+                <PropField label="X pos (m)">
+                    <NumInput value={furniture.x} min={-50} max={50} step={0.5}
+                        onChange={v => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, x: snapM(v) } : f) })} />
+                </PropField>
+                <PropField label="Z pos (m)">
+                    <NumInput value={furniture.z} min={-50} max={50} step={0.5}
+                        onChange={v => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, z: snapM(v) } : f) })} />
+                </PropField>
+                <PropField label="Rotation">
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input type="range" min={0} max={360} step={15}
+                            value={Math.round((furniture.rotation * 180) / Math.PI)}
+                            onChange={e => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, rotation: (parseFloat(e.target.value) * Math.PI) / 180 } : f) })}
+                            style={{ flex: 1, accentColor: '#6366F1' }} />
+                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 30, flexShrink: 0 }}>
+                            {Math.round((furniture.rotation * 180) / Math.PI)}°
+                        </span>
+                    </div>
+                </PropField>
+                <PropField label="Scale">
+                    <input type="range" min={50} max={150} step={5}
+                        value={Math.round((furniture.scale ?? 1) * 100)}
+                        onChange={e => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, scale: parseFloat(e.target.value) / 100 } : f) })}
+                        style={{ flex: 1, accentColor: '#6366F1' }} />
+                    <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', marginLeft: 4 }}>
+                        {Math.round((furniture.scale ?? 1) * 100)}%
+                    </span>
+                </PropField>
+                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+                    <button
+                        onClick={() => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, rotation: f.rotation - Math.PI / 2 } : f) })}
+                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
+                        ↺ −90°
+                    </button>
+                    <button
+                        onClick={() => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, rotation: f.rotation + Math.PI / 2 } : f) })}
+                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
+                        ↻ +90°
+                    </button>
+                </div>
+            </>}
+
             <button onClick={onDelete} style={{ marginTop: 4, height: 28, borderRadius: 6, border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: 'rgba(248,113,113,0.8)', fontSize: 11, cursor: 'pointer' }}>
-                Delete {room ? 'room' : opening ? 'opening' : node ? 'node' : 'segment'}
+                Delete {room ? 'room' : opening ? 'opening' : node ? 'node' : furniture ? 'furniture' : 'segment'}
             </button>
         </div>
     )
@@ -1002,6 +1293,7 @@ const ToolIcons: Record<string, React.ReactNode> = {
         </svg>
     ),
     annotate: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>,
+    furniture: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 9V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2" /><path d="M2 11v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1z" /><path d="M6 19v2M18 19v2" /></svg>,
 
 }
 
@@ -1016,6 +1308,7 @@ const TOOLS: { id: EditorTool; label: string; key: string }[] = [
     { id: 'window', label: 'Place Window', key: 'N' },
     { id: 'delete', label: 'Delete', key: '⌫' },
     { id: 'annotate', label: 'Add Label', key: 'A' },
+    { id: 'furniture', label: 'Place Furniture', key: 'F' },
 ]
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -1024,9 +1317,10 @@ type Props = {
     onSave?: (fp: FloorPlanState) => void
     onClose?: () => void
     initialState?: FloorPlanState
+    isSaving?: boolean
+    isSaved?: boolean
 }
-
-export default function FloorPlanEditor({ onSave, onClose, initialState }: Props) {
+export default function FloorPlanEditor({ onSave, onClose, initialState, isSaving = false, isSaved = false }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
     const [isFullscreen, setIsFullscreen] = useState(false)
@@ -1043,7 +1337,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
     const spacePanRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
     const panToolRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
     const dragRoomRef = useRef<{ id: string; ox: number; oz: number; type: 'room' | 'node' } | null>(null)
-    const segDragRef = useRef<{ segId: string; ox: number; oz: number; nodeIds?: string[] } | null>(null)
+    const segDragRef = useRef<{ segId: string; ox: number; oz: number; nodeIds?: string[]; startPositions?: Map<string, { x: number, z: number }> } | null>(null)
     const isMouseDownRef = useRef(false)
     const [selectedId, setSelectedId] = useState<string | null>(null)
     const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -1052,7 +1346,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
     const [pan, setPan] = useState({ x: 60, y: 60 })
     const [drawStart, setDrawStart] = useState<{ x: number; z: number } | null>(null)
     const [drawRect, setDrawRect] = useState<{ x: number; z: number; w: number; d: number } | null>(null)
-
     const [midPan, setMidPan] = useState<{ sx: number; sy: number; px: number; py: number } | null>(null)
     const fpRef = useRef(fp); fpRef.current = fp
     const historyRef = useRef<FloorPlanState[]>([])
@@ -1060,6 +1353,8 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
     const [canvasCursor, setCanvasCursor] = useState('default')
     const [editingAnnotation, setEditingAnnotation] = useState<{ id: string; text: string; x: number; y: number } | null>(null)
     const annotationInputRef = useRef<HTMLInputElement>(null)
+    const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
+    const furnitureDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
     const resizeHandleRef = useRef<{ handle: string; room: EditorRoom; startWx: number; startWz: number } | null>(null)
     fpRef.current = fp
     const pushHistory = useCallback(() => {
@@ -1103,6 +1398,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
             if (key === 'l') setTool('line')
             if (key === 'b') setTool('bend')
             if (key === 'a') setTool('annotate')
+            if (key === 'f') setTool('furniture')
             if (key === 'escape') {
                 setTool('select')
                 lineActiveNodeRef.current = null
@@ -1119,11 +1415,11 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                     const isShape = prev.closedShapes.some(s => s.id === selectedId)
 
                     if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                    if (isOpening) return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
-                    if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId!)), closedShapes: prev.closedShapes.filter(s => !s.nodeIds.includes(selectedId!)) }
+                    if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
                     if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                    if (isShape) return { ...prev, closedShapes: prev.closedShapes.filter(s => s.id !== selectedId) }
-                    return prev
+                    const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
+                    if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
+                    return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
                 })
                 setSelectedId(null)
             }
@@ -1326,35 +1622,25 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
 
         // ── Select tool ───────────────────────────────────────────────────────
         if (tool === 'select') {
-            // Priority: node → opening → room → segment → closed shape
+            // Priority: node → furniture → segment → room → closed shape
+            // Furniture is intentionally before room so items inside rooms are selectable
             const node = hitLineNode(wx, wz)
             if (node) { setSelectedId(node.id); dragRoomRef.current = { id: node.id, ox: wx - node.x, oz: wz - node.z, type: 'node' }; return }
 
-            // Hit-test openings on rooms
-            for (const room of [...fpRef.current.rooms].reverse()) {
-                for (const op of fpRef.current.openings.filter(o => o.roomId === room.id && !o.segmentNodeIds)) {
-                    const isH = op.wall === 'north' || op.wall === 'south'
-                    const wallLen = isH ? room.width : room.depth
-                    const opStart = op.position - op.width / 2
-                    const opEnd = op.position + op.width / 2
-                    const T = 0.15
-                    let x1: number, z1: number, x2: number, z2: number
-                    if (op.wall === 'north') { x1 = room.x + opStart; z1 = room.z - T; x2 = room.x + opEnd; z2 = room.z + T }
-                    else if (op.wall === 'south') { x1 = room.x + opStart; z1 = room.z + room.depth - T; x2 = room.x + opEnd; z2 = room.z + room.depth + T }
-                    else if (op.wall === 'west') { x1 = room.x - T; z1 = room.z + opStart; x2 = room.x + T; z2 = room.z + opEnd }
-                    else { x1 = room.x + room.width - T; z1 = room.z + opStart; x2 = room.x + room.width + T; z2 = room.z + opEnd }
-                    if (wx >= x1 && wx <= x2 && wz >= z1 && wz <= z2) {
-                        setSelectedId(op.id); dragRoomRef.current = null; return
-                    }
-                }
-            }
-
-            // Hit-test openings on line segments
-            for (const op of fpRef.current.openings.filter(o => o.segmentNodeIds)) {
-                const pos = getSegmentOpeningWorldPos(op, fpRef.current.lineNodes)
-                if (!pos) continue
-                const dist = Math.hypot(wx - pos.wx, wz - pos.wz)
-                if (dist < op.width) { setSelectedId(op.id); dragRoomRef.current = null; return }
+            // Furniture check — before room so overlapping furniture wins
+            const hitFurnitureFirst = (fpRef.current.furniture ?? []).findLast(f => {
+                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                const dx = wx - f.x, dz = wz - f.z
+                const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                const lx = dx * cosR - dz * sinR
+                const lz = dx * sinR + dz * cosR
+                return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
+            })
+            if (hitFurnitureFirst) {
+                setSelectedId(hitFurnitureFirst.id)
+                furnitureDragRef.current = { id: hitFurnitureFirst.id, ox: wx - hitFurnitureFirst.x, oz: wz - hitFurnitureFirst.z }
+                dragRoomRef.current = null
+                return
             }
 
             const room = hitRoom(wx, wz)
@@ -1386,11 +1672,33 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                         if (!visited.has(nb)) queue.push(nb)
                     }
                 }
-                segDragRef.current = { segId: segHit.seg.id, ox: wx, oz: wz, nodeIds: [...visited] }
+                const startPositions = new Map<string, { x: number, z: number }>()
+                for (const nid of visited) {
+                    const n = fpRef.current.lineNodes.find(nd => nd.id === nid)
+                    if (n) startPositions.set(nid, { x: n.x, z: n.z })
+                }
+                segDragRef.current = { segId: segHit.seg.id, ox: wx, oz: wz, nodeIds: [...visited], startPositions }
                 dragRoomRef.current = null; return
             }
             const shape = hitClosedShape(wx, wz)
             if (shape) { setSelectedId(shape.id); dragRoomRef.current = null; return }
+
+            // Hit-test furniture
+            const hitFurniture = (fpRef.current.furniture ?? []).find(f => {
+                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                const dx = wx - f.x, dz = wz - f.z
+                const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                const lx = dx * cosR - dz * sinR
+                const lz = dx * sinR + dz * cosR
+                return Math.abs(lx) < fp2.w / 2 + 0.1 && Math.abs(lz) < fp2.d / 2 + 0.1
+            })
+            if (hitFurniture) {
+                setSelectedId(hitFurniture.id)
+                furnitureDragRef.current = { id: hitFurniture.id, ox: wx - hitFurniture.x, oz: wz - hitFurniture.z }
+                dragRoomRef.current = null
+                return
+            }
+
             setSelectedId(null); dragRoomRef.current = null; return
         }
 
@@ -1511,6 +1819,35 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                 return
             }
         }
+
+        if (tool === 'furniture') {
+            const clickedFurniture = (fpRef.current.furniture ?? []).find(f => {
+                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                // Rotate the test point into furniture local space
+                const dx = wx - f.x, dz = wz - f.z
+                const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                const lx = dx * cosR - dz * sinR
+                const lz = dx * sinR + dz * cosR
+                return Math.abs(lx) < fp2.w / 2 + 0.1 && Math.abs(lz) < fp2.d / 2 + 0.1
+            })
+            if (clickedFurniture) {
+                furnitureDragRef.current = { id: clickedFurniture.id, ox: wx - clickedFurniture.x, oz: wz - clickedFurniture.z }
+                return
+            }
+            // Place new furniture
+            const newF: PlacedFurniture = {
+                id: uid(),
+                type: selectedFurnitureType,
+                x: snapM(wx),
+                z: snapM(wz),
+                rotation: 0,
+                scale: 1,
+            }
+            pushHistory()
+            setFp(prev => ({ ...prev, furniture: [...(prev.furniture ?? []), newF] }))
+            return
+        }
+
         if (tool === 'annotate') {
             const rect = canvasRef.current!.getBoundingClientRect()
             // Check if clicking an existing annotation to edit it
@@ -1536,6 +1873,19 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
         }
         // ── Delete tool ───────────────────────────────────────────────────────
         if (tool === 'delete') {
+            // Delete furniture
+            const furIdx = (fpRef.current.furniture ?? []).findIndex(f => {
+                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                const dx = wx - f.x, dz = wz - f.z
+                const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                const lx = dx * cosR - dz * sinR, lz = dx * sinR + dz * cosR
+                return Math.abs(lx) < fp2.w / 2 + 0.15 && Math.abs(lz) < fp2.d / 2 + 0.15
+            })
+            if (furIdx !== -1) {
+                pushHistory()
+                setFp(prev => ({ ...prev, furniture: (prev.furniture ?? []).filter((_, i) => i !== furIdx) }))
+                return
+            }
             const annIdx = (fpRef.current.annotations ?? []).findIndex(ann => {
                 const ax = toCanvas(ann.x, panRef.current.x, zoomRef.current)
                 const az = toCanvas(ann.z, panRef.current.y, zoomRef.current)
@@ -1579,7 +1929,8 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                 }))
             }
         }
-    }, [evWorld, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, selectedId, pushHistory])
+    }, [evWorld, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, selectedId, pushHistory, selectedFurnitureType])
+
 
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const { wx, wz, cx, cy } = evWorld(e)
@@ -1593,7 +1944,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
         } else if (dragRoomRef.current) {
             setCanvasCursor('grabbing')
         } else {
-            const toolCursors: Record<EditorTool, string> = { select: 'default', pan: 'grab', room: 'crosshair', pencil: 'crosshair', line: 'crosshair', bend: 'crosshair', door: 'cell', window: 'cell', delete: 'not-allowed', annotate: "Add Comment" }
+            const toolCursors: Record<EditorTool, string> = { select: 'default', pan: 'grab', room: 'crosshair', pencil: 'crosshair', line: 'crosshair', bend: 'crosshair', door: 'cell', window: 'cell', delete: 'not-allowed', annotate: 'crosshair', furniture: 'copy' }
             setCanvasCursor(toolCursors[tool] ?? 'default')
         }
 
@@ -1636,13 +1987,18 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
             setPan({ x: midPan.px + cx - midPan.sx, y: midPan.py + cy - midPan.sy })
             return
         }
-        if (!isMouseDownRef.current) {
-            dragRoomRef.current = null
-            segDragRef.current = null
+
+        if (furnitureDragRef.current) {
+            const fd = furnitureDragRef.current
+            setFp(prev => ({ ...prev, furniture: (prev.furniture ?? []).map(f => f.id === fd.id ? { ...f, x: snapM(wx - fd.ox), z: snapM(wz - fd.oz) } : f) }))
+            return
         }
+
         if (dragRoomRef.current) {
             const dr = dragRoomRef.current
-            const nx = snapM(wx - dr.ox), nz = snapM(wz - dr.oz)
+            // Snap the destination, not the offset — prevents jitter
+            const nx = snapM(wx - dr.ox)
+            const nz = snapM(wz - dr.oz)
             if (dr.type === 'node') {
                 setFp(prev => ({ ...prev, lineNodes: prev.lineNodes.map(n => n.id === dr.id ? { ...n, x: nx, z: nz } : n) }))
             } else {
@@ -1652,14 +2008,18 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
         }
         if (segDragRef.current) {
             const sd = segDragRef.current
-            const ddx = snapM(wx - sd.ox), ddz = snapM(wz - sd.oz)
-            if (ddx !== 0 || ddz !== 0) {
-                // Use pre-computed nodeIds (whole shape) if available, else fall back to single segment
-                const nodeSet = sd.nodeIds
-                    ? new Set(sd.nodeIds)
-                    : new Set(fpRef.current.lineSegments.find(s => s.id === sd.segId)?.nodeIds ?? [])
-                setFp(prev => ({ ...prev, lineNodes: prev.lineNodes.map(n => nodeSet.has(n.id) ? { ...n, x: n.x + ddx, z: n.z + ddz } : n) }))
-                segDragRef.current = { ...sd, ox: wx, oz: wz }
+            // Compute snapped total delta from drag start
+            const ddx = snapM(wx - sd.ox)
+            const ddz = snapM(wz - sd.oz)
+            if (sd.startPositions && sd.startPositions.size > 0) {
+                setFp(prev => ({
+                    ...prev,
+                    lineNodes: prev.lineNodes.map(n => {
+                        const start = sd.startPositions!.get(n.id)
+                        if (!start) return n
+                        return { ...n, x: start.x + ddx, z: start.z + ddz }
+                    })
+                }))
             }
             return
         }
@@ -1675,41 +2035,27 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
         const node = hitLineNode(wx, wz)
         if (node) { setHoveredId(node.id); return }
         const segHit = hitLineSegment(wx, wz)
-        if (segHit) {
-            setSelectedId(segHit.seg.id)
-            // Find ALL nodes connected to this segment's graph via BFS
-            const allNodes = fpRef.current.lineNodes
-            const allSegs = fpRef.current.lineSegments
-            const adj = new Map<string, string[]>()
-            for (const s of allSegs) {
-                for (let i = 0; i < s.nodeIds.length - 1; i++) {
-                    const a = s.nodeIds[i]!, b = s.nodeIds[i + 1]!
-                    if (!adj.has(a)) adj.set(a, [])
-                    if (!adj.has(b)) adj.set(b, [])
-                    adj.get(a)!.push(b)
-                    adj.get(b)!.push(a)
-                }
-            }
-            // BFS from any node in the hit segment
-            const visited = new Set<string>()
-            const queue = [segHit.seg.nodeIds[0]!]
-            while (queue.length) {
-                const cur = queue.shift()!
-                if (visited.has(cur)) continue
-                visited.add(cur)
-                for (const nb of adj.get(cur) ?? []) {
-                    if (!visited.has(nb)) queue.push(nb)
-                }
-            }
-            segDragRef.current = { segId: segHit.seg.id, ox: wx, oz: wz, nodeIds: [...visited] }
-            dragRoomRef.current = null; return
-        }
+        if (segHit) { setHoveredId(segHit.seg.id); return }
+
+        // Furniture hover — checked before room so furniture inside rooms gets priority
+        const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
+            const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+            const dx = wx - f.x, dz = wz - f.z
+            const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+            const lx = dx * cosR - dz * sinR
+            const lz = dx * sinR + dz * cosR
+            return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
+        })
+        if (hovFurniture) { setHoveredId(hovFurniture.id); return }
+
+        // Room hover — only if no furniture was hit
         const room = hitRoom(wx, wz)
         setHoveredId(room?.id ?? null)
     }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment])
 
     const handleMouseUp = useCallback(() => {
         isMouseDownRef.current = false
+        furnitureDragRef.current = null
         setMidPan(null); spacePanRef.current = null; panToolRef.current = null; segDragRef.current = null; dragRoomRef.current = null
         if (dragRoomRef.current || segDragRef.current || resizeHandleRef.current) {
             pushHistory()
@@ -1840,11 +2186,9 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                     {isFullscreen ? 'Exit' : 'Fullscreen'}
                 </button>
                 {onClose && <Btn onClick={onClose} danger>✕ Close</Btn>}
-                {onSave && (
-                    <button onClick={() => onSave(fp)} style={{ height: 30, padding: '0 16px', borderRadius: 7, border: 'none', background: 'rgba(99,102,241,0.85)', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                        Save Floor Plan
-                    </button>
-                )}
+                {onSave && <button onClick={() => onSave(fp)} style={{ height: 30, padding: '0 16px', borderRadius: 7, border: 'none', background: isSaving ? 'rgba(99,102,241,0.5)' : isSaved ? 'rgba(16,185,129,0.85)' : 'rgba(99,102,241,0.85)', color: 'white', fontSize: 12, fontWeight: 700, cursor: isSaving ? 'not-allowed' : 'pointer', transition: 'background 200ms' }} disabled={isSaving}>
+                    {isSaving ? 'Saving…' : isSaved ? '✓ Saved' : 'Save Floor Plan'}
+                </button>}
             </div>
 
             {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -1913,10 +2257,36 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                         onMouseDown={handleMouseDown}
                         onMouseMove={handleMouseMove}
                         onMouseUp={handleMouseUp}
-                        onMouseLeave={() => { isMouseDownRef.current = false; setMidPan(null); dragRoomRef.current = null }}
+                        onMouseLeave={() => { isMouseDownRef.current = false; furnitureDragRef.current = null; setMidPan(null); dragRoomRef.current = null; segDragRef.current = null }}
                         onContextMenu={handleContextMenu}
                     />
-
+                    {tool === 'furniture' && (
+                        <div style={{ position: 'absolute', bottom: 52, left: '50%', transform: 'translateX(-50%)', background: 'rgba(12,11,9,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 480, justifyContent: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
+                            <div style={{ width: '100%', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: 'rgba(100,116,139,0.6)', textAlign: 'center', marginBottom: 2 }}>SELECT FURNITURE TYPE</div>
+                            {([
+                                { id: 'sofa', label: 'Sofa' }, { id: 'bed', label: 'Bed' },
+                                { id: 'dining_table', label: 'Table' }, { id: 'desk', label: 'Desk' },
+                                { id: 'wardrobe', label: 'WRB' }, { id: 'bathtub', label: 'Bath' },
+                                { id: 'toilet', label: 'WC' }, { id: 'plant', label: 'Plant' },
+                                { id: 'chair', label: 'Chair' }, { id: 'coffee_table', label: 'Coffee T.' },
+                            ] as { id: FurnitureType; label: string }[]).map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setSelectedFurnitureType(item.id)}
+                                    style={{
+                                        height: 32, padding: '0 10px', borderRadius: 7, cursor: 'pointer',
+                                        border: selectedFurnitureType === item.id ? '1.5px solid rgba(99,102,241,0.8)' : '1px solid rgba(255,255,255,0.1)',
+                                        background: selectedFurnitureType === item.id ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.04)',
+                                        color: selectedFurnitureType === item.id ? 'rgba(165,168,255,1)' : 'rgba(148,163,184,0.8)',
+                                        fontSize: 11, fontWeight: selectedFurnitureType === item.id ? 700 : 400,
+                                        transition: 'all 120ms',
+                                    }}
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     {/* Tool hint */}
                     <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: 'rgba(10,9,7,0.82)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '5px 12px', fontSize: 11, color: 'rgba(100,116,139,0.8)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                         {tool === 'select' && 'Click to select · Drag room/node · Click segment to drag whole wall'}
@@ -1928,6 +2298,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                         {tool === 'delete' && 'Click on a room, wall or node to delete it'}
                         {tool === 'pencil' && 'Draw freehand — release to create room from bounding box'}
                         {tool === 'annotate' && 'Click anywhere to add a label · Click existing label to edit · Delete tool removes labels'}
+                        {tool === 'furniture' && `Placing: ${FURNITURE_LABELS[selectedFurnitureType]} · Click canvas to place · Drag to move · Delete tool removes`}
                     </div>
 
                     {/* Shortcut legend */}
@@ -1935,43 +2306,42 @@ export default function FloorPlanEditor({ onSave, onClose, initialState }: Props
                         {[['V', 'Select'], ['R', 'Room'], ['L', 'Line Wall'], ['B', 'Bend Wall'], ['D', 'Door'], ['N', 'Window'], ['⌫', 'Delete'], ['⌘Z', 'Undo'], ['ESC', 'Cancel'], ['Scroll', 'Zoom'], ['Mid drag', 'Pan'], ['Space+drag', 'Pan']].map(([k, l]) => (
                             <div key={k}><kbd style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, padding: '0 3px', fontFamily: 'monospace', marginRight: 4 }}>{k}</kbd>{l}</div>
                         ))}
-                        {editingAnnotation && (() => {
-                            return (
-                                <div style={{ position: 'fixed', left: editingAnnotation.x - 80, top: editingAnnotation.y - 40, zIndex: 300, background: 'rgba(15,14,12,0.97)', border: '1px solid rgba(99,102,241,0.5)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.5)' }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>LABEL</div>
-                                    <input
-                                        ref={annotationInputRef}
-                                        autoFocus
-                                        defaultValue={editingAnnotation.text || ''}
-                                        placeholder="Enter label..."
-                                        style={{ width: 160, height: 28, borderRadius: 5, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'rgba(226,232,240,0.9)', fontSize: 13, padding: '0 8px', outline: 'none' }}
-                                        onKeyDown={e2 => {
-                                            if (e2.key === 'Enter' || e2.key === 'Escape') {
-                                                const val = annotationInputRef.current?.value?.trim()
-                                                if (val) {
-                                                    setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).map(a => a.id === editingAnnotation!.id ? { ...a, text: val } : a) }))
-                                                } else {
-                                                    // Remove if empty
-                                                    setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== editingAnnotation!.id) }))
-                                                }
-                                                setEditingAnnotation(null)
-                                            }
-                                        }}
-                                        onBlur={() => {
-                                            const val = annotationInputRef.current?.value?.trim()
-                                            if (val) {
-                                                setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).map(a => a.id === editingAnnotation!.id ? { ...a, text: val } : a) }))
-                                            } else {
-                                                setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== editingAnnotation!.id) }))
-                                            }
-                                            setEditingAnnotation(null)
-                                        }}
-                                    />
-                                    <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.6)' }}>Enter to confirm · Esc to cancel</div>
-                                </div>
-                            )
-                        })()}
                     </div>
+
+                    {/* Annotation editor — sibling of shortcut legend, NOT nested inside it */}
+                    {editingAnnotation && (
+                        <div style={{ position: 'fixed', left: Math.min(editingAnnotation.x - 80, window.innerWidth - 260), top: Math.min(editingAnnotation.y - 40, window.innerHeight - 120), zIndex: 300, background: 'rgba(15,14,12,0.97)', border: '1px solid rgba(99,102,241,0.5)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.5)' }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>LABEL</div>
+                            <input
+                                ref={annotationInputRef}
+                                autoFocus
+                                defaultValue={editingAnnotation.text || ''}
+                                placeholder="Enter label..."
+                                style={{ width: 160, height: 28, borderRadius: 5, border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'rgba(226,232,240,0.9)', fontSize: 13, padding: '0 8px', outline: 'none' }}
+                                onKeyDown={e2 => {
+                                    if (e2.key === 'Enter' || e2.key === 'Escape') {
+                                        const val = annotationInputRef.current?.value?.trim()
+                                        if (val) {
+                                            setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).map(a => a.id === editingAnnotation!.id ? { ...a, text: val } : a) }))
+                                        } else {
+                                            setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== editingAnnotation!.id) }))
+                                        }
+                                        setEditingAnnotation(null)
+                                    }
+                                }}
+                                onBlur={() => {
+                                    const val = annotationInputRef.current?.value?.trim()
+                                    if (val) {
+                                        setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).map(a => a.id === editingAnnotation!.id ? { ...a, text: val } : a) }))
+                                    } else {
+                                        setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== editingAnnotation!.id) }))
+                                    }
+                                    setEditingAnnotation(null)
+                                }}
+                            />
+                            <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.6)' }}>Enter to confirm · Esc to cancel</div>
+                        </div>
+                    )}
                 </div>
 
                 <div style={{ width: 1, background: 'rgba(255,255,255,0.07)', flexShrink: 0 }} />

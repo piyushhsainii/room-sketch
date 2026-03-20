@@ -39,6 +39,7 @@ type Props = {
 export default function FloorPlanEditorModal({ projectId, initialFloorPlanState, onSaved, onClose }: Props) {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [saved, setSaved] = useState(false)
 
     const handleSave = useCallback(async (fp: FloorPlanState) => {
         setSaving(true)
@@ -46,7 +47,6 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
         try {
             const sceneJSON = floorPlanStateToSceneJSON(fp)
 
-            // 1. Save SceneJSON for the 3D workspace viewer (existing behaviour)
             const res = await fetch('/api/workspace/save-manual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -58,8 +58,6 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
                 throw new Error(body.error ?? 'Failed to save')
             }
 
-            // 2. Save raw FloorPlanState into workspace_config so the editor
-            //    can reload it next time the user clicks "Draw Floor Plan"
             await fetch('/api/workspace/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -70,6 +68,8 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
             })
 
             onSaved(sceneJSON)
+            setSaved(true)
+            setTimeout(() => setSaved(false), 2000)
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Failed to save')
         } finally {
@@ -107,6 +107,8 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
                 onSave={handleSave}
                 onClose={onClose}
                 initialState={initialFloorPlanState ?? undefined}
+                isSaving={saving}
+                isSaved={saved}
             />
         </div>
     )

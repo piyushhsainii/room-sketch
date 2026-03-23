@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
+import { OrbitControls, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -54,6 +54,151 @@ export type FloorPlanState = {
     annotations: Annotation[]
     furniture: PlacedFurniture[]
 }
+
+// SCENE FIG
+
+export type FloorMaterial = 'wood' | 'marble' | 'concrete' | 'tiles' | 'fabric' | 'plaster'
+export type DoorStyle = 'natural' | 'white' | 'dark' | 'glass'
+
+export type RoomSceneConfig = {
+    roomId: string
+    wallColor: string
+    floorMaterial: FloorMaterial
+}
+
+export type SceneConfig = {
+    ambientIntensity: number
+    wallRoughness: number
+    showFurniture: boolean
+    showLabels: boolean
+    fogEnabled: boolean
+    doorStyle: DoorStyle
+    globalFloorMaterial: FloorMaterial
+    rooms: RoomSceneConfig[]
+}
+
+const DEFAULT_SCENE_CONFIG: SceneConfig = {
+    ambientIntensity: 2.0,
+    wallRoughness: 0.85,
+    showFurniture: true,
+    showLabels: true,
+    fogEnabled: false,
+    doorStyle: 'natural',
+    globalFloorMaterial: 'wood',
+    rooms: [],
+}
+const WALL_COLORS = [
+    '#F5F0E8', '#E8E0D0', '#D4C4A0', '#C8B898',
+    '#E8D5C0', '#D4B896', '#F0E8D8', '#8B7B6B',
+    '#B8D4C8', '#A0C4B8', '#C8D4E8', '#A0B4D0',
+    '#E8C8C8', '#D4A8A8', '#C8E8C8', '#A8D4A8',
+    '#FFFFFF', '#F0F0F0', '#D0D0D0', '#A0A0A0',
+]
+
+const TEXTURE_BASE = '/textures'
+
+const FLOOR_TEXTURE_URLS: Record<FloorMaterial, {
+    map: string; normalMap: string; roughnessMap: string; repeat: number
+    roughness: number; metalness: number
+}> = {
+    wood: {
+        map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
+        repeat: 3, roughness: 0.72, metalness: 0.0,
+    },
+    marble: {
+        map: `${TEXTURE_BASE}/Marble022_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Marble022_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Marble022_1K-JPG_Roughness.jpg`,
+        repeat: 1.5, roughness: 0.18, metalness: 0.04,
+    },
+    concrete: {
+        map: `${TEXTURE_BASE}/Concrete025_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Concrete025_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Concrete025_1K-JPG_Roughness.jpg`,
+        repeat: 2, roughness: 0.92, metalness: 0.0,
+    },
+    tiles: {
+        map: `${TEXTURE_BASE}/Tiles101_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Tiles101_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Tiles101_1K-JPG_Roughness.jpg`,   // ← was missing _1K-JPG_
+        repeat: 2, roughness: 0.30, metalness: 0.04,
+    },
+    fabric: {
+        map: `${TEXTURE_BASE}/Fabric049_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Fabric049_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Fabric049_1K-JPG_Roughness.jpg`,
+        repeat: 4, roughness: 0.97, metalness: 0.0,
+    },
+    plaster: {
+        map: `${TEXTURE_BASE}/Plaster001_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Plaster001_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Plaster001_1K-JPG_Roughness.jpg`,
+        repeat: 2, roughness: 0.88, metalness: 0.0,
+    },
+}
+
+const WALL_TEXTURE_URLS = {
+    normalMap: `${TEXTURE_BASE}/Plaster001_1K-JPG_NormalGL.jpg`,
+    roughnessMap: `${TEXTURE_BASE}/Plaster001_1K-JPG_Roughness.jpg`,
+}
+
+const DOOR_TEXTURE_URLS: Record<DoorStyle, { map: string; normalMap: string; roughnessMap: string } | null> = {
+    natural: {
+        map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
+    },
+    dark: {
+        map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
+    },
+    white: null,   // no texture — flat painted
+    glass: null,   // no texture — transparent
+}
+
+
+const FLOOR_MATERIALS: { id: FloorMaterial; label: string; preview: string; roughness: number; color: string }[] = [
+    { id: 'wood', label: 'Wood', preview: '🪵', roughness: 0.7, color: '#C8A878' },
+    { id: 'marble', label: 'Marble', preview: '⬜', roughness: 0.12, color: '#EAE6E0' },
+    { id: 'concrete', label: 'Concrete', preview: '🩶', roughness: 0.92, color: '#A8A8A8' },
+    { id: 'tiles', label: 'Tiles', preview: '🔲', roughness: 0.3, color: '#D4D0C8' },
+    { id: 'fabric', label: 'Fabric', preview: '🟫', roughness: 0.98, color: '#B8A898' },
+    { id: 'plaster', label: 'Plaster', preview: '🟪', roughness: 0.88, color: '#D8D0C8' },
+]
+
+const DOOR_STYLES: { value: DoorStyle; label: string; color: string }[] = [
+    { value: 'natural', label: 'Natural Oak', color: '#C8A878' },
+    { value: 'white', label: 'White', color: '#F0EEEA' },
+    { value: 'dark', label: 'Dark Walnut', color: '#3A2E22' },
+    { value: 'glass', label: 'Glass', color: '#93C5FD' },
+]
+
+const DOOR_STYLE_COLORS: Record<DoorStyle, string> = {
+    natural: '#C8A878',
+    white: '#F0EEEA',
+    dark: '#3A2E22',
+    glass: '#93C5FD',
+}
+
+function getFloorColor(mat: FloorMaterial): string {
+    return FLOOR_MATERIALS.find(m => m.id === mat)?.color ?? '#D4C4A0'
+}
+function getFloorRoughness(mat: FloorMaterial): number {
+    return FLOOR_MATERIALS.find(m => m.id === mat)?.roughness ?? 0.82
+}
+function getRoomSceneCfg(config: SceneConfig, roomId: string): RoomSceneConfig {
+    return config.rooms.find(r => r.roomId === roomId) ?? {
+        roomId,
+        wallColor: '#8B7B6B',
+        floorMaterial: 'wood',
+    }
+}
+
+
+
 
 const DEFAULT_FP: FloorPlanState = {
     rooms: [], openings: [], roomHeight: 2.7,
@@ -648,9 +793,174 @@ function draw2D(
     }
 }
 
+function makeWallTexture(color: string): THREE.CanvasTexture {
+    const size = 256
+    const canvas = document.createElement('canvas')
+    canvas.width = size; canvas.height = size
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = color
+    ctx.fillRect(0, 0, size, size)
+    // Subtle plaster variation
+    for (let n = 0; n < 800; n++) {
+        const x = Math.random() * size, y = Math.random() * size
+        ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.04})`
+        ctx.beginPath(); ctx.arc(x, y, Math.random() * 4, 0, Math.PI * 2); ctx.fill()
+    }
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(2, 1)
+    return tex
+}
+
+const wallTextureCache = new Map<string, THREE.CanvasTexture>()
+function getCachedWallTexture(color: string): THREE.CanvasTexture {
+    if (!wallTextureCache.has(color)) {
+        wallTextureCache.set(color, makeWallTexture(color))
+    }
+    return wallTextureCache.get(color)!
+}
+
+// ADD this entire block just before the LineWalls3D function:
+
+const T_BASE = '/textures'
+
+const FLOOR_TEX: Record<string, { map: string; normal: string; rough: string; repeat: number; roughness: number; metalness: number }> = {
+    wood: { map: `${T_BASE}/Wood049_1K-JPG_Color.jpg`, normal: `${T_BASE}/Wood049_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Wood049_1K-JPG_Roughness.jpg`, repeat: 3, roughness: 0.72, metalness: 0.00 },
+    marble: { map: `${T_BASE}/Marble022_1K-JPG_Color.jpg`, normal: `${T_BASE}/Marble022_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Marble022_1K-JPG_Roughness.jpg`, repeat: 1.5, roughness: 0.18, metalness: 0.04 },
+    concrete: { map: `${T_BASE}/Concrete025_1K-JPG_Color.jpg`, normal: `${T_BASE}/Concrete025_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Concrete025_1K-JPG_Roughness.jpg`, repeat: 2, roughness: 0.92, metalness: 0.00 },
+    tiles: { map: `${T_BASE}/Tiles101_1K-JPG_Color.jpg`, normal: `${T_BASE}/Tiles101_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Tiles101_1K-JPG_Roughness.jpg`, repeat: 2, roughness: 0.30, metalness: 0.04 },
+    fabric: { map: `${T_BASE}/Fabric049_1K-JPG_Color.jpg`, normal: `${T_BASE}/Fabric049_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Fabric049_1K-JPG_Roughness.jpg`, repeat: 4, roughness: 0.97, metalness: 0.00 },
+    plaster: { map: `${T_BASE}/Plaster001_1K-JPG_Color.jpg`, normal: `${T_BASE}/Plaster001_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Plaster001_1K-JPG_Roughness.jpg`, repeat: 2, roughness: 0.88, metalness: 0.00 },
+}
+
+const WALL_TEX = {
+    normal: `${T_BASE}/Plaster001_1K-JPG_NormalGL.jpg`,
+    rough: `${T_BASE}/Plaster001_1K-JPG_Roughness.jpg`,
+}
+
+const DOOR_TEX_OAK = {
+    map: `${T_BASE}/Wood049_1K-JPG_Color.jpg`,
+    normal: `${T_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
+    rough: `${T_BASE}/Wood049_1K-JPG_Roughness.jpg`,
+}
+
+function FloorMatPBR({ mat, repeat }: { mat: string; repeat: number }) {
+    const cfg = FLOOR_TEX[mat] ?? FLOOR_TEX['wood']!
+    const textures = useTexture({ map: cfg.map, normalMap: cfg.normal, roughnessMap: cfg.rough })
+    useMemo(() => {
+        ;[textures.map, textures.normalMap, textures.roughnessMap].forEach(t => {
+            if (!t) return
+            t.wrapS = t.wrapT = THREE.RepeatWrapping
+            t.repeat.set(repeat, repeat)
+            t.needsUpdate = true
+        })
+    }, [textures, repeat])
+    return (
+        <meshStandardMaterial
+            map={textures.map}
+            normalMap={textures.normalMap}
+            roughnessMap={textures.roughnessMap}
+            roughness={cfg.roughness}
+            metalness={cfg.metalness}
+            side={THREE.DoubleSide}
+        />
+    )
+}
+
+function FloorMatFallback({ mat }: { mat: string }) {
+    const colors: Record<string, string> = {
+        wood: '#C8A878', marble: '#EAE6E0', concrete: '#A8A8A8',
+        tiles: '#D4D0C8', fabric: '#B8A898', plaster: '#D8D0C8',
+    }
+    return <meshStandardMaterial color={colors[mat] ?? '#C8A878'} roughness={0.8} side={THREE.DoubleSide} />
+}
+
+function FloorMat({ mat }: { mat: string }) {
+    const cfg = FLOOR_TEX[mat] ?? FLOOR_TEX['wood']!
+    return (
+        <Suspense fallback={<FloorMatFallback mat={mat} />}>
+            <FloorMatPBR mat={mat} repeat={cfg.repeat} />
+        </Suspense>
+    )
+}
+
+function WallMatPBR({ color, roughness }: { color: string; roughness: number }) {
+    const textures = useTexture({ normalMap: WALL_TEX.normal, roughnessMap: WALL_TEX.rough })
+    useMemo(() => {
+        ;[textures.normalMap, textures.roughnessMap].forEach(t => {
+            if (!t) return
+            t.wrapS = t.wrapT = THREE.RepeatWrapping
+            t.repeat.set(2, 2)
+            t.needsUpdate = true
+        })
+    }, [textures])
+    return (
+        <meshStandardMaterial
+            color={color}
+            roughness={roughness}
+            metalness={0}
+            normalMap={textures.normalMap}
+            normalScale={new THREE.Vector2(0.35, 0.35)}
+            roughnessMap={textures.roughnessMap}
+        />
+    )
+}
+
+function WallMat({ color, roughness }: { color: string; roughness: number }) {
+    return (
+        <Suspense fallback={<meshStandardMaterial color={color} roughness={roughness} metalness={0} />}>
+            <WallMatPBR color={color} roughness={roughness} />
+        </Suspense>
+    )
+}
+
+function DoorMatPBR({ style }: { style: string }) {
+    const isGlass = style === 'glass'
+    const isDark = style === 'dark'
+    const isWhite = style === 'white'
+    if (isGlass) return <meshStandardMaterial color="#B8D4E4" roughness={0.05} metalness={0.1} transparent opacity={0.35} />
+    if (isWhite) return <meshStandardMaterial color="#F0EDE8" roughness={0.75} metalness={0} />
+    return <DoorMatWood tint={isDark ? '#3A2E22' : undefined} />
+}
+
+function DoorMatWood({ tint }: { tint?: string }) {
+    const textures = useTexture({ map: DOOR_TEX_OAK.map, normalMap: DOOR_TEX_OAK.normal, roughnessMap: DOOR_TEX_OAK.rough })
+    useMemo(() => {
+        ;[textures.map, textures.normalMap, textures.roughnessMap].forEach(t => {
+            if (!t) return
+            t.wrapS = t.wrapT = THREE.RepeatWrapping
+            t.repeat.set(1, 2)
+            t.needsUpdate = true
+        })
+    }, [textures])
+    return (
+        <meshStandardMaterial
+            map={textures.map}
+            normalMap={textures.normalMap}
+            roughnessMap={textures.roughnessMap}
+            color={tint ?? '#FFFFFF'}
+            roughness={0.6}
+            metalness={0.02}
+        />
+    )
+}
+
+function DoorMat({ style }: { style: string }) {
+    const isGlass = style === 'glass'
+    const fallbackColor = isGlass ? '#B8D4E4' : style === 'white' ? '#F0EDE8' : style === 'dark' ? '#3A2E22' : '#C8A878'
+    return (
+        <Suspense fallback={<meshStandardMaterial color={fallbackColor} roughness={0.6} transparent={isGlass} opacity={isGlass ? 0.35 : 1} />}>
+            <DoorMatPBR style={style} />
+        </Suspense>
+    )
+}
+
 // ── Line segment 3D renderer — WITH FLOORS ────────────────────────────────────
 
-function LineWalls3D({ fp }: { fp: FloorPlanState }) {
+function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural' }: {
+    fp: FloorPlanState; wallRoughness?: number; floorMaterial?: string; doorStyle?: string
+}) {
+    const wallColor = '#8B7B6B'
     const H = fp.roomHeight
     const T = 0.15
 
@@ -681,10 +991,17 @@ function LineWalls3D({ fp }: { fp: FloorPlanState }) {
                     )
 
                     if (segOpenings.length === 0) {
+                        // No openings — single solid wall panel
                         panels.push(
-                            <mesh key={`${seg.id}_${i}`} position={[mcx, H / 2, mcz]} rotation={[0, -angle, 0]} castShadow receiveShadow>
+                            <mesh
+                                key={`${seg.id}_${i}`}
+                                position={[mcx, H / 2, mcz]}
+                                rotation={[0, -angle, 0]}
+                                castShadow
+                                receiveShadow
+                            >
                                 <boxGeometry args={[len, H, T]} />
-                                <meshStandardMaterial color="#8B7B6B" roughness={0.85} />
+                                <WallMat color={wallColor} roughness={wallRoughness} />
                             </mesh>
                         )
                     } else {
@@ -697,55 +1014,117 @@ function LineWalls3D({ fp }: { fp: FloorPlanState }) {
                             const segEnd = op ? opPos - op.width / 2 : len
                             const segLen = segEnd - cursor
 
+                            // Wall segment between openings
                             if (segLen > 0.02) {
                                 const segMid = cursor + segLen / 2
                                 const wx = a.x + (dx / len) * segMid
                                 const wz = a.z + (dz / len) * segMid
                                 panels.push(
-                                    <mesh key={`${seg.id}_${i}_l${si}`} position={[wx, H / 2, wz]} rotation={[0, -angle, 0]} castShadow receiveShadow>
+                                    <mesh
+                                        key={`${seg.id}_${i}_l${si}`}
+                                        position={[wx, H / 2, wz]}
+                                        rotation={[0, -angle, 0]}
+                                        castShadow
+                                        receiveShadow
+                                    >
                                         <boxGeometry args={[segLen, H, T]} />
-                                        <meshStandardMaterial color="#8B7B6B" roughness={0.85} />
+                                        <WallMat color={wallColor} roughness={wallRoughness} />
                                     </mesh>
                                 )
                             }
 
                             if (op) {
                                 const opPos2 = (op.segmentT ?? 0) * len
+
+                                // Header above opening
                                 const headerH = H - op.height
                                 if (headerH > 0.02) {
                                     const hx = a.x + (dx / len) * opPos2
                                     const hz = a.z + (dz / len) * opPos2
                                     panels.push(
-                                        <mesh key={`${seg.id}_${i}_h${si}`} position={[hx, op.height + headerH / 2, hz]} rotation={[0, -angle, 0]} castShadow receiveShadow>
+                                        <mesh
+                                            key={`${seg.id}_${i}_h${si}`}
+                                            position={[hx, op.height + headerH / 2, hz]}
+                                            rotation={[0, -angle, 0]}
+                                            castShadow
+                                            receiveShadow
+                                        >
                                             <boxGeometry args={[op.width, headerH, T]} />
-                                            <meshStandardMaterial color="#8B7B6B" roughness={0.85} />
+                                            <WallMat color={wallColor} roughness={wallRoughness} />
                                         </mesh>
                                     )
                                 }
+
+                                // Window sill
                                 if (op.type === 'window' && op.sillHeight > 0.02) {
                                     const sx = a.x + (dx / len) * opPos2
                                     const sz = a.z + (dz / len) * opPos2
                                     panels.push(
-                                        <mesh key={`${seg.id}_${i}_s${si}`} position={[sx, op.sillHeight / 2, sz]} rotation={[0, -angle, 0]} castShadow receiveShadow>
+                                        <mesh
+                                            key={`${seg.id}_${i}_s${si}`}
+                                            position={[sx, op.sillHeight / 2, sz]}
+                                            rotation={[0, -angle, 0]}
+                                            castShadow
+                                            receiveShadow
+                                        >
                                             <boxGeometry args={[op.width, op.sillHeight, T]} />
-                                            <meshStandardMaterial color="#8B7B6B" roughness={0.85} />
+                                            <WallMat color={wallColor} roughness={wallRoughness} />
                                         </mesh>
                                     )
                                 }
+
+                                // Window glass pane
+                                if (op.type === 'window') {
+                                    const gx = a.x + (dx / len) * opPos2
+                                    const gz = a.z + (dz / len) * opPos2
+                                    panels.push(
+                                        <mesh
+                                            key={`${seg.id}_${i}_g${si}`}
+                                            position={[gx, op.sillHeight + op.height / 2, gz]}
+                                            rotation={[0, -angle, 0]}
+                                        >
+                                            <boxGeometry args={[op.width, op.height, 0.025]} />
+                                            <meshStandardMaterial
+                                                color="#93C5FD"
+                                                transparent
+                                                opacity={0.35}
+                                                roughness={0.05}
+                                                metalness={0.15}
+                                                side={THREE.DoubleSide}
+                                            />
+                                        </mesh>
+                                    )
+                                }
+
+                                // Door leaf
                                 if (op.type === 'door') {
                                     const perpX = -dz / len
                                     const perpZ = dx / len
-                                    const hingeDx = a.x + (dx / len) * (opPos2 - op.width / 2)
-                                    const hingeDz = a.z + (dz / len) * (opPos2 - op.width / 2)
-                                    const leafCx = hingeDx + (dx / len) * (op.width / 2) + perpX * (op.width / 2)
-                                    const leafCz = hingeDz + (dz / len) * (op.width / 2) + perpZ * (op.width / 2)
+                                    const hingeX = a.x + (dx / len) * (opPos2 - op.width / 2)
+                                    const hingeZ = a.z + (dz / len) * (opPos2 - op.width / 2)
+                                    const leafCx = hingeX + (dx / len) * (op.width / 2) + perpX * (op.width / 2)
+                                    const leafCz = hingeZ + (dz / len) * (op.width / 2) + perpZ * (op.width / 2)
                                     panels.push(
-                                        <mesh key={`${seg.id}_${i}_door${si}`} position={[leafCx, op.height / 2, leafCz]} rotation={[0, -angle + Math.PI / 2, 0]} castShadow>
+                                        <mesh
+                                            key={`${seg.id}_${i}_door${si}`}
+                                            position={[leafCx, op.height / 2, leafCz]}
+                                            rotation={[0, -angle + Math.PI / 2, 0]}
+                                            castShadow
+                                        >
                                             <boxGeometry args={[op.width, op.height, 0.04]} />
-                                            <meshStandardMaterial color="#C8A878" roughness={0.55} metalness={0.05} />
+                                            {/* <meshStandardMaterial
+                                                color={DOOR_STYLE_COLORS[doorStyle as DoorStyle] ?? '#C8A878'}
+                                                roughness={doorStyle === 'glass' ? 0.05 : 0.55}
+                                                metalness={doorStyle === 'glass' ? 0.2 : 0.05}
+                                                transparent={doorStyle === 'glass'}
+                                                opacity={doorStyle === 'glass' ? 0.4 : 1}
+                                            /> */}
+                                            <DoorMat style={doorStyle} />
+
                                         </mesh>
                                     )
                                 }
+
                                 cursor = opPos + op.width / 2
                             }
                         }
@@ -755,16 +1134,16 @@ function LineWalls3D({ fp }: { fp: FloorPlanState }) {
                 return <group key={seg.id}>{panels}</group>
             })}
 
-            {/* Floor — one plane per closed shape, keyed by shape id */}
+            {/* Floors — exact polygon ShapeGeometry per closed shape */}
             {deriveClosedPolygons(fp.lineNodes, fp.lineSegments).map((nodeIds, idx) => {
                 const nodes = nodeIds
                     .map(nid => fp.lineNodes.find(n => n.id === nid))
                     .filter(Boolean) as LineNode[]
                 if (nodes.length < 3) return null
 
-                // THREE.Shape lives in XY plane.
-                // After rotation=[-PI/2, 0, 0]: shape-X → world-X, shape-Y → world-Z
-                // So we pass (node.x, -node.z) to get correct world position after rotation.
+                // THREE.Shape is in XY plane.
+                // After rotation [-PI/2, 0, 0]: shape X → world X, shape Y → world -Z
+                // Pass (node.x, -node.z) so the floor aligns with the walls.
                 const shape = new THREE.Shape()
                 shape.moveTo(nodes[0]!.x, -nodes[0]!.z)
                 for (let i = 1; i < nodes.length; i++) {
@@ -782,10 +1161,11 @@ function LineWalls3D({ fp }: { fp: FloorPlanState }) {
                         receiveShadow
                     >
                         <primitive object={geometry} attach="geometry" />
-                        <meshStandardMaterial color="#D4C4A0" roughness={0.82} side={THREE.DoubleSide} />
+                        <FloorMat mat={floorMaterial} />
                     </mesh>
                 )
             })}
+
             {/* Column joints at nodes */}
             {(fp.lineNodes ?? []).map(node => (
                 <mesh key={node.id} position={[node.x, H / 2, node.z]}>
@@ -799,7 +1179,10 @@ function LineWalls3D({ fp }: { fp: FloorPlanState }) {
 
 // ── 3D Preview ────────────────────────────────────────────────────────────────
 
-function Room3D({ room, openings, roomHeight }: { room: EditorRoom; openings: EditorOpening[]; roomHeight: number }) {
+function Room3D({ room, openings, roomHeight, wallColor = '#8B7B6B', wallRoughness = 0.85, floorMat = 'wood', doorStyle = 'natural' }: {
+    room: EditorRoom; openings: EditorOpening[]; roomHeight: number
+    wallColor?: string; wallRoughness?: number; floorMat?: string; doorStyle?: string
+}) {
     const cx = room.x + room.width / 2
     const cz = room.z + room.depth / 2
     const W = room.width, D = room.depth, H = roomHeight, T = 0.15
@@ -826,7 +1209,7 @@ function Room3D({ room, openings, roomHeight }: { room: EditorRoom; openings: Ed
         <group>
             <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[W - T * 2, D - T * 2]} />
-                <meshStandardMaterial color="#D4C4A0" roughness={0.82} metalness={0} />
+                <FloorMat mat={floorMat} />
             </mesh>
 
             {walls.map(wall => {
@@ -838,7 +1221,7 @@ function Room3D({ room, openings, roomHeight }: { room: EditorRoom; openings: Ed
                     return (
                         <mesh key={wall.name} position={wPos} castShadow receiveShadow>
                             <boxGeometry args={wallSize(wall.axis)} />
-                            <meshStandardMaterial color="#8B7B6B" roughness={0.85} />
+                            <WallMat color={wallColor} roughness={wallRoughness} />
                         </mesh>
                     )
                 }
@@ -858,7 +1241,8 @@ function Room3D({ room, openings, roomHeight }: { room: EditorRoom; openings: Ed
                             ? [room.x + segMid, H / 2, wPos[2]]
                             : [wPos[0], H / 2, room.z + segMid]
                         const size: [number, number, number] = wall.axis === 'x' ? [segLen, H, T] : [T, H, segLen]
-                        panels.push(<mesh key={`l${i}`} position={pos} castShadow receiveShadow><boxGeometry args={size} /><meshStandardMaterial color="#8B7B6B" roughness={0.85} /></mesh>)
+                        panels.push(<mesh key={`l${i}`} position={pos} castShadow receiveShadow><boxGeometry args={size} /><WallMat color={wallColor} roughness={wallRoughness} />
+                        </mesh>)
                     }
 
                     if (op) {
@@ -867,14 +1251,16 @@ function Room3D({ room, openings, roomHeight }: { room: EditorRoom; openings: Ed
                             const opMid = op.position
                             const hPos: [number, number, number] = wall.axis === 'x' ? [room.x + opMid, op.height + headerH / 2, wPos[2]] : [wPos[0], op.height + headerH / 2, room.z + opMid]
                             const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, headerH, T] : [T, headerH, op.width]
-                            panels.push(<mesh key={`h${i}`} position={hPos} castShadow receiveShadow><boxGeometry args={hSize} /><meshStandardMaterial color="#8B7B6B" roughness={0.85} /></mesh>)
+                            panels.push(<mesh key={`h${i}`} position={hPos} castShadow receiveShadow><boxGeometry args={hSize} /><WallMat color={wallColor} roughness={wallRoughness} />
+                            </mesh>)
                         }
 
                         if (op.type === 'window' && op.sillHeight > 0.02) {
                             const opMid = op.position
                             const sPos: [number, number, number] = wall.axis === 'x' ? [room.x + opMid, op.sillHeight / 2, wPos[2]] : [wPos[0], op.sillHeight / 2, room.z + opMid]
                             const sSize: [number, number, number] = wall.axis === 'x' ? [op.width, op.sillHeight, T] : [T, op.sillHeight, op.width]
-                            panels.push(<mesh key={`s${i}`} position={sPos} castShadow receiveShadow><boxGeometry args={sSize} /><meshStandardMaterial color="#8B7B6B" roughness={0.85} /></mesh>)
+                            panels.push(<mesh key={`s${i}`} position={sPos} castShadow receiveShadow><boxGeometry args={sSize} /><WallMat color={wallColor} roughness={wallRoughness} />
+                            </mesh>)
                         }
 
                         if (op.type === 'window') {
@@ -894,7 +1280,9 @@ function Room3D({ room, openings, roomHeight }: { room: EditorRoom; openings: Ed
                                 ? [room.x + opMid + hingeOffset + (op.width / 2) * Math.cos(leafAngle), op.height / 2, wPos[2] + (op.width / 2) * Math.sin(leafAngle) * swingSign]
                                 : [wPos[0] + (op.width / 2) * Math.sin(leafAngle) * swingSign, op.height / 2, room.z + opMid + hingeOffset + (op.width / 2) * Math.cos(leafAngle)]
                             const doorRot: [number, number, number] = wall.axis === 'x' ? [0, leafAngle, 0] : [0, leafAngle + Math.PI / 2, 0]
-                            panels.push(<mesh key={`door${i}`} position={doorPos} rotation={doorRot} castShadow><boxGeometry args={[op.width, op.height, 0.04]} /><meshStandardMaterial color="#C8A878" roughness={0.55} metalness={0.05} /></mesh>)
+                            panels.push(<mesh key={`door${i}`} position={doorPos} rotation={doorRot} castShadow><boxGeometry args={[op.width, op.height, 0.04]} />
+                                <DoorMat style={doorStyle} />
+                            </mesh>)
                         }
 
                         cursor = op.position + op.width / 2
@@ -1057,24 +1445,284 @@ function FurnitureMesh({ f }: { f: PlacedFurniture }) {
     )
 }
 
-function Scene3D({ fp }: { fp: FloorPlanState }) {
+function Scene3D({ fp, sceneConfig }: { fp: FloorPlanState; sceneConfig?: SceneConfig }) {
+    const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
     return (
         <>
-            <ambientLight intensity={2.0} color="#FFF8F0" />
+            <ambientLight intensity={cfg.ambientIntensity} color="#FFF8F0" />
             <directionalLight position={[10, 15, 10]} intensity={2.5} castShadow shadow-mapSize={[2048, 2048]} />
             <directionalLight position={[-5, 8, -5]} intensity={0.8} color="#C8D4E8" />
+            {cfg.fogEnabled && <fog attach="fog" args={['#0F0E0C', 20, 60]} />}
+
             {fp.rooms.map(room => (
-                <Room3D key={room.id} room={room} openings={fp.openings.filter(o => o.roomId === room.id)} roomHeight={fp.roomHeight} />
+                <Room3D
+                    key={room.id}
+                    room={room}
+                    openings={fp.openings.filter(o => o.roomId === room.id)}
+                    roomHeight={fp.roomHeight}
+                    wallColor={cfg.rooms.find(r => r.roomId === room.id)?.wallColor ?? '#8B7B6B'}
+                    wallRoughness={cfg.wallRoughness}
+                    floorMat={cfg.globalFloorMaterial ?? 'wood'}
+                    doorStyle={cfg.doorStyle ?? 'natural'}
+                />
             ))}
-            <LineWalls3D fp={fp} />
-            {/* Placed furniture */}
-            {(fp.furniture ?? []).map(f => <FurnitureMesh key={f.id} f={f} />)}
+
+            <LineWalls3D
+                fp={fp}
+                wallRoughness={cfg.wallRoughness}
+                floorMaterial={cfg.globalFloorMaterial ?? 'wood'}
+                doorStyle={cfg.doorStyle ?? 'natural'}
+            />
+
+            {/* Furniture — guarded by showFurniture toggle */}
+            {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
+                <FurnitureMesh key={f.id} f={f} />
+            ))}
+
             <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
             <gridHelper args={[50, 50, '#1C1A17', '#1C1A17']} position={[0, -0.01, 0]} />
         </>
     )
 }
 
+
+function ColorSwatch({ color, selected, onClick }: { color: string; selected: boolean; onClick: () => void }) {
+    return (
+        <div onClick={onClick} title={color} style={{
+            width: 24, height: 24, borderRadius: 5, background: color, cursor: 'pointer',
+            border: selected ? '2px solid rgba(99,102,241,0.9)' : '2px solid transparent',
+            boxShadow: selected ? '0 0 0 1px rgba(99,102,241,0.4)' : 'none',
+            transition: 'transform 100ms',
+            flexShrink: 0,
+        }}
+            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
+            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+        />
+    )
+}
+
+function CfgLabel({ children }: { children: React.ReactNode }) {
+    return <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'rgba(100,116,139,0.55)', marginBottom: 6 }}>{children}</div>
+}
+
+function CfgToggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+    return (
+        <div onClick={() => onChange(!value)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 0' }}>
+            <div style={{ width: 28, height: 16, borderRadius: 99, background: value ? 'rgba(99,102,241,0.85)' : 'rgba(100,116,139,0.25)', position: 'relative', transition: 'background 200ms', flexShrink: 0 }}>
+                <div style={{ position: 'absolute', top: 2, left: value ? 13 : 2, width: 12, height: 12, borderRadius: '50%', background: 'white', transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+            </div>
+            <span style={{ fontSize: 11, color: value ? 'rgba(165,168,255,0.9)' : 'rgba(100,116,139,0.65)' }}>{label}</span>
+        </div>
+    )
+}
+
+function SceneConfigPanel({
+    fp, config, onChange,
+}: {
+    fp: FloorPlanState
+    config: SceneConfig
+    onChange: (c: SceneConfig) => void
+}) {
+    const [open, setOpen] = useState(false)
+    const [tab, setTab] = useState<'rooms' | 'scene'>('rooms')
+    const [selectedRoomId, setSelectedRoomId] = useState<string>(fp.rooms[0]?.id ?? '')
+    const [applyAll, setApplyAll] = useState(false)
+
+    const roomCfg = selectedRoomId ? getRoomSceneCfg(config, selectedRoomId) : null
+
+    function patchRoom(patch: Partial<RoomSceneConfig>) {
+        if (patch.wallColor) {
+            wallTextureCache.delete(patch.wallColor)
+        }
+        const targetIds = applyAll ? fp.rooms.map(r => r.id) : [selectedRoomId]
+        let rooms = [...config.rooms]
+        for (const id of targetIds) {
+            const existing = rooms.find(r => r.roomId === id)
+            if (existing) {
+                rooms = rooms.map(r => r.roomId === id ? { ...r, ...patch } : r)
+            } else {
+                rooms = [...rooms, { roomId: id, wallColor: '#8B7B6B', floorMaterial: 'wood' as FloorMaterial, ...patch }]
+            }
+        }
+        onChange({ ...config, rooms })
+    }
+
+    function patchScene(patch: Partial<SceneConfig>) {
+        onChange({ ...config, ...patch })
+    }
+
+    return (
+        <>
+            {/* Toggle button */}
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                style={{
+                    position: 'absolute', bottom: 12, left: 12, zIndex: 10,
+                    height: 28, padding: '0 10px', borderRadius: 7,
+                    border: open ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                    background: open ? 'rgba(99,102,241,0.2)' : 'rgba(10,9,7,0.75)',
+                    backdropFilter: 'blur(10px)',
+                    color: open ? 'rgba(165,168,255,0.95)' : 'rgba(148,163,184,0.75)',
+                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    transition: 'all 150ms',
+                }}
+            >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <circle cx="12" cy="12" r="3" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41" />
+                </svg>
+                {open ? 'Close Config' : 'Scene Config'}
+            </button>
+
+            {/* Panel */}
+            {open && (
+                <div style={{
+                    position: 'absolute', bottom: 48, left: 12, zIndex: 20,
+                    width: 272, maxHeight: 440,
+                    borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(10,9,7,0.94)', backdropFilter: 'blur(20px)',
+                    boxShadow: '0 12px 48px rgba(0,0,0,0.7)',
+                    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                    fontFamily: 'system-ui, sans-serif',
+                }}>
+                    {/* Header + tabs */}
+                    <div style={{ padding: '10px 12px 0', background: 'linear-gradient(180deg, rgba(99,102,241,0.06) 0%, transparent 100%)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(226,232,240,0.9)', letterSpacing: '0.02em' }}>Scene Configuration</span>
+                            <button onClick={() => setOpen(false)} style={{ width: 20, height: 20, borderRadius: 4, border: 'none', background: 'rgba(255,255,255,0.06)', color: 'rgba(148,163,184,0.6)', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: 3, marginBottom: 0 }}>
+                            {(['rooms', 'scene'] as const).map(t => (
+                                <button key={t} onClick={() => setTab(t)} style={{ flex: 1, height: 26, borderRadius: 5, border: 'none', background: tab === t ? 'rgba(99,102,241,0.75)' : 'transparent', color: tab === t ? 'white' : 'rgba(148,163,184,0.6)', fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 150ms' }}>
+                                    {t === 'rooms' ? '🏠 Rooms' : '✨ Scene'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Body */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                        {/* ── ROOMS TAB ────────────────────────────────────────── */}
+                        {tab === 'rooms' && <>
+                            {fp.rooms.length === 0 ? (
+                                <div style={{ fontSize: 11, color: 'rgba(100,116,139,0.5)', textAlign: 'center', padding: '20px 0' }}>No rooms yet. Draw rooms first.</div>
+                            ) : <>
+                                {/* Room selector */}
+                                <div>
+                                    <CfgLabel>Select Room</CfgLabel>
+                                    <select value={selectedRoomId} onChange={e => setSelectedRoomId(e.target.value)} style={{ width: '100%', height: 32, borderRadius: 6, border: '1px solid rgba(148,163,184,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(226,232,240,0.9)', fontSize: 12, padding: '0 8px', outline: 'none', cursor: 'pointer' }}>
+                                        {fp.rooms.map(r => <option key={r.id} value={r.id} style={{ background: '#1a1814' }}>{r.label}</option>)}
+                                    </select>
+                                </div>
+
+                                {/* Apply all toggle */}
+                                <div onClick={() => setApplyAll(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, background: applyAll ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${applyAll ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)'}`, cursor: 'pointer', transition: 'all 150ms' }}>
+                                    <div style={{ width: 26, height: 14, borderRadius: 99, background: applyAll ? 'rgba(99,102,241,0.85)' : 'rgba(100,116,139,0.25)', position: 'relative', transition: 'background 200ms', flexShrink: 0 }}>
+                                        <div style={{ position: 'absolute', top: 1, left: applyAll ? 12 : 1, width: 12, height: 12, borderRadius: '50%', background: 'white', transition: 'left 200ms' }} />
+                                    </div>
+                                    <span style={{ fontSize: 10, fontWeight: 600, color: applyAll ? 'rgba(165,168,255,0.9)' : 'rgba(100,116,139,0.55)' }}>Apply to all rooms</span>
+                                </div>
+
+                                {roomCfg && <>
+                                    {/* Wall color */}
+                                    <div>
+                                        <CfgLabel>Wall Color</CfgLabel>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                            {WALL_COLORS.map(c => (
+                                                <ColorSwatch key={c} color={c} selected={roomCfg.wallColor === c} onClick={() => patchRoom({ wallColor: c })} />
+                                            ))}
+                                        </div>
+                                        {/* Custom color */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                                            <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.6)' }}>Custom:</span>
+                                            <input type="color" value={roomCfg.wallColor} onChange={e => patchRoom({ wallColor: e.target.value })}
+                                                style={{ width: 32, height: 24, borderRadius: 5, border: '1px solid rgba(255,255,255,0.1)', background: 'none', cursor: 'pointer', padding: 1 }} />
+                                            <code style={{ fontSize: 10, color: 'rgba(165,168,255,0.7)', background: 'rgba(99,102,241,0.08)', padding: '2px 5px', borderRadius: 3 }}>{roomCfg.wallColor}</code>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+
+                                    {/* Floor material */}
+                                    <div>
+                                        <CfgLabel>Floor Material</CfgLabel>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
+                                            {FLOOR_MATERIALS.map(m => (
+                                                <button key={m.id} onClick={() => patchRoom({ floorMaterial: m.id })} style={{ height: 46, borderRadius: 7, border: roomCfg.floorMaterial === m.id ? '1.5px solid rgba(99,102,241,0.85)' : '1px solid rgba(255,255,255,0.08)', background: roomCfg.floorMaterial === m.id ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transition: 'all 130ms' }}>
+                                                    <div style={{ width: 20, height: 14, borderRadius: 3, background: m.color, border: '1px solid rgba(255,255,255,0.15)' }} />
+                                                    <span style={{ fontSize: 9, fontWeight: roomCfg.floorMaterial === m.id ? 700 : 400, color: roomCfg.floorMaterial === m.id ? 'rgba(165,168,255,0.95)' : 'rgba(148,163,184,0.65)' }}>{m.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>}
+
+                                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+
+                                {/* Door style */}
+                                <div>
+                                    <CfgLabel>Door Style</CfgLabel>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
+                                        {DOOR_STYLES.map(d => (
+                                            <button key={d.value} onClick={() => patchScene({ doorStyle: d.value })} style={{ height: 36, borderRadius: 7, border: config.doorStyle === d.value ? '1.5px solid rgba(99,102,241,0.85)' : '1px solid rgba(255,255,255,0.08)', background: config.doorStyle === d.value ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, padding: '0 8px', transition: 'all 130ms' }}>
+                                                <div style={{ width: 14, height: 14, borderRadius: 3, background: d.color, border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0, opacity: d.value === 'glass' ? 0.5 : 1 }} />
+                                                <span style={{ fontSize: 10, fontWeight: config.doorStyle === d.value ? 700 : 400, color: config.doorStyle === d.value ? 'rgba(165,168,255,0.95)' : 'rgba(148,163,184,0.65)' }}>{d.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>}
+                        </>}
+
+                        {/* ── SCENE TAB ────────────────────────────────────────── */}
+                        {tab === 'scene' && <>
+                            {/* Ambient light */}
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                                    <CfgLabel>Ambient Light</CfgLabel>
+                                    <code style={{ fontSize: 10, color: 'rgba(165,168,255,0.8)', background: 'rgba(99,102,241,0.1)', padding: '1px 4px', borderRadius: 3 }}>{config.ambientIntensity.toFixed(1)}</code>
+                                </div>
+                                <input type="range" min={0.5} max={4.0} step={0.1} value={config.ambientIntensity} onChange={e => patchScene({ ambientIntensity: parseFloat(e.target.value) })} style={{ width: '100%', accentColor: 'rgba(99,102,241,0.9)', cursor: 'pointer' }} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'rgba(100,116,139,0.4)', marginTop: 2 }}><span>dim</span><span>bright</span></div>
+                            </div>
+
+                            {/* Wall roughness */}
+                            <div>
+                                <CfgLabel>Floor Material (all shapes)</CfgLabel>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
+                                    {FLOOR_MATERIALS.map(m => (
+                                        <button key={m.id} onClick={() => patchScene({ globalFloorMaterial: m.id })}
+                                            style={{ height: 46, borderRadius: 7, border: config.globalFloorMaterial === m.id ? '1.5px solid rgba(99,102,241,0.85)' : '1px solid rgba(255,255,255,0.08)', background: config.globalFloorMaterial === m.id ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transition: 'all 130ms' }}>
+                                            <div style={{ width: 20, height: 14, borderRadius: 3, background: m.color, border: '1px solid rgba(255,255,255,0.15)' }} />
+                                            <span style={{ fontSize: 9, fontWeight: config.globalFloorMaterial === m.id ? 700 : 400, color: config.globalFloorMaterial === m.id ? 'rgba(165,168,255,0.95)' : 'rgba(148,163,184,0.65)' }}>{m.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+                            {/* Toggles */}
+                            <CfgToggle label="Show Furniture" value={config.showFurniture} onChange={v => patchScene({ showFurniture: v })} />
+                            <CfgToggle label="Show Room Labels" value={config.showLabels} onChange={v => patchScene({ showLabels: v })} />
+                            <CfgToggle label="Atmospheric Fog" value={config.fogEnabled} onChange={v => patchScene({ fogEnabled: v })} />
+
+                            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+
+                            {/* Reset */}
+                            <button onClick={() => onChange({ ...DEFAULT_SCENE_CONFIG, rooms: config.rooms })} style={{ height: 28, borderRadius: 6, border: '1px solid rgba(148,163,184,0.12)', background: 'transparent', color: 'rgba(100,116,139,0.55)', fontSize: 11, cursor: 'pointer', transition: 'all 150ms' }}
+                                onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)'}
+                                onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(148,163,184,0.12)'}>
+                                Reset scene to defaults
+                            </button>
+                        </>}
+                    </div>
+                </div>
+            )}
+        </>
+    )
+}
 
 // ── Properties panel ──────────────────────────────────────────────────────────
 
@@ -1314,13 +1962,14 @@ const TOOLS: { id: EditorTool; label: string; key: string }[] = [
 // ── Main export ───────────────────────────────────────────────────────────────
 
 type Props = {
-    onSave?: (fp: FloorPlanState) => void
+    onSave?: (fp: FloorPlanState, sceneConfig: SceneConfig) => void
     onClose?: () => void
     initialState?: FloorPlanState
+    initialSceneConfig?: SceneConfig
     isSaving?: boolean
     isSaved?: boolean
 }
-export default function FloorPlanEditor({ onSave, onClose, initialState, isSaving = false, isSaved = false }: Props) {
+export default function FloorPlanEditor({ onSave, onClose, initialState, initialSceneConfig, isSaving = false, isSaved = false }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
     const [isFullscreen, setIsFullscreen] = useState(false)
@@ -1351,6 +2000,9 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, isSavin
     const historyRef = useRef<FloorPlanState[]>([])
     const historyIndexRef = useRef(-1)
     const [canvasCursor, setCanvasCursor] = useState('default')
+
+    const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
+
     const [editingAnnotation, setEditingAnnotation] = useState<{ id: string; text: string; x: number; y: number } | null>(null)
     const annotationInputRef = useRef<HTMLInputElement>(null)
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
@@ -2186,9 +2838,16 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, isSavin
                     {isFullscreen ? 'Exit' : 'Fullscreen'}
                 </button>
                 {onClose && <Btn onClick={onClose} danger>✕ Close</Btn>}
-                {onSave && <button onClick={() => onSave(fp)} style={{ height: 30, padding: '0 16px', borderRadius: 7, border: 'none', background: isSaving ? 'rgba(99,102,241,0.5)' : isSaved ? 'rgba(16,185,129,0.85)' : 'rgba(99,102,241,0.85)', color: 'white', fontSize: 12, fontWeight: 700, cursor: isSaving ? 'not-allowed' : 'pointer', transition: 'background 200ms' }} disabled={isSaving}>
-                    {isSaving ? 'Saving…' : isSaved ? '✓ Saved' : 'Save Floor Plan'}
-                </button>}
+                {onSave &&
+                    <button
+                        onClick={() => onSave(fp, sceneConfig)}
+                        style={{
+                            height: 30,
+                            padding: '0 16px', borderRadius: 7, border: 'none', background: isSaving ? 'rgba(99,102,241,0.5)' : isSaved ? 'rgba(16,185,129,0.85)' : 'rgba(99,102,241,0.85)', color: 'white', fontSize: 12, fontWeight: 700, cursor: isSaving ? 'not-allowed' : 'pointer', transition: 'background 200ms'
+                        }}
+                        disabled={isSaving}>
+                        {isSaving ? 'Saving…' : isSaved ? '✓ Saved' : 'Save Floor Plan'}
+                    </button>}
             </div>
 
             {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -2347,19 +3006,13 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, isSavin
                 <div style={{ width: 1, background: 'rgba(255,255,255,0.07)', flexShrink: 0 }} />
 
                 {/* Right: 3D preview + properties */}
-                <div style={{ width: '42%', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ width: '45%', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-                        <div style={{ position: 'absolute', top: 8, left: 10, zIndex: 5, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.5)' }}>
-                            3D PREVIEW
-                        </div>
-                        <Canvas
-                            shadows
-                            camera={{ position: [8, 10, 12], fov: 50, near: 0.1, far: 500 }}
-                            style={{ width: '100%', height: '100%', background: '#0F0E0C' }}
-                            onWheel={e => e.stopPropagation()}
-                        >
-                            <Scene3D fp={fp} />
-                        </Canvas>
+                        <div style={{ position: 'absolute', top: 8, left: 10, zIndex: 5, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.5)' }}>3D PREVIEW</div>
+                        <Canvas shadows camera={{ position: [8, 10, 12], fov: 50, near: 0.1, far: 500 }} style={{ width: '100%', height: '100%', background: '#0F0E0C' }} onWheel={e => e.stopPropagation()}>
+                            <Scene3D fp={fp} sceneConfig={sceneConfig} />                        </Canvas>
+                        {/* Scene config panel — floats over the 3D canvas */}
+                        <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} />
                     </div>
 
                     <div style={{ height: 240, flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(10,9,7,0.95)', overflowY: 'auto' }}>

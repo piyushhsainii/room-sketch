@@ -11,7 +11,7 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useState } from 'react'
 import type { SceneJSON } from '@/types/workspace'
-import type { FloorPlanState } from '@/components/workspace/FloorPlanEditor'
+import type { FloorPlanState, SceneConfig } from '@/components/workspace/FloorPlanEditor'
 import { createSupabaseAdmin } from '@/lib/supabase/admin'
 import { floorPlanStateToSceneJSON } from '@/lib/workspace/floorPlanConvertor'
 
@@ -32,16 +32,17 @@ const FloorPlanEditor = dynamic(
 type Props = {
     projectId: string
     initialFloorPlanState?: any | null
+    initialSceneConfig?: SceneConfig | null
     onSaved: (sceneJSON: any) => void
     onClose: () => void
 }
 
-export default function FloorPlanEditorModal({ projectId, initialFloorPlanState, onSaved, onClose }: Props) {
+export default function FloorPlanEditorModal({ projectId, initialFloorPlanState, initialSceneConfig, onSaved, onClose }: Props) {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [saved, setSaved] = useState(false)
 
-    const handleSave = useCallback(async (fp: FloorPlanState) => {
+    const handleSave = useCallback(async (fp: FloorPlanState, sceneConfig?: SceneConfig) => {
         setSaving(true)
         setError(null)
         try {
@@ -63,7 +64,7 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     project_id: projectId,
-                    config: { floorPlanState: fp },
+                    config: { floorPlanState: fp, sceneConfig },
                 }),
             })
 
@@ -107,6 +108,7 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
                 onSave={handleSave}
                 onClose={onClose}
                 initialState={initialFloorPlanState ?? undefined}
+                initialSceneConfig={initialSceneConfig ?? undefined}
                 isSaving={saving}
                 isSaved={saved}
             />

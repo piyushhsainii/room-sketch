@@ -333,9 +333,10 @@ export default function GeneratePanel({
           initialFloorPlanState={
             (project as any).workspace_config?.floorPlanState ?? null
           }
+          initialSceneConfig={
+            (project as any).workspace_config?.sceneConfig ?? null
+          }
           onSaved={(sceneJSON) => {
-            // Don't close — just notify parent that save succeeded
-            // Editor stays open so user can keep editing
           }}
           onClose={() => setEditorOpen(false)}
         />

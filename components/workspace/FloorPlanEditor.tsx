@@ -1,64 +1,17 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, useTexture } from '@react-three/drei'
+import { OrbitControls, } from '@react-three/drei'
 import * as THREE from 'three'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export type EditorRoom = {
-    id: string
-    x: number
-    z: number
-    width: number
-    depth: number
-    label: string
-}
-
-export type EditorOpening = {
-    id: string
-    roomId: string
-    wall: 'north' | 'south' | 'east' | 'west'
-    type: 'door' | 'window'
-    position: number
-    width: number
-    height: number
-    sillHeight: number
-    swingDirection: 'inward' | 'outward'
-    // For line-segment openings: store world-space position along the segment
-    segmentNodeIds?: string[]   // [fromNodeId, toNodeId] of the sub-segment
-    segmentT?: number           // 0..1 along that sub-segment
-}
-
-
-
-export type ClosedShape = { id: string; nodeIds: string[]; label: string; color: string }
-
-export type Annotation = { id: string; x: number; z: number; text: string; fontSize: number }
-
-export type FurnitureType = 'sofa' | 'bed' | 'dining_table' | 'desk' | 'wardrobe' | 'bathtub' | 'toilet' | 'plant' | 'chair' | 'coffee_table'
-
-export type PlacedFurniture = {
-    id: string
-    type: FurnitureType
-    x: number       // world metres
-    z: number
-    rotation: number // radians Y-axis
-    scale: number   // 1.0 = default
-}
-
-export type FloorPlanState = {
-    rooms: EditorRoom[]; openings: EditorOpening[]; roomHeight: number
-    lineNodes: LineNode[]; lineSegments: LineSegment[]; closedShapes: ClosedShape[]
-    annotations: Annotation[]
-    furniture: PlacedFurniture[]
-}
-
-// SCENE FIG
-
-export type FloorMaterial = 'wood' | 'marble' | 'concrete' | 'tiles' | 'fabric' | 'plaster'
-export type DoorStyle = 'natural' | 'white' | 'dark' | 'glass'
+import { Toolbar } from './Tools/ToolBar'
+import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, PlacedFurniture, PlacedStairs, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType } from './Tools/constants'
+import { deriveClosedPolygons } from '@/lib/helpers'
+import { FloorMat } from './objects/floormat'
+import { WallMat } from './objects/wallmat'
+import { DoorMat } from './objects/doormat'
+import { LineWalls3D } from './objects/line-walls-3d'
+import { SceneConfigPanel } from './SceneConfigPanel'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -76,188 +29,6 @@ export type SceneConfig = {
     globalFloorMaterial: FloorMaterial
     rooms: RoomSceneConfig[]
 }
-
-const DEFAULT_SCENE_CONFIG: SceneConfig = {
-    ambientIntensity: 2.0,
-    wallRoughness: 0.85,
-    showFurniture: true,
-    showLabels: true,
-    fogEnabled: false,
-    doorStyle: 'natural',
-    globalFloorMaterial: 'wood',
-    rooms: [],
-}
-const WALL_COLORS = [
-    '#F5F0E8', '#E8E0D0', '#D4C4A0', '#C8B898',
-    '#E8D5C0', '#D4B896', '#F0E8D8', '#8B7B6B',
-    '#B8D4C8', '#A0C4B8', '#C8D4E8', '#A0B4D0',
-    '#E8C8C8', '#D4A8A8', '#C8E8C8', '#A8D4A8',
-    '#FFFFFF', '#F0F0F0', '#D0D0D0', '#A0A0A0',
-]
-
-const TEXTURE_BASE = '/textures'
-
-const FLOOR_TEXTURE_URLS: Record<FloorMaterial, {
-    map: string; normalMap: string; roughnessMap: string; repeat: number
-    roughness: number; metalness: number
-}> = {
-    wood: {
-        map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`,
-        normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
-        roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
-        repeat: 3, roughness: 0.72, metalness: 0.0,
-    },
-    marble: {
-        map: `${TEXTURE_BASE}/Marble022_1K-JPG_Color.jpg`,
-        normalMap: `${TEXTURE_BASE}/Marble022_1K-JPG_NormalGL.jpg`,
-        roughnessMap: `${TEXTURE_BASE}/Marble022_1K-JPG_Roughness.jpg`,
-        repeat: 1.5, roughness: 0.18, metalness: 0.04,
-    },
-    concrete: {
-        map: `${TEXTURE_BASE}/Concrete025_1K-JPG_Color.jpg`,
-        normalMap: `${TEXTURE_BASE}/Concrete025_1K-JPG_NormalGL.jpg`,
-        roughnessMap: `${TEXTURE_BASE}/Concrete025_1K-JPG_Roughness.jpg`,
-        repeat: 2, roughness: 0.92, metalness: 0.0,
-    },
-    tiles: {
-        map: `${TEXTURE_BASE}/Tiles101_1K-JPG_Color.jpg`,
-        normalMap: `${TEXTURE_BASE}/Tiles101_1K-JPG_NormalGL.jpg`,
-        roughnessMap: `${TEXTURE_BASE}/Tiles101_1K-JPG_Roughness.jpg`,   // ← was missing _1K-JPG_
-        repeat: 2, roughness: 0.30, metalness: 0.04,
-    },
-    fabric: {
-        map: `${TEXTURE_BASE}/Fabric049_1K-JPG_Color.jpg`,
-        normalMap: `${TEXTURE_BASE}/Fabric049_1K-JPG_NormalGL.jpg`,
-        roughnessMap: `${TEXTURE_BASE}/Fabric049_1K-JPG_Roughness.jpg`,
-        repeat: 4, roughness: 0.97, metalness: 0.0,
-    },
-    plaster: {
-        map: `${TEXTURE_BASE}/Plaster001_1K-JPG_Color.jpg`,
-        normalMap: `${TEXTURE_BASE}/Plaster001_1K-JPG_NormalGL.jpg`,
-        roughnessMap: `${TEXTURE_BASE}/Plaster001_1K-JPG_Roughness.jpg`,
-        repeat: 2, roughness: 0.88, metalness: 0.0,
-    },
-}
-
-const WALL_TEXTURE_URLS = {
-    normalMap: `${TEXTURE_BASE}/Plaster001_1K-JPG_NormalGL.jpg`,
-    roughnessMap: `${TEXTURE_BASE}/Plaster001_1K-JPG_Roughness.jpg`,
-}
-
-const DOOR_TEXTURE_URLS: Record<DoorStyle, { map: string; normalMap: string; roughnessMap: string } | null> = {
-    natural: {
-        map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`,
-        normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
-        roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
-    },
-    dark: {
-        map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`,
-        normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
-        roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
-    },
-    white: null,   // no texture — flat painted
-    glass: null,   // no texture — transparent
-}
-
-
-const FLOOR_MATERIALS: { id: FloorMaterial; label: string; preview: string; roughness: number; color: string }[] = [
-    { id: 'wood', label: 'Wood', preview: '🪵', roughness: 0.7, color: '#C8A878' },
-    { id: 'marble', label: 'Marble', preview: '⬜', roughness: 0.12, color: '#EAE6E0' },
-    { id: 'concrete', label: 'Concrete', preview: '🩶', roughness: 0.92, color: '#A8A8A8' },
-    { id: 'tiles', label: 'Tiles', preview: '🔲', roughness: 0.3, color: '#D4D0C8' },
-    { id: 'fabric', label: 'Fabric', preview: '🟫', roughness: 0.98, color: '#B8A898' },
-    { id: 'plaster', label: 'Plaster', preview: '🟪', roughness: 0.88, color: '#D8D0C8' },
-]
-
-const DOOR_STYLES: { value: DoorStyle; label: string; color: string }[] = [
-    { value: 'natural', label: 'Natural Oak', color: '#C8A878' },
-    { value: 'white', label: 'White', color: '#F0EEEA' },
-    { value: 'dark', label: 'Dark Walnut', color: '#3A2E22' },
-    { value: 'glass', label: 'Glass', color: '#93C5FD' },
-]
-
-const DOOR_STYLE_COLORS: Record<DoorStyle, string> = {
-    natural: '#C8A878',
-    white: '#F0EEEA',
-    dark: '#3A2E22',
-    glass: '#93C5FD',
-}
-
-function getFloorColor(mat: FloorMaterial): string {
-    return FLOOR_MATERIALS.find(m => m.id === mat)?.color ?? '#D4C4A0'
-}
-function getFloorRoughness(mat: FloorMaterial): number {
-    return FLOOR_MATERIALS.find(m => m.id === mat)?.roughness ?? 0.82
-}
-function getRoomSceneCfg(config: SceneConfig, roomId: string): RoomSceneConfig {
-    return config.rooms.find(r => r.roomId === roomId) ?? {
-        roomId,
-        wallColor: '#8B7B6B',
-        floorMaterial: 'wood',
-    }
-}
-
-
-
-
-const DEFAULT_FP: FloorPlanState = {
-    rooms: [], openings: [], roomHeight: 2.7,
-    lineNodes: [], lineSegments: [], closedShapes: [],
-    annotations: [],
-    furniture: [],
-}
-
-export type LineNode = {
-    id: string
-    x: number
-    z: number
-}
-
-export type LineSegment = {
-    id: string
-    nodeIds: string[]
-    thickness: number
-    closed: boolean
-}
-
-type EditorTool = 'select' | 'pan' | 'room' | 'door' | 'window' | 'delete' | 'pencil' | 'line' | 'bend' | 'annotate' | 'furniture'
-const GRID_M = 0.5
-const PX_PER_M = 40
-const MIN_ROOM = 1.0
-
-const FURNITURE_FOOTPRINTS: Record<FurnitureType, { w: number; d: number }> = {
-    sofa: { w: 2.2, d: 0.95 },
-    bed: { w: 1.7, d: 2.1 },
-    dining_table: { w: 1.5, d: 1.5 },
-    desk: { w: 1.4, d: 0.7 },
-    wardrobe: { w: 1.9, d: 0.62 },
-    bathtub: { w: 0.82, d: 1.6 },
-    toilet: { w: 0.46, d: 0.68 },
-    plant: { w: 0.4, d: 0.4 },
-    chair: { w: 0.55, d: 0.55 },
-    coffee_table: { w: 1.2, d: 0.65 },
-}
-
-const FURNITURE_COLORS: Record<FurnitureType, string> = {
-    sofa: 'rgba(160,148,130,0.88)',
-    bed: 'rgba(130,120,155,0.88)',
-    dining_table: 'rgba(155,125,95,0.88)',
-    desk: 'rgba(110,130,155,0.88)',
-    wardrobe: 'rgba(70,60,50,0.88)',
-    bathtub: 'rgba(140,175,185,0.88)',
-    toilet: 'rgba(200,200,200,0.88)',
-    plant: 'rgba(65,140,65,0.88)',
-    chair: 'rgba(145,135,115,0.88)',
-    coffee_table: 'rgba(140,118,88,0.88)',
-}
-
-const FURNITURE_LABELS: Record<FurnitureType, string> = {
-    sofa: 'Sofa', bed: 'Bed', dining_table: 'Table', desk: 'Desk',
-    wardrobe: 'WRB', bathtub: 'Bath', toilet: 'WC', plant: '♣',
-    chair: 'Chr', coffee_table: 'C.T',
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 function snapM(v: number) { return Math.round(v / GRID_M) * GRID_M }
@@ -281,7 +52,6 @@ function getWallHit(room: EditorRoom, wx: number, wz: number, thresholdM: number
     return (Object.entries(d).find(([, v]) => v === min)![0]) as 'north' | 'south' | 'east' | 'west'
 }
 
-// Get the world position of a line-segment opening
 function getSegmentOpeningWorldPos(op: EditorOpening, nodes: LineNode[]): { wx: number; wz: number; angle: number } | null {
     if (!op.segmentNodeIds || op.segmentT === undefined) return null
     const a = nodes.find(n => n.id === op.segmentNodeIds![0])
@@ -293,68 +63,6 @@ function getSegmentOpeningWorldPos(op: EditorOpening, nodes: LineNode[]): { wx: 
     const angle = Math.atan2(b.z - a.z, b.x - a.x)
     return { wx, wz, angle }
 }
-
-/** Dynamically finds all closed polygons from lineSegments + lineNodes.
- *  Returns arrays of node IDs for each detected cycle.
- *  This is called at render time so edits to nodes/segments are always reflected. */
-function deriveClosedPolygons(lineNodes: LineNode[], lineSegments: LineSegment[]): string[][] {
-    // Build adjacency list from all segments
-    const adj = new Map<string, Set<string>>()
-    for (const seg of lineSegments) {
-        for (let i = 0; i < seg.nodeIds.length - 1; i++) {
-            const a = seg.nodeIds[i]!, b = seg.nodeIds[i + 1]!
-            if (!adj.has(a)) adj.set(a, new Set())
-            if (!adj.has(b)) adj.set(b, new Set())
-            adj.get(a)!.add(b)
-            adj.get(b)!.add(a)
-        }
-    }
-
-    // Only consider nodes with 2+ connections (part of a potential cycle)
-    const candidates = new Set(
-        [...adj.entries()]
-            .filter(([, neighbors]) => neighbors.size >= 2)
-            .map(([id]) => id)
-    )
-
-    const foundCycles: string[][] = []
-    const usedSets: Array<Set<string>> = []
-
-    for (const startId of candidates) {
-        // DFS to find shortest cycle starting from this node
-        function dfs(path: string[]): string[] | null {
-            const current = path[path.length - 1]!
-            for (const next of adj.get(current) ?? []) {
-                if (next === startId && path.length >= 3) {
-                    return [...path] // found cycle back to start
-                }
-                if (path.includes(next)) continue
-                if (!candidates.has(next)) continue
-                const result = dfs([...path, next])
-                if (result) return result
-            }
-            return null
-        }
-
-        const cycle = dfs([startId])
-        if (!cycle || cycle.length < 3) continue
-
-        // Check this isn't a duplicate of an already-found cycle
-        const cycleSet = new Set(cycle)
-        const isDuplicate = usedSets.some(existing =>
-            existing.size === cycleSet.size &&
-            [...existing].every(id => cycleSet.has(id))
-        )
-        if (isDuplicate) continue
-
-        usedSets.push(cycleSet)
-        foundCycles.push(cycle)
-    }
-
-    return foundCycles
-}
-// ── 2D Canvas draw ────────────────────────────────────────────────────────────
-
 function draw2D(
     ctx: CanvasRenderingContext2D,
     fp: FloorPlanState,
@@ -457,6 +165,15 @@ function draw2D(
                     ctx.beginPath(); ctx.moveTo((gx1 + gx2) / 2, gy1); ctx.lineTo((gx1 + gx2) / 2, gy1 + doorPx); ctx.stroke()
                 }
                 ctx.restore()
+            } else if (op.type === 'opening') {
+                // Just a dashed gap — no leaf, no glass
+                ctx.save()
+                ctx.strokeStyle = 'rgba(180,170,150,0.6)'
+                ctx.lineWidth = 1
+                ctx.setLineDash([3, 3])
+                ctx.strokeRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
+                ctx.setLineDash([])
+                ctx.restore()
             } else {
                 ctx.save()
                 ctx.fillStyle = 'rgba(147,197,253,0.5)'
@@ -468,7 +185,6 @@ function draw2D(
             }
         }
     }
-
     // ── Room resize handles ───────────────────────────────────────────────────
     if (selectedId) {
         const selRoom = fp.rooms.find(r => r.id === selectedId)
@@ -496,7 +212,6 @@ function draw2D(
             }
         }
     }
-
     // ── Preview rectangle while drawing ───────────────────────────────────────
     if (drawRect && Math.abs(drawRect.w) > 0.1 && Math.abs(drawRect.d) > 0.1) {
         const rx = cx(Math.min(drawRect.x, drawRect.x + drawRect.w))
@@ -517,7 +232,6 @@ function draw2D(
         ctx.fillText(`${Math.abs(drawRect.w).toFixed(1)}m × ${Math.abs(drawRect.d).toFixed(1)}m`, rx + rw / 2, rz + rd / 2)
         ctx.restore()
     }
-
     // ── Pencil stroke preview ─────────────────────────────────────────────────
     if (pencilPoints.length > 1) {
         ctx.save()
@@ -551,7 +265,6 @@ function draw2D(
         }
         ctx.restore()
     }
-
     // ── Line segments ──────────────────────────────────────────────────────────
     for (const seg of fp.lineSegments ?? []) {
         const nodes = seg.nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
@@ -629,7 +342,6 @@ function draw2D(
             ctx.restore()
         }
     }
-
     // ── Closed shapes ──────────────────────────────────────────────────────────
     for (const nodeIds of deriveClosedPolygons(fp.lineNodes, fp.lineSegments)) {
         const nodes = nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
@@ -645,7 +357,6 @@ function draw2D(
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
         ctx.fillText('Area', cx(cx_), cy(cz_)); ctx.restore()
     }
-
     // ── Line nodes ─────────────────────────────────────────────────────────────
     for (const node of fp.lineNodes ?? []) {
         const isActive = activeLineNodeId === node.id
@@ -743,6 +454,71 @@ function draw2D(
 
         ctx.restore()
     }
+    // ── Stairs / Elevator overlays ─────────────────────────────────────────
+    for (const s of fp.stairs ?? []) {
+        const sw = s.width * scale, sd = s.depth * scale
+        const sx = toCanvas(s.x + s.width / 2, pan.x, zoom)
+        const sz = toCanvas(s.z + s.depth / 2, pan.y, zoom)
+        const isSel = selectedId === s.id
+        const isHov = hoveredId === s.id
+
+        ctx.save()
+        ctx.translate(sx, sz)
+        ctx.rotate(s.rotation)
+
+        ctx.fillStyle = isSel ? 'rgba(99,102,241,0.35)' : isHov ? 'rgba(148,163,184,0.28)' : 'rgba(100,90,75,0.4)'
+        ctx.strokeStyle = isSel ? 'rgba(165,168,255,0.9)' : 'rgba(200,190,175,0.6)'
+        ctx.lineWidth = isSel ? 1.5 : 1
+        ctx.beginPath()
+        ctx.rect(-sw / 2, -sd / 2, sw, sd)
+        ctx.fill(); ctx.stroke()
+
+        if (s.type === 'elevator') {
+            ctx.strokeStyle = 'rgba(200,190,175,0.7)'
+            ctx.beginPath(); ctx.moveTo(-sw / 2, 0); ctx.lineTo(sw / 2, 0); ctx.stroke()
+            ctx.beginPath(); ctx.moveTo(0, -sd / 2); ctx.lineTo(0, sd / 2); ctx.stroke()
+        } else if (s.type === 'stairs-spiral') {
+            ctx.beginPath(); ctx.arc(0, 0, Math.min(sw, sd) / 2 - 3, 0, Math.PI * 1.7); ctx.stroke()
+        } else {
+            // Tread lines across the run
+            const steps = 8
+            for (let i = 1; i < steps; i++) {
+                const yy = -sd / 2 + (sd / steps) * i
+                ctx.beginPath(); ctx.moveTo(-sw / 2, yy); ctx.lineTo(sw / 2, yy); ctx.stroke()
+            }
+        }
+
+        ctx.fillStyle = 'rgba(226,232,240,0.75)'
+        ctx.font = `600 ${Math.max(8, 9 * zoom)}px system-ui`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(STAIRS_LABELS[s.type], 0, sd / 2 + 12)
+
+        ctx.restore()
+    }
+    // ── Annotations ──────────────────────────────────────────────────────────
+    for (const ann of fp.annotations ?? []) {
+        if (!ann.text) continue
+        const ax = cx(ann.x), az = cy(ann.z)
+        const fontSize = Math.max(10, (ann.fontSize ?? 13) * zoom)
+        ctx.save()
+        ctx.font = `600 ${fontSize}px system-ui`
+        const tw = ctx.measureText(ann.text).width
+        // Background pill
+        ctx.fillStyle = 'rgba(99,102,241,0.18)'
+        ctx.beginPath()
+        ctx.roundRect(ax - tw / 2 - 8, az - fontSize / 2 - 5, tw + 16, fontSize + 10, 6)
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(99,102,241,0.4)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        // Text
+        ctx.fillStyle = 'rgba(226,232,240,0.9)'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(ann.text, ax, az)
+        ctx.restore()
+    }
     // ── Live measurement rubber band ──────────────────────────────────────────
     if ((tool === 'line' || tool === 'bend') && activeLineNodeId && preview) {
         const fromNode = fp.lineNodes.find(n => n.id === activeLineNodeId)
@@ -820,364 +596,6 @@ function getCachedWallTexture(color: string): THREE.CanvasTexture {
     return wallTextureCache.get(color)!
 }
 
-// ADD this entire block just before the LineWalls3D function:
-
-const T_BASE = '/textures'
-
-const FLOOR_TEX: Record<string, { map: string; normal: string; rough: string; repeat: number; roughness: number; metalness: number }> = {
-    wood: { map: `${T_BASE}/Wood049_1K-JPG_Color.jpg`, normal: `${T_BASE}/Wood049_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Wood049_1K-JPG_Roughness.jpg`, repeat: 3, roughness: 0.72, metalness: 0.00 },
-    marble: { map: `${T_BASE}/Marble022_1K-JPG_Color.jpg`, normal: `${T_BASE}/Marble022_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Marble022_1K-JPG_Roughness.jpg`, repeat: 1.5, roughness: 0.18, metalness: 0.04 },
-    concrete: { map: `${T_BASE}/Concrete025_1K-JPG_Color.jpg`, normal: `${T_BASE}/Concrete025_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Concrete025_1K-JPG_Roughness.jpg`, repeat: 2, roughness: 0.92, metalness: 0.00 },
-    tiles: { map: `${T_BASE}/Tiles101_1K-JPG_Color.jpg`, normal: `${T_BASE}/Tiles101_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Tiles101_1K-JPG_Roughness.jpg`, repeat: 2, roughness: 0.30, metalness: 0.04 },
-    fabric: { map: `${T_BASE}/Fabric049_1K-JPG_Color.jpg`, normal: `${T_BASE}/Fabric049_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Fabric049_1K-JPG_Roughness.jpg`, repeat: 4, roughness: 0.97, metalness: 0.00 },
-    plaster: { map: `${T_BASE}/Plaster001_1K-JPG_Color.jpg`, normal: `${T_BASE}/Plaster001_1K-JPG_NormalGL.jpg`, rough: `${T_BASE}/Plaster001_1K-JPG_Roughness.jpg`, repeat: 2, roughness: 0.88, metalness: 0.00 },
-}
-
-const WALL_TEX = {
-    normal: `${T_BASE}/Plaster001_1K-JPG_NormalGL.jpg`,
-    rough: `${T_BASE}/Plaster001_1K-JPG_Roughness.jpg`,
-}
-
-const DOOR_TEX_OAK = {
-    map: `${T_BASE}/Wood049_1K-JPG_Color.jpg`,
-    normal: `${T_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
-    rough: `${T_BASE}/Wood049_1K-JPG_Roughness.jpg`,
-}
-
-function FloorMatPBR({ mat, repeat }: { mat: string; repeat: number }) {
-    const cfg = FLOOR_TEX[mat] ?? FLOOR_TEX['wood']!
-    const textures = useTexture({ map: cfg.map, normalMap: cfg.normal, roughnessMap: cfg.rough })
-    useMemo(() => {
-        ;[textures.map, textures.normalMap, textures.roughnessMap].forEach(t => {
-            if (!t) return
-            t.wrapS = t.wrapT = THREE.RepeatWrapping
-            t.repeat.set(repeat, repeat)
-            t.needsUpdate = true
-        })
-    }, [textures, repeat])
-    return (
-        <meshStandardMaterial
-            map={textures.map}
-            normalMap={textures.normalMap}
-            roughnessMap={textures.roughnessMap}
-            roughness={cfg.roughness}
-            metalness={cfg.metalness}
-            side={THREE.DoubleSide}
-        />
-    )
-}
-
-function FloorMatFallback({ mat }: { mat: string }) {
-    const colors: Record<string, string> = {
-        wood: '#C8A878', marble: '#EAE6E0', concrete: '#A8A8A8',
-        tiles: '#D4D0C8', fabric: '#B8A898', plaster: '#D8D0C8',
-    }
-    return <meshStandardMaterial color={colors[mat] ?? '#C8A878'} roughness={0.8} side={THREE.DoubleSide} />
-}
-
-function FloorMat({ mat }: { mat: string }) {
-    const cfg = FLOOR_TEX[mat] ?? FLOOR_TEX['wood']!
-    return (
-        <Suspense fallback={<FloorMatFallback mat={mat} />}>
-            <FloorMatPBR mat={mat} repeat={cfg.repeat} />
-        </Suspense>
-    )
-}
-
-function WallMatPBR({ color, roughness }: { color: string; roughness: number }) {
-    const textures = useTexture({ normalMap: WALL_TEX.normal, roughnessMap: WALL_TEX.rough })
-    useMemo(() => {
-        ;[textures.normalMap, textures.roughnessMap].forEach(t => {
-            if (!t) return
-            t.wrapS = t.wrapT = THREE.RepeatWrapping
-            t.repeat.set(2, 2)
-            t.needsUpdate = true
-        })
-    }, [textures])
-    return (
-        <meshStandardMaterial
-            color={color}
-            roughness={roughness}
-            metalness={0}
-            normalMap={textures.normalMap}
-            normalScale={new THREE.Vector2(0.35, 0.35)}
-            roughnessMap={textures.roughnessMap}
-        />
-    )
-}
-
-function WallMat({ color, roughness }: { color: string; roughness: number }) {
-    return (
-        <Suspense fallback={<meshStandardMaterial color={color} roughness={roughness} metalness={0} />}>
-            <WallMatPBR color={color} roughness={roughness} />
-        </Suspense>
-    )
-}
-
-function DoorMatPBR({ style }: { style: string }) {
-    const isGlass = style === 'glass'
-    const isDark = style === 'dark'
-    const isWhite = style === 'white'
-    if (isGlass) return <meshStandardMaterial color="#B8D4E4" roughness={0.05} metalness={0.1} transparent opacity={0.35} />
-    if (isWhite) return <meshStandardMaterial color="#F0EDE8" roughness={0.75} metalness={0} />
-    return <DoorMatWood tint={isDark ? '#3A2E22' : undefined} />
-}
-
-function DoorMatWood({ tint }: { tint?: string }) {
-    const textures = useTexture({ map: DOOR_TEX_OAK.map, normalMap: DOOR_TEX_OAK.normal, roughnessMap: DOOR_TEX_OAK.rough })
-    useMemo(() => {
-        ;[textures.map, textures.normalMap, textures.roughnessMap].forEach(t => {
-            if (!t) return
-            t.wrapS = t.wrapT = THREE.RepeatWrapping
-            t.repeat.set(1, 2)
-            t.needsUpdate = true
-        })
-    }, [textures])
-    return (
-        <meshStandardMaterial
-            map={textures.map}
-            normalMap={textures.normalMap}
-            roughnessMap={textures.roughnessMap}
-            color={tint ?? '#FFFFFF'}
-            roughness={0.6}
-            metalness={0.02}
-        />
-    )
-}
-
-function DoorMat({ style }: { style: string }) {
-    const isGlass = style === 'glass'
-    const fallbackColor = isGlass ? '#B8D4E4' : style === 'white' ? '#F0EDE8' : style === 'dark' ? '#3A2E22' : '#C8A878'
-    return (
-        <Suspense fallback={<meshStandardMaterial color={fallbackColor} roughness={0.6} transparent={isGlass} opacity={isGlass ? 0.35 : 1} />}>
-            <DoorMatPBR style={style} />
-        </Suspense>
-    )
-}
-
-// ── Line segment 3D renderer — WITH FLOORS ────────────────────────────────────
-
-function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural' }: {
-    fp: FloorPlanState; wallRoughness?: number; floorMaterial?: string; doorStyle?: string
-}) {
-    const wallColor = '#8B7B6B'
-    const H = fp.roomHeight
-    const T = 0.15
-
-    return (
-        <>
-            {(fp.lineSegments ?? []).map(seg => {
-                const nodes = seg.nodeIds
-                    .map(nid => fp.lineNodes.find(n => n.id === nid))
-                    .filter(Boolean) as LineNode[]
-                if (nodes.length < 2) return null
-
-                const panels: React.ReactNode[] = []
-
-                for (let i = 0; i < nodes.length - 1; i++) {
-                    const a = nodes[i]!, b = nodes[i + 1]!
-                    const dx = b.x - a.x, dz = b.z - a.z
-                    const len = Math.hypot(dx, dz)
-                    if (len < 0.05) continue
-
-                    const mcx = (a.x + b.x) / 2
-                    const mcz = (a.z + b.z) / 2
-                    const angle = Math.atan2(dz, dx)
-
-                    const segOpenings = fp.openings.filter(op =>
-                        op.roomId === seg.id &&
-                        op.segmentNodeIds?.[0] === a.id &&
-                        op.segmentNodeIds?.[1] === b.id
-                    )
-
-                    if (segOpenings.length === 0) {
-                        // No openings — single solid wall panel
-                        panels.push(
-                            <mesh
-                                key={`${seg.id}_${i}`}
-                                position={[mcx, H / 2, mcz]}
-                                rotation={[0, -angle, 0]}
-                                castShadow
-                                receiveShadow
-                            >
-                                <boxGeometry args={[len, H, T]} />
-                                <WallMat color={wallColor} roughness={wallRoughness} />
-                            </mesh>
-                        )
-                    } else {
-                        const sorted = [...segOpenings].sort((a, b) => (a.segmentT ?? 0) - (b.segmentT ?? 0))
-                        let cursor = 0
-
-                        for (let si = 0; si <= sorted.length; si++) {
-                            const op = sorted[si]
-                            const opPos = op ? (op.segmentT ?? 0) * len : len
-                            const segEnd = op ? opPos - op.width / 2 : len
-                            const segLen = segEnd - cursor
-
-                            // Wall segment between openings
-                            if (segLen > 0.02) {
-                                const segMid = cursor + segLen / 2
-                                const wx = a.x + (dx / len) * segMid
-                                const wz = a.z + (dz / len) * segMid
-                                panels.push(
-                                    <mesh
-                                        key={`${seg.id}_${i}_l${si}`}
-                                        position={[wx, H / 2, wz]}
-                                        rotation={[0, -angle, 0]}
-                                        castShadow
-                                        receiveShadow
-                                    >
-                                        <boxGeometry args={[segLen, H, T]} />
-                                        <WallMat color={wallColor} roughness={wallRoughness} />
-                                    </mesh>
-                                )
-                            }
-
-                            if (op) {
-                                const opPos2 = (op.segmentT ?? 0) * len
-
-                                // Header above opening
-                                const headerH = H - op.height
-                                if (headerH > 0.02) {
-                                    const hx = a.x + (dx / len) * opPos2
-                                    const hz = a.z + (dz / len) * opPos2
-                                    panels.push(
-                                        <mesh
-                                            key={`${seg.id}_${i}_h${si}`}
-                                            position={[hx, op.height + headerH / 2, hz]}
-                                            rotation={[0, -angle, 0]}
-                                            castShadow
-                                            receiveShadow
-                                        >
-                                            <boxGeometry args={[op.width, headerH, T]} />
-                                            <WallMat color={wallColor} roughness={wallRoughness} />
-                                        </mesh>
-                                    )
-                                }
-
-                                // Window sill
-                                if (op.type === 'window' && op.sillHeight > 0.02) {
-                                    const sx = a.x + (dx / len) * opPos2
-                                    const sz = a.z + (dz / len) * opPos2
-                                    panels.push(
-                                        <mesh
-                                            key={`${seg.id}_${i}_s${si}`}
-                                            position={[sx, op.sillHeight / 2, sz]}
-                                            rotation={[0, -angle, 0]}
-                                            castShadow
-                                            receiveShadow
-                                        >
-                                            <boxGeometry args={[op.width, op.sillHeight, T]} />
-                                            <WallMat color={wallColor} roughness={wallRoughness} />
-                                        </mesh>
-                                    )
-                                }
-
-                                // Window glass pane
-                                if (op.type === 'window') {
-                                    const gx = a.x + (dx / len) * opPos2
-                                    const gz = a.z + (dz / len) * opPos2
-                                    panels.push(
-                                        <mesh
-                                            key={`${seg.id}_${i}_g${si}`}
-                                            position={[gx, op.sillHeight + op.height / 2, gz]}
-                                            rotation={[0, -angle, 0]}
-                                        >
-                                            <boxGeometry args={[op.width, op.height, 0.025]} />
-                                            <meshStandardMaterial
-                                                color="#93C5FD"
-                                                transparent
-                                                opacity={0.35}
-                                                roughness={0.05}
-                                                metalness={0.15}
-                                                side={THREE.DoubleSide}
-                                            />
-                                        </mesh>
-                                    )
-                                }
-
-                                // Door leaf
-                                if (op.type === 'door') {
-                                    const perpX = -dz / len
-                                    const perpZ = dx / len
-                                    const hingeX = a.x + (dx / len) * (opPos2 - op.width / 2)
-                                    const hingeZ = a.z + (dz / len) * (opPos2 - op.width / 2)
-                                    const leafCx = hingeX + (dx / len) * (op.width / 2) + perpX * (op.width / 2)
-                                    const leafCz = hingeZ + (dz / len) * (op.width / 2) + perpZ * (op.width / 2)
-                                    panels.push(
-                                        <mesh
-                                            key={`${seg.id}_${i}_door${si}`}
-                                            position={[leafCx, op.height / 2, leafCz]}
-                                            rotation={[0, -angle + Math.PI / 2, 0]}
-                                            castShadow
-                                        >
-                                            <boxGeometry args={[op.width, op.height, 0.04]} />
-                                            {/* <meshStandardMaterial
-                                                color={DOOR_STYLE_COLORS[doorStyle as DoorStyle] ?? '#C8A878'}
-                                                roughness={doorStyle === 'glass' ? 0.05 : 0.55}
-                                                metalness={doorStyle === 'glass' ? 0.2 : 0.05}
-                                                transparent={doorStyle === 'glass'}
-                                                opacity={doorStyle === 'glass' ? 0.4 : 1}
-                                            /> */}
-                                            <DoorMat style={doorStyle} />
-
-                                        </mesh>
-                                    )
-                                }
-
-                                cursor = opPos + op.width / 2
-                            }
-                        }
-                    }
-                }
-
-                return <group key={seg.id}>{panels}</group>
-            })}
-
-            {/* Floors — exact polygon ShapeGeometry per closed shape */}
-            {deriveClosedPolygons(fp.lineNodes, fp.lineSegments).map((nodeIds, idx) => {
-                const nodes = nodeIds
-                    .map(nid => fp.lineNodes.find(n => n.id === nid))
-                    .filter(Boolean) as LineNode[]
-                if (nodes.length < 3) return null
-
-                // THREE.Shape is in XY plane.
-                // After rotation [-PI/2, 0, 0]: shape X → world X, shape Y → world -Z
-                // Pass (node.x, -node.z) so the floor aligns with the walls.
-                const shape = new THREE.Shape()
-                shape.moveTo(nodes[0]!.x, -nodes[0]!.z)
-                for (let i = 1; i < nodes.length; i++) {
-                    shape.lineTo(nodes[i]!.x, -nodes[i]!.z)
-                }
-                shape.closePath()
-
-                const geometry = new THREE.ShapeGeometry(shape)
-
-                return (
-                    <mesh
-                        key={`floor_derived_${idx}`}
-                        rotation={[-Math.PI / 2, 0, 0]}
-                        position={[0, 0.002, 0]}
-                        receiveShadow
-                    >
-                        <primitive object={geometry} attach="geometry" />
-                        <FloorMat mat={floorMaterial} />
-                    </mesh>
-                )
-            })}
-
-            {/* Column joints at nodes */}
-            {(fp.lineNodes ?? []).map(node => (
-                <mesh key={node.id} position={[node.x, H / 2, node.z]}>
-                    <cylinderGeometry args={[T / 2, T / 2, H, 8]} />
-                    <meshStandardMaterial color="#6B5B4E" roughness={0.8} />
-                </mesh>
-            ))}
-        </>
-    )
-}
-
-// ── 3D Preview ────────────────────────────────────────────────────────────────
 
 function Room3D({ room, openings, roomHeight, wallColor = '#8B7B6B', wallRoughness = 0.85, floorMat = 'wood', doorStyle = 'natural' }: {
     room: EditorRoom; openings: EditorOpening[]; roomHeight: number
@@ -1274,12 +692,24 @@ function Room3D({ room, openings, roomHeight, wallColor = '#8B7B6B', wallRoughne
                             const inward = op.swingDirection !== 'outward'
                             const swingSign = inward ? 1 : -1
                             const opMid = op.position
+                            const openAngle = (Math.PI / 6) * swingSign // 30° open
+                            // Hinge at one edge of the opening
                             const hingeOffset = -op.width / 2
-                            const leafAngle = Math.PI / 2 * swingSign
+                            // For x-axis walls, the door swings along z; for z-axis walls, along x
                             const doorPos: [number, number, number] = wall.axis === 'x'
-                                ? [room.x + opMid + hingeOffset + (op.width / 2) * Math.cos(leafAngle), op.height / 2, wPos[2] + (op.width / 2) * Math.sin(leafAngle) * swingSign]
-                                : [wPos[0] + (op.width / 2) * Math.sin(leafAngle) * swingSign, op.height / 2, room.z + opMid + hingeOffset + (op.width / 2) * Math.cos(leafAngle)]
-                            const doorRot: [number, number, number] = wall.axis === 'x' ? [0, leafAngle, 0] : [0, leafAngle + Math.PI / 2, 0]
+                                ? [
+                                    room.x + opMid + hingeOffset + (op.width / 2) * Math.cos(openAngle),
+                                    op.height / 2,
+                                    wPos[2] + (op.width / 2) * Math.sin(openAngle)
+                                ]
+                                : [
+                                    wPos[0] + (op.width / 2) * Math.sin(openAngle),
+                                    op.height / 2,
+                                    room.z + opMid + hingeOffset + (op.width / 2) * Math.cos(openAngle)
+                                ]
+                            const doorRot: [number, number, number] = wall.axis === 'x'
+                                ? [0, openAngle, 0]
+                                : [0, openAngle + Math.PI / 2, 0]
                             panels.push(<mesh key={`door${i}`} position={doorPos} rotation={doorRot} castShadow><boxGeometry args={[op.width, op.height, 0.04]} />
                                 <DoorMat style={doorStyle} />
                             </mesh>)
@@ -1293,159 +723,7 @@ function Room3D({ room, openings, roomHeight, wallColor = '#8B7B6B', wallRoughne
         </group>
     )
 }
-function FurnitureMesh({ f }: { f: PlacedFurniture }) {
-    const s = f.scale ?? 1
-    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
-
-    return (
-        <group position={[f.x, 0, f.z]} rotation={[0, f.rotation, 0]}>
-            {f.type === 'sofa' && (
-                <group>
-                    {/* Base */}
-                    <mesh position={[0, 0.20 * s, 0]} castShadow receiveShadow>
-                        <boxGeometry args={[2.2 * s, 0.40 * s, 0.92 * s]} />
-                        <meshStandardMaterial color="#C8C0B0" roughness={0.85} />
-                    </mesh>
-                    {/* Back */}
-                    <mesh position={[0, 0.58 * s, 0.38 * s]} castShadow>
-                        <boxGeometry args={[2.2 * s, 0.52 * s, 0.14 * s]} />
-                        <meshStandardMaterial color="#B8B0A0" roughness={0.85} />
-                    </mesh>
-                    {/* Arms */}
-                    <mesh position={[-1.05 * s, 0.42 * s, 0]} castShadow><boxGeometry args={[0.14 * s, 0.40 * s, 0.92 * s]} /><meshStandardMaterial color="#B0A898" roughness={0.8} /></mesh>
-                    <mesh position={[1.05 * s, 0.42 * s, 0]} castShadow><boxGeometry args={[0.14 * s, 0.40 * s, 0.92 * s]} /><meshStandardMaterial color="#B0A898" roughness={0.8} /></mesh>
-                    {/* Cushions */}
-                    <mesh position={[-0.52 * s, 0.44 * s, -0.08 * s]} castShadow><boxGeometry args={[0.82 * s, 0.12 * s, 0.68 * s]} /><meshStandardMaterial color="#D8D0C4" roughness={0.95} /></mesh>
-                    <mesh position={[0.52 * s, 0.44 * s, -0.08 * s]} castShadow><boxGeometry args={[0.82 * s, 0.12 * s, 0.68 * s]} /><meshStandardMaterial color="#D8D0C4" roughness={0.95} /></mesh>
-                    {/* Legs */}
-                    {([-0.95, 0.95] as number[]).flatMap(x => [-0.38, 0.38].map(z => (
-                        <mesh key={`${x}${z}`} position={[x * s, 0.05 * s, z * s]}><boxGeometry args={[0.07 * s, 0.10 * s, 0.07 * s]} /><meshStandardMaterial color="#6B5B4E" roughness={0.5} metalness={0.1} /></mesh>
-                    )))}
-                </group>
-            )}
-            {f.type === 'bed' && (
-                <group>
-                    {/* Frame */}
-                    <mesh position={[0, 0.15 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.7 * s, 0.28 * s, 2.1 * s]} /><meshStandardMaterial color="#4A3A2E" roughness={0.7} /></mesh>
-                    {/* Mattress */}
-                    <mesh position={[0, 0.34 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.58 * s, 0.22 * s, 1.95 * s]} /><meshStandardMaterial color="#EDE8E0" roughness={0.95} /></mesh>
-                    {/* Headboard */}
-                    <mesh position={[0, 0.74 * s, -0.92 * s]} castShadow><boxGeometry args={[1.7 * s, 0.82 * s, 0.10 * s]} /><meshStandardMaterial color="#8A8280" roughness={0.7} /></mesh>
-                    {/* Footboard */}
-                    <mesh position={[0, 0.52 * s, 0.92 * s]} castShadow><boxGeometry args={[1.7 * s, 0.42 * s, 0.08 * s]} /><meshStandardMaterial color="#4A3A2E" roughness={0.7} /></mesh>
-                    {/* Pillows */}
-                    <mesh position={[-0.38 * s, 0.48 * s, -0.72 * s]} castShadow><boxGeometry args={[0.58 * s, 0.11 * s, 0.38 * s]} /><meshStandardMaterial color="#F0EBE4" roughness={0.9} /></mesh>
-                    <mesh position={[0.38 * s, 0.48 * s, -0.72 * s]} castShadow><boxGeometry args={[0.58 * s, 0.11 * s, 0.38 * s]} /><meshStandardMaterial color="#F0EBE4" roughness={0.9} /></mesh>
-                    {/* Duvet */}
-                    <mesh position={[0, 0.48 * s, 0.35 * s]} castShadow><boxGeometry args={[1.52 * s, 0.10 * s, 1.15 * s]} /><meshStandardMaterial color="#E8E0D4" roughness={0.95} /></mesh>
-                </group>
-            )}
-            {f.type === 'dining_table' && (
-                <group>
-                    {/* Tabletop */}
-                    <mesh position={[0, 0.76 * s, 0]} castShadow receiveShadow>
-                        <boxGeometry args={[1.5 * s, 0.05 * s, 1.5 * s]} />
-                        <meshStandardMaterial color="#EAE6E0" roughness={0.2} metalness={0.04} />
-                    </mesh>
-                    {/* Legs */}
-                    {([-0.62, 0.62] as number[]).flatMap(x => [-0.62, 0.62].map(z => (
-                        <mesh key={`${x}${z}`} position={[x * s, 0.38 * s, z * s]} castShadow>
-                            <boxGeometry args={[0.06 * s, 0.76 * s, 0.06 * s]} />
-                            <meshStandardMaterial color="#C8B898" roughness={0.4} />
-                        </mesh>
-                    )))}
-                </group>
-            )}
-            {f.type === 'desk' && (
-                <group>
-                    <mesh position={[0, 0.76 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.4 * s, 0.04 * s, 0.7 * s]} /><meshStandardMaterial color="#C8B898" roughness={0.3} /></mesh>
-                    {([-0.62, 0.62] as number[]).flatMap(x => [-0.3, 0.3].map(z => (
-                        <mesh key={`${x}${z}`} position={[x * s, 0.38 * s, z * s]} castShadow><boxGeometry args={[0.05 * s, 0.76 * s, 0.05 * s]} /><meshStandardMaterial color="#A09080" roughness={0.4} /></mesh>
-                    )))}
-                    {/* Monitor */}
-                    <mesh position={[0, 1.08 * s, -0.22 * s]} castShadow><boxGeometry args={[0.52 * s, 0.30 * s, 0.03 * s]} /><meshStandardMaterial color="#1A1A1A" roughness={0.3} /></mesh>
-                    <mesh position={[0, 0.82 * s, -0.22 * s]} castShadow><boxGeometry args={[0.08 * s, 0.12 * s, 0.08 * s]} /><meshStandardMaterial color="#2A2A2A" roughness={0.4} /></mesh>
-                </group>
-            )}
-            {f.type === 'wardrobe' && (
-                <group>
-                    <mesh position={[0, 0.95 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.9 * s, 1.9 * s, 0.62 * s]} /><meshStandardMaterial color="#3A2E22" roughness={0.6} /></mesh>
-                    {/* Door panels */}
-                    <mesh position={[-0.48 * s, 0.95 * s, 0.32 * s]}><boxGeometry args={[0.88 * s, 1.82 * s, 0.02 * s]} /><meshStandardMaterial color="#4E3C28" roughness={0.4} /></mesh>
-                    <mesh position={[0.48 * s, 0.95 * s, 0.32 * s]}><boxGeometry args={[0.88 * s, 1.82 * s, 0.02 * s]} /><meshStandardMaterial color="#4E3C28" roughness={0.4} /></mesh>
-                    {/* Handles */}
-                    <mesh position={[-0.08 * s, 0.95 * s, 0.33 * s]}><boxGeometry args={[0.03 * s, 0.12 * s, 0.03 * s]} /><meshStandardMaterial color="#C0A870" roughness={0.2} metalness={0.6} /></mesh>
-                    <mesh position={[0.08 * s, 0.95 * s, 0.33 * s]}><boxGeometry args={[0.03 * s, 0.12 * s, 0.03 * s]} /><meshStandardMaterial color="#C0A870" roughness={0.2} metalness={0.6} /></mesh>
-                </group>
-            )}
-            {f.type === 'bathtub' && (
-                <group>
-                    {/* Outer shell */}
-                    <mesh position={[0, 0.28 * s, 0]} castShadow receiveShadow><boxGeometry args={[0.82 * s, 0.56 * s, 1.6 * s]} /><meshStandardMaterial color="#F0EEEA" roughness={0.12} /></mesh>
-                    {/* Inner hollow (water surface) */}
-                    <mesh position={[0, 0.48 * s, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                        <planeGeometry args={[0.60 * s, 1.38 * s]} />
-                        <meshStandardMaterial color="#A8D4E0" roughness={0.04} metalness={0.05} transparent opacity={0.85} />
-                    </mesh>
-                    {/* Tap */}
-                    <mesh position={[0, 0.62 * s, -0.72 * s]} castShadow><boxGeometry args={[0.06 * s, 0.15 * s, 0.06 * s]} /><meshStandardMaterial color="#C8C8C8" roughness={0.2} metalness={0.7} /></mesh>
-                </group>
-            )}
-            {f.type === 'toilet' && (
-                <group>
-                    <mesh position={[0, 0.22 * s, 0]} castShadow receiveShadow><boxGeometry args={[0.46 * s, 0.44 * s, 0.68 * s]} /><meshStandardMaterial color="#EEEEEE" roughness={0.2} /></mesh>
-                    <mesh position={[0, 0.52 * s, -0.26 * s]} castShadow><boxGeometry args={[0.38 * s, 0.24 * s, 0.18 * s]} /><meshStandardMaterial color="#E8E8E8" roughness={0.2} /></mesh>
-                    {/* Seat */}
-                    <mesh position={[0, 0.45 * s, 0.04 * s]}><boxGeometry args={[0.42 * s, 0.04 * s, 0.52 * s]} /><meshStandardMaterial color="#FFFFFF" roughness={0.15} /></mesh>
-                </group>
-            )}
-            {f.type === 'plant' && (
-                <group>
-                    {/* Pot */}
-                    <mesh position={[0, 0.14 * s, 0]} castShadow receiveShadow>
-                        <cylinderGeometry args={[0.14 * s, 0.10 * s, 0.28 * s, 16]} />
-                        <meshStandardMaterial color="#8B5E3C" roughness={0.7} />
-                    </mesh>
-                    {/* Soil */}
-                    <mesh position={[0, 0.28 * s, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                        <circleGeometry args={[0.13 * s, 16]} />
-                        <meshStandardMaterial color="#3D2B1A" roughness={0.95} />
-                    </mesh>
-                    {/* Foliage — layered spheres */}
-                    <mesh position={[0, 0.50 * s, 0]} castShadow><sphereGeometry args={[0.18 * s, 12, 12]} /><meshStandardMaterial color="#2D7A2D" roughness={0.9} /></mesh>
-                    <mesh position={[-0.10 * s, 0.58 * s, 0.06 * s]} castShadow><sphereGeometry args={[0.13 * s, 10, 10]} /><meshStandardMaterial color="#3A9A3A" roughness={0.9} /></mesh>
-                    <mesh position={[0.08 * s, 0.62 * s, -0.06 * s]} castShadow><sphereGeometry args={[0.11 * s, 10, 10]} /><meshStandardMaterial color="#259025" roughness={0.9} /></mesh>
-                </group>
-            )}
-            {f.type === 'chair' && (
-                <group>
-                    {/* Seat */}
-                    <mesh position={[0, 0.44 * s, 0]} castShadow receiveShadow><boxGeometry args={[0.50 * s, 0.05 * s, 0.50 * s]} /><meshStandardMaterial color="#C0B8A8" roughness={0.7} /></mesh>
-                    {/* Back */}
-                    <mesh position={[0, 0.72 * s, 0.22 * s]} castShadow><boxGeometry args={[0.50 * s, 0.52 * s, 0.05 * s]} /><meshStandardMaterial color="#B0A898" roughness={0.7} /></mesh>
-                    {/* Legs */}
-                    {([-0.20, 0.20] as number[]).flatMap(x => [-0.20, 0.20].map(z => (
-                        <mesh key={`${x}${z}`} position={[x * s, 0.22 * s, z * s]} castShadow><boxGeometry args={[0.04 * s, 0.44 * s, 0.04 * s]} /><meshStandardMaterial color="#8A7868" roughness={0.5} /></mesh>
-                    )))}
-                </group>
-            )}
-            {f.type === 'coffee_table' && (
-                <group>
-                    {/* Top */}
-                    <mesh position={[0, 0.38 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.2 * s, 0.05 * s, 0.65 * s]} /><meshStandardMaterial color="#EAE6E0" roughness={0.15} metalness={0.05} /></mesh>
-                    {/* Shelf */}
-                    <mesh position={[0, 0.18 * s, 0]} castShadow receiveShadow><boxGeometry args={[1.1 * s, 0.03 * s, 0.55 * s]} /><meshStandardMaterial color="#D8D4CC" roughness={0.3} /></mesh>
-                    {/* Legs */}
-                    {([-0.52, 0.52] as number[]).flatMap(x => [-0.28, 0.28].map(z => (
-                        <mesh key={`${x}${z}`} position={[x * s, 0.18 * s, z * s]} castShadow><boxGeometry args={[0.04 * s, 0.36 * s, 0.04 * s]} /><meshStandardMaterial color="#C0B090" roughness={0.3} /></mesh>
-                    )))}
-                </group>
-            )}
-        </group>
-    )
-}
-
-function Scene3D({ fp, sceneConfig }: { fp: FloorPlanState; sceneConfig?: SceneConfig }) {
+function Scene3D({ fp, sceneConfig, walkMode = false }: { fp: FloorPlanState; sceneConfig?: SceneConfig; walkMode?: boolean }) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
     return (
         <>
@@ -1454,24 +732,28 @@ function Scene3D({ fp, sceneConfig }: { fp: FloorPlanState; sceneConfig?: SceneC
             <directionalLight position={[-5, 8, -5]} intensity={0.8} color="#C8D4E8" />
             {cfg.fogEnabled && <fog attach="fog" args={['#0F0E0C', 20, 60]} />}
 
-            {fp.rooms.map(room => (
-                <Room3D
-                    key={room.id}
-                    room={room}
-                    openings={fp.openings.filter(o => o.roomId === room.id)}
-                    roomHeight={fp.roomHeight}
-                    wallColor={cfg.rooms.find(r => r.roomId === room.id)?.wallColor ?? '#8B7B6B'}
-                    wallRoughness={cfg.wallRoughness}
-                    floorMat={cfg.globalFloorMaterial ?? 'wood'}
-                    doorStyle={cfg.doorStyle ?? 'natural'}
-                />
-            ))}
+            {fp.rooms.map(room => {
+                const roomCfg = cfg.rooms.find(r => r.roomId === room.id)
+                return (
+                    <Room3D
+                        key={room.id}
+                        room={room}
+                        openings={fp.openings.filter(o => o.roomId === room.id)}
+                        roomHeight={fp.roomHeight}
+                        wallColor={roomCfg?.wallColor ?? '#8B7B6B'}
+                        wallRoughness={cfg.wallRoughness}
+                        floorMat={roomCfg?.floorMaterial ?? cfg.globalFloorMaterial ?? 'wood'}
+                        doorStyle={cfg.doorStyle ?? 'natural'}
+                    />
+                )
+            })}
 
             <LineWalls3D
                 fp={fp}
                 wallRoughness={cfg.wallRoughness}
                 floorMaterial={cfg.globalFloorMaterial ?? 'wood'}
                 doorStyle={cfg.doorStyle ?? 'natural'}
+                closedShapes={fp.closedShapes}
             />
 
             {/* Furniture — guarded by showFurniture toggle */}
@@ -1479,252 +761,15 @@ function Scene3D({ fp, sceneConfig }: { fp: FloorPlanState; sceneConfig?: SceneC
                 <FurnitureMesh key={f.id} f={f} />
             ))}
 
-            <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
+            {walkMode ? (
+                <WalkModeControls />
+            ) : (
+                <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
+            )}
             <gridHelper args={[50, 50, '#1C1A17', '#1C1A17']} position={[0, -0.01, 0]} />
         </>
     )
 }
-
-
-function ColorSwatch({ color, selected, onClick }: { color: string; selected: boolean; onClick: () => void }) {
-    return (
-        <div onClick={onClick} title={color} style={{
-            width: 24, height: 24, borderRadius: 5, background: color, cursor: 'pointer',
-            border: selected ? '2px solid rgba(99,102,241,0.9)' : '2px solid transparent',
-            boxShadow: selected ? '0 0 0 1px rgba(99,102,241,0.4)' : 'none',
-            transition: 'transform 100ms',
-            flexShrink: 0,
-        }}
-            onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.15)')}
-            onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-        />
-    )
-}
-
-function CfgLabel({ children }: { children: React.ReactNode }) {
-    return <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'rgba(100,116,139,0.55)', marginBottom: 6 }}>{children}</div>
-}
-
-function CfgToggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-    return (
-        <div onClick={() => onChange(!value)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 0' }}>
-            <div style={{ width: 28, height: 16, borderRadius: 99, background: value ? 'rgba(99,102,241,0.85)' : 'rgba(100,116,139,0.25)', position: 'relative', transition: 'background 200ms', flexShrink: 0 }}>
-                <div style={{ position: 'absolute', top: 2, left: value ? 13 : 2, width: 12, height: 12, borderRadius: '50%', background: 'white', transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-            </div>
-            <span style={{ fontSize: 11, color: value ? 'rgba(165,168,255,0.9)' : 'rgba(100,116,139,0.65)' }}>{label}</span>
-        </div>
-    )
-}
-
-function SceneConfigPanel({
-    fp, config, onChange,
-}: {
-    fp: FloorPlanState
-    config: SceneConfig
-    onChange: (c: SceneConfig) => void
-}) {
-    const [open, setOpen] = useState(false)
-    const [tab, setTab] = useState<'rooms' | 'scene'>('rooms')
-    const [selectedRoomId, setSelectedRoomId] = useState<string>(fp.rooms[0]?.id ?? '')
-    const [applyAll, setApplyAll] = useState(false)
-
-    const roomCfg = selectedRoomId ? getRoomSceneCfg(config, selectedRoomId) : null
-
-    function patchRoom(patch: Partial<RoomSceneConfig>) {
-        if (patch.wallColor) {
-            wallTextureCache.delete(patch.wallColor)
-        }
-        const targetIds = applyAll ? fp.rooms.map(r => r.id) : [selectedRoomId]
-        let rooms = [...config.rooms]
-        for (const id of targetIds) {
-            const existing = rooms.find(r => r.roomId === id)
-            if (existing) {
-                rooms = rooms.map(r => r.roomId === id ? { ...r, ...patch } : r)
-            } else {
-                rooms = [...rooms, { roomId: id, wallColor: '#8B7B6B', floorMaterial: 'wood' as FloorMaterial, ...patch }]
-            }
-        }
-        onChange({ ...config, rooms })
-    }
-
-    function patchScene(patch: Partial<SceneConfig>) {
-        onChange({ ...config, ...patch })
-    }
-
-    return (
-        <>
-            {/* Toggle button */}
-            <button
-                type="button"
-                onClick={() => setOpen(o => !o)}
-                style={{
-                    position: 'absolute', bottom: 12, left: 12, zIndex: 10,
-                    height: 28, padding: '0 10px', borderRadius: 7,
-                    border: open ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)',
-                    background: open ? 'rgba(99,102,241,0.2)' : 'rgba(10,9,7,0.75)',
-                    backdropFilter: 'blur(10px)',
-                    color: open ? 'rgba(165,168,255,0.95)' : 'rgba(148,163,184,0.75)',
-                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    transition: 'all 150ms',
-                }}
-            >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                    <circle cx="12" cy="12" r="3" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41" />
-                </svg>
-                {open ? 'Close Config' : 'Scene Config'}
-            </button>
-
-            {/* Panel */}
-            {open && (
-                <div style={{
-                    position: 'absolute', bottom: 48, left: 12, zIndex: 20,
-                    width: 272, maxHeight: 440,
-                    borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)',
-                    background: 'rgba(10,9,7,0.94)', backdropFilter: 'blur(20px)',
-                    boxShadow: '0 12px 48px rgba(0,0,0,0.7)',
-                    display: 'flex', flexDirection: 'column', overflow: 'hidden',
-                    fontFamily: 'system-ui, sans-serif',
-                }}>
-                    {/* Header + tabs */}
-                    <div style={{ padding: '10px 12px 0', background: 'linear-gradient(180deg, rgba(99,102,241,0.06) 0%, transparent 100%)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(226,232,240,0.9)', letterSpacing: '0.02em' }}>Scene Configuration</span>
-                            <button onClick={() => setOpen(false)} style={{ width: 20, height: 20, borderRadius: 4, border: 'none', background: 'rgba(255,255,255,0.06)', color: 'rgba(148,163,184,0.6)', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
-                        </div>
-                        <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: 3, marginBottom: 0 }}>
-                            {(['rooms', 'scene'] as const).map(t => (
-                                <button key={t} onClick={() => setTab(t)} style={{ flex: 1, height: 26, borderRadius: 5, border: 'none', background: tab === t ? 'rgba(99,102,241,0.75)' : 'transparent', color: tab === t ? 'white' : 'rgba(148,163,184,0.6)', fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 150ms' }}>
-                                    {t === 'rooms' ? '🏠 Rooms' : '✨ Scene'}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Body */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-                        {/* ── ROOMS TAB ────────────────────────────────────────── */}
-                        {tab === 'rooms' && <>
-                            {fp.rooms.length === 0 ? (
-                                <div style={{ fontSize: 11, color: 'rgba(100,116,139,0.5)', textAlign: 'center', padding: '20px 0' }}>No rooms yet. Draw rooms first.</div>
-                            ) : <>
-                                {/* Room selector */}
-                                <div>
-                                    <CfgLabel>Select Room</CfgLabel>
-                                    <select value={selectedRoomId} onChange={e => setSelectedRoomId(e.target.value)} style={{ width: '100%', height: 32, borderRadius: 6, border: '1px solid rgba(148,163,184,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(226,232,240,0.9)', fontSize: 12, padding: '0 8px', outline: 'none', cursor: 'pointer' }}>
-                                        {fp.rooms.map(r => <option key={r.id} value={r.id} style={{ background: '#1a1814' }}>{r.label}</option>)}
-                                    </select>
-                                </div>
-
-                                {/* Apply all toggle */}
-                                <div onClick={() => setApplyAll(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, background: applyAll ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${applyAll ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)'}`, cursor: 'pointer', transition: 'all 150ms' }}>
-                                    <div style={{ width: 26, height: 14, borderRadius: 99, background: applyAll ? 'rgba(99,102,241,0.85)' : 'rgba(100,116,139,0.25)', position: 'relative', transition: 'background 200ms', flexShrink: 0 }}>
-                                        <div style={{ position: 'absolute', top: 1, left: applyAll ? 12 : 1, width: 12, height: 12, borderRadius: '50%', background: 'white', transition: 'left 200ms' }} />
-                                    </div>
-                                    <span style={{ fontSize: 10, fontWeight: 600, color: applyAll ? 'rgba(165,168,255,0.9)' : 'rgba(100,116,139,0.55)' }}>Apply to all rooms</span>
-                                </div>
-
-                                {roomCfg && <>
-                                    {/* Wall color */}
-                                    <div>
-                                        <CfgLabel>Wall Color</CfgLabel>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                                            {WALL_COLORS.map(c => (
-                                                <ColorSwatch key={c} color={c} selected={roomCfg.wallColor === c} onClick={() => patchRoom({ wallColor: c })} />
-                                            ))}
-                                        </div>
-                                        {/* Custom color */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                                            <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.6)' }}>Custom:</span>
-                                            <input type="color" value={roomCfg.wallColor} onChange={e => patchRoom({ wallColor: e.target.value })}
-                                                style={{ width: 32, height: 24, borderRadius: 5, border: '1px solid rgba(255,255,255,0.1)', background: 'none', cursor: 'pointer', padding: 1 }} />
-                                            <code style={{ fontSize: 10, color: 'rgba(165,168,255,0.7)', background: 'rgba(99,102,241,0.08)', padding: '2px 5px', borderRadius: 3 }}>{roomCfg.wallColor}</code>
-                                        </div>
-                                    </div>
-
-                                    <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
-
-                                    {/* Floor material */}
-                                    <div>
-                                        <CfgLabel>Floor Material</CfgLabel>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
-                                            {FLOOR_MATERIALS.map(m => (
-                                                <button key={m.id} onClick={() => patchRoom({ floorMaterial: m.id })} style={{ height: 46, borderRadius: 7, border: roomCfg.floorMaterial === m.id ? '1.5px solid rgba(99,102,241,0.85)' : '1px solid rgba(255,255,255,0.08)', background: roomCfg.floorMaterial === m.id ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transition: 'all 130ms' }}>
-                                                    <div style={{ width: 20, height: 14, borderRadius: 3, background: m.color, border: '1px solid rgba(255,255,255,0.15)' }} />
-                                                    <span style={{ fontSize: 9, fontWeight: roomCfg.floorMaterial === m.id ? 700 : 400, color: roomCfg.floorMaterial === m.id ? 'rgba(165,168,255,0.95)' : 'rgba(148,163,184,0.65)' }}>{m.label}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>}
-
-                                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
-
-                                {/* Door style */}
-                                <div>
-                                    <CfgLabel>Door Style</CfgLabel>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-                                        {DOOR_STYLES.map(d => (
-                                            <button key={d.value} onClick={() => patchScene({ doorStyle: d.value })} style={{ height: 36, borderRadius: 7, border: config.doorStyle === d.value ? '1.5px solid rgba(99,102,241,0.85)' : '1px solid rgba(255,255,255,0.08)', background: config.doorStyle === d.value ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, padding: '0 8px', transition: 'all 130ms' }}>
-                                                <div style={{ width: 14, height: 14, borderRadius: 3, background: d.color, border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0, opacity: d.value === 'glass' ? 0.5 : 1 }} />
-                                                <span style={{ fontSize: 10, fontWeight: config.doorStyle === d.value ? 700 : 400, color: config.doorStyle === d.value ? 'rgba(165,168,255,0.95)' : 'rgba(148,163,184,0.65)' }}>{d.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </>}
-                        </>}
-
-                        {/* ── SCENE TAB ────────────────────────────────────────── */}
-                        {tab === 'scene' && <>
-                            {/* Ambient light */}
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                                    <CfgLabel>Ambient Light</CfgLabel>
-                                    <code style={{ fontSize: 10, color: 'rgba(165,168,255,0.8)', background: 'rgba(99,102,241,0.1)', padding: '1px 4px', borderRadius: 3 }}>{config.ambientIntensity.toFixed(1)}</code>
-                                </div>
-                                <input type="range" min={0.5} max={4.0} step={0.1} value={config.ambientIntensity} onChange={e => patchScene({ ambientIntensity: parseFloat(e.target.value) })} style={{ width: '100%', accentColor: 'rgba(99,102,241,0.9)', cursor: 'pointer' }} />
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'rgba(100,116,139,0.4)', marginTop: 2 }}><span>dim</span><span>bright</span></div>
-                            </div>
-
-                            {/* Wall roughness */}
-                            <div>
-                                <CfgLabel>Floor Material (all shapes)</CfgLabel>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
-                                    {FLOOR_MATERIALS.map(m => (
-                                        <button key={m.id} onClick={() => patchScene({ globalFloorMaterial: m.id })}
-                                            style={{ height: 46, borderRadius: 7, border: config.globalFloorMaterial === m.id ? '1.5px solid rgba(99,102,241,0.85)' : '1px solid rgba(255,255,255,0.08)', background: config.globalFloorMaterial === m.id ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transition: 'all 130ms' }}>
-                                            <div style={{ width: 20, height: 14, borderRadius: 3, background: m.color, border: '1px solid rgba(255,255,255,0.15)' }} />
-                                            <span style={{ fontSize: 9, fontWeight: config.globalFloorMaterial === m.id ? 700 : 400, color: config.globalFloorMaterial === m.id ? 'rgba(165,168,255,0.95)' : 'rgba(148,163,184,0.65)' }}>{m.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
-                            {/* Toggles */}
-                            <CfgToggle label="Show Furniture" value={config.showFurniture} onChange={v => patchScene({ showFurniture: v })} />
-                            <CfgToggle label="Show Room Labels" value={config.showLabels} onChange={v => patchScene({ showLabels: v })} />
-                            <CfgToggle label="Atmospheric Fog" value={config.fogEnabled} onChange={v => patchScene({ fogEnabled: v })} />
-
-                            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
-
-                            {/* Reset */}
-                            <button onClick={() => onChange({ ...DEFAULT_SCENE_CONFIG, rooms: config.rooms })} style={{ height: 28, borderRadius: 6, border: '1px solid rgba(148,163,184,0.12)', background: 'transparent', color: 'rgba(100,116,139,0.55)', fontSize: 11, cursor: 'pointer', transition: 'all 150ms' }}
-                                onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)'}
-                                onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(148,163,184,0.12)'}>
-                                Reset scene to defaults
-                            </button>
-                        </>}
-                    </div>
-                </div>
-            )}
-        </>
-    )
-}
-
-// ── Properties panel ──────────────────────────────────────────────────────────
 
 function PropsPanel({ fp, selectedId, onChange, onDelete }: {
     fp: FloorPlanState
@@ -1874,91 +919,6 @@ const inputStyle: React.CSSProperties = {
     color: 'rgba(226,232,240,0.9)', fontSize: 12,
     padding: '0 8px', outline: 'none',
 }
-
-// ── Toolbar — BIGGER icons ────────────────────────────────────────────────────
-
-// Icon components for clarity and size
-const ToolIcons: Record<string, React.ReactNode> = {
-    select: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 3l14 9-7 1-4 7z" />
-        </svg>
-    ),
-    pan: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3" />
-            <path d="M3 12h18M12 3v18" />
-        </svg>
-    ),
-    room: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="1" />
-        </svg>
-    ),
-    pencil: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-        </svg>
-    ),
-    line: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="4" y1="20" x2="20" y2="4" />
-            <circle cx="4" cy="20" r="2" fill="currentColor" />
-            <circle cx="20" cy="4" r="2" fill="currentColor" />
-        </svg>
-    ),
-    bend: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M4 20 Q12 4 20 20" />
-            <circle cx="4" cy="20" r="2" fill="currentColor" />
-            <circle cx="20" cy="20" r="2" fill="currentColor" />
-            <circle cx="12" cy="8" r="2" fill="currentColor" />
-        </svg>
-    ),
-    door: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="13" height="18" rx="1" />
-            <path d="M16 7h4" />
-            <path d="M3 21h18" />
-            <path d="M3 3h18" />
-            <path d="M8 12 Q8 8 12 8" strokeDasharray="2 1" />
-        </svg>
-    ),
-    window: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="6" width="20" height="12" rx="1" />
-            <line x1="12" y1="6" x2="12" y2="18" />
-            <line x1="2" y1="12" x2="22" y2="12" />
-        </svg>
-    ),
-    delete: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            <path d="M10 11v6M14 11v6" />
-            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-        </svg>
-    ),
-    annotate: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>,
-    furniture: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 9V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2" /><path d="M2 11v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1z" /><path d="M6 19v2M18 19v2" /></svg>,
-
-}
-
-const TOOLS: { id: EditorTool; label: string; key: string }[] = [
-    { id: 'select', label: 'Select / Move', key: 'V' },
-    { id: 'pan', label: 'Pan Canvas', key: 'H' },
-    { id: 'room', label: 'Draw Room', key: 'R' },
-    { id: 'pencil', label: 'Freeform', key: 'P' },
-    { id: 'line', label: 'Line Wall', key: 'L' },
-    { id: 'bend', label: 'Bend Wall', key: 'B' },
-    { id: 'door', label: 'Place Door', key: 'D' },
-    { id: 'window', label: 'Place Window', key: 'N' },
-    { id: 'delete', label: 'Delete', key: '⌫' },
-    { id: 'annotate', label: 'Add Label', key: 'A' },
-    { id: 'furniture', label: 'Place Furniture', key: 'F' },
-]
-
 // ── Main export ───────────────────────────────────────────────────────────────
 
 type Props = {
@@ -2000,8 +960,13 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     const historyRef = useRef<FloorPlanState[]>([])
     const historyIndexRef = useRef(-1)
     const [canvasCursor, setCanvasCursor] = useState('default')
+    const isDoorTool = tool.startsWith('door-')
+    const isWindowTool = tool.startsWith('window-')
+    const isOpeningTool = tool.startsWith('opening-')
+    const isStairsTool = tool.startsWith('stairs-') || tool === 'elevator'
 
     const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
+    const [walkMode, setWalkMode] = useState(false)
 
     const [editingAnnotation, setEditingAnnotation] = useState<{ id: string; text: string; x: number; y: number } | null>(null)
     const annotationInputRef = useRef<HTMLInputElement>(null)
@@ -2016,41 +981,51 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
         historyRef.current.push(JSON.parse(JSON.stringify(current)))
         historyIndexRef.current = historyRef.current.length - 1
     }, [])
-    // ── Redraw ────────────────────────────────────────────────────────────────
-    const redraw = useCallback(() => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-        canvas.width = canvas.offsetWidth
-        canvas.height = canvas.offsetHeight
-        draw2D(ctx, fpRef.current, tool, selectedId, hoveredId, drawRect, pencilPoints, zoom, pan, preview, lineActiveNodeRef.current)
-    }, [tool, selectedId, hoveredId, drawRect, pencilPoints, zoom, pan, preview])
 
-    useEffect(() => { redraw() }, [redraw, fp, pencilPoints, preview])
+    // ── Optimized Redraw with rAF ────────────────────────────────────────────
+    const rafIdRef = useRef(0)
+    const hoveredIdRef = useRef<string | null>(null)
+    const lastCanvasSizeRef = useRef({ w: 0, h: 0 })
+
+    const scheduleRedraw = useCallback(() => {
+        cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = requestAnimationFrame(() => {
+            const canvas = canvasRef.current
+            if (!canvas) return
+            const ctx = canvas.getContext('2d')
+            if (!ctx) return
+            // Only resize canvas when dimensions actually change
+            const cw = canvas.offsetWidth, ch = canvas.offsetHeight
+            if (lastCanvasSizeRef.current.w !== cw || lastCanvasSizeRef.current.h !== ch) {
+                canvas.width = cw
+                canvas.height = ch
+                lastCanvasSizeRef.current = { w: cw, h: ch }
+            }
+            draw2D(ctx, fpRef.current, tool, selectedId, hoveredIdRef.current, drawRect, pencilPoints, zoom, pan, preview, lineActiveNodeRef.current)
+        })
+    }, [tool, selectedId, drawRect, pencilPoints, zoom, pan, preview])
+
+    useEffect(() => { scheduleRedraw() }, [scheduleRedraw, fp, pencilPoints, preview, hoveredId])
+    useEffect(() => () => cancelAnimationFrame(rafIdRef.current), [])
 
     useEffect(() => {
         const canvas = canvasRef.current
         if (!canvas) return
-        const ro = new ResizeObserver(() => redraw())
+        const ro = new ResizeObserver(() => scheduleRedraw())
         ro.observe(canvas)
         return () => ro.disconnect()
-    }, [redraw])
+    }, [scheduleRedraw])
 
     // ── Keyboard shortcuts ────────────────────────────────────────────────────
     useEffect(() => {
         const h = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
             const key = e.key.toLowerCase()
-            if (key === 'v') setTool('select')
-            if (key === 'h') setTool('pan')
-            if (key === 'r') setTool('room')
-            if (key === 'd') setTool('door')
-            if (key === 'n') setTool('window')
-            if (key === 'l') setTool('line')
-            if (key === 'b') setTool('bend')
-            if (key === 'a') setTool('annotate')
-            if (key === 'f') setTool('furniture')
+
+            if (KEY_TO_DEFAULT_TOOL[key]) {
+                setTool(KEY_TO_DEFAULT_TOOL[key])
+            }
+
             if (key === 'escape') {
                 setTool('select')
                 lineActiveNodeRef.current = null
@@ -2061,16 +1036,16 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             if ((key === 'delete' || key === 'backspace') && selectedId) {
                 setFp(prev => {
                     const isRoom = prev.rooms.some(r => r.id === selectedId)
-                    const isOpening = prev.openings.some(o => o.id === selectedId)
                     const isNode = prev.lineNodes.some(n => n.id === selectedId)
                     const isSeg = prev.lineSegments.some(s => s.id === selectedId)
-                    const isShape = prev.closedShapes.some(s => s.id === selectedId)
 
                     if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
                     if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
                     if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
                     const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
                     if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
+                    const isStairs = (prev.stairs ?? []).some(s => s.id === selectedId)
+                    if (isStairs) return { ...prev, stairs: (prev.stairs ?? []).filter(s => s.id !== selectedId) }
                     return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
                 })
                 setSelectedId(null)
@@ -2083,7 +1058,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 }
             }
             if (key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-                // Redo
                 if (historyIndexRef.current < historyRef.current.length - 1) {
                     historyIndexRef.current++
                     const snapshot = historyRef.current[historyIndexRef.current]!
@@ -2353,7 +1327,18 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
 
             setSelectedId(null); dragRoomRef.current = null; return
         }
-
+        const hitStairsFirst = (fpRef.current.stairs ?? []).findLast(s => {
+            const dx = wx - (s.x + s.width / 2), dz = wz - (s.z + s.depth / 2)
+            const cosR = Math.cos(-s.rotation), sinR = Math.sin(-s.rotation)
+            const lx = dx * cosR - dz * sinR, lz = dx * sinR + dz * cosR
+            return Math.abs(lx) < s.width / 2 + 0.05 && Math.abs(lz) < s.depth / 2 + 0.05
+        })
+        if (hitStairsFirst) {
+            setSelectedId(hitStairsFirst.id)
+            furnitureDragRef.current = { id: hitStairsFirst.id, ox: wx - hitStairsFirst.x, oz: wz - hitStairsFirst.z }
+            dragRoomRef.current = null
+            return
+        }
         // ── Room tool ─────────────────────────────────────────────────────────
         if (tool === 'room') {
             const snappedX = snapM(wx), snappedZ = snapM(wz)
@@ -2419,9 +1404,11 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             }
             return
         }
-
         // ── Door / Window tool ────────────────────────────────────────────────
-        if (tool === 'door' || tool === 'window') {
+        const isDoorTool = tool.startsWith('door-')
+        const isWindowTool = tool.startsWith('window-')
+
+        if (isDoorTool || isWindowTool) {
             // Try room first
             const room = hitRoom(wx, wz)
             if (room) {
@@ -2430,13 +1417,15 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 const isH = wallDir === 'north' || wallDir === 'south'
                 const wallLen = isH ? room.width : room.depth
                 const rawPos = isH ? wx - room.x : wz - room.z
-                const opW = tool === 'door' ? 0.9 : 1.2
+                const opW = isDoorTool ? 0.9 : 1.2
                 const clampedPos = Math.max(opW / 2, Math.min(wallLen - opW / 2, rawPos))
                 const op: EditorOpening = {
-                    id: uid(), roomId: room.id, wall: wallDir, type: tool,
+                    id: uid(), roomId: room.id, wall: wallDir,
+                    type: isDoorTool ? 'door' : 'window',
+                    variant: tool,
                     position: parseFloat(clampedPos.toFixed(2)), width: opW,
-                    height: tool === 'door' ? 2.1 : 1.2,
-                    sillHeight: tool === 'window' ? 0.9 : 0,
+                    height: isDoorTool ? 2.1 : 1.2,
+                    sillHeight: isWindowTool ? 0.9 : 0,
                     swingDirection: 'inward',
                 }
                 pushHistory()
@@ -2448,7 +1437,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 const a = fpRef.current.lineNodes.find(n => n.id === fromId)!
                 const b = fpRef.current.lineNodes.find(n => n.id === toId)!
                 const segLen = Math.hypot(b.x - a.x, b.z - a.z)
-                const opW = tool === 'door' ? 0.9 : 1.2
+                const opW = isDoorTool ? 0.9 : 1.2
                 const rawPos = t * segLen
                 const clampedPos = Math.max(opW / 2, Math.min(segLen - opW / 2, rawPos))
                 const clampedT = clampedPos / segLen
@@ -2457,11 +1446,12 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                     id: uid(),
                     roomId: seg.id,
                     wall: 'north', // placeholder — actual direction computed from segment angle
-                    type: tool,
+                    type: isDoorTool ? 'door' : 'window',
+                    variant: tool,
                     position: parseFloat(clampedPos.toFixed(2)),
                     width: opW,
-                    height: tool === 'door' ? 2.1 : 1.2,
-                    sillHeight: tool === 'window' ? 0.9 : 0,
+                    height: isDoorTool ? 2.1 : 1.2,
+                    sillHeight: isWindowTool ? 0.9 : 0,
                     swingDirection: 'inward',
                     segmentNodeIds: [fromId, toId],
                     segmentT: clampedT,
@@ -2471,7 +1461,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 return
             }
         }
-
         if (tool === 'furniture') {
             const clickedFurniture = (fpRef.current.furniture ?? []).find(f => {
                 const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
@@ -2499,7 +1488,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             setFp(prev => ({ ...prev, furniture: [...(prev.furniture ?? []), newF] }))
             return
         }
-
         if (tool === 'annotate') {
             const rect = canvasRef.current!.getBoundingClientRect()
             // Check if clicking an existing annotation to edit it
@@ -2581,23 +1569,117 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 }))
             }
         }
+        if (isStairsTool) {
+            const stairsType = tool as StairsType
+            const fp2 = STAIRS_FOOTPRINTS[stairsType]
+            const newStairs: PlacedStairs = {
+                id: uid(),
+                type: stairsType,
+                x: snapM(wx - fp2.w / 2),
+                z: snapM(wz - fp2.d / 2),
+                width: fp2.w,
+                depth: fp2.d,
+                rotation: 0,
+            }
+            pushHistory()
+            setFp(prev => ({ ...prev, stairs: [...(prev.stairs ?? []), newStairs] }))
+            setSelectedId(newStairs.id)
+            return
+        }
+        if (isOpeningTool) {
+            const room = hitRoom(wx, wz)
+            if (room) {
+                const wallDir = getWallHit(room, wx, wz, 0.5)
+                if (!wallDir) return
+                const isH = wallDir === 'north' || wallDir === 'south'
+                const wallLen = isH ? room.width : room.depth
+                const rawPos = isH ? wx - room.x : wz - room.z
+                const opW = tool === 'opening-archway' ? 1.1 : 1.5
+                const clampedPos = Math.max(opW / 2, Math.min(wallLen - opW / 2, rawPos))
+                const op: EditorOpening = {
+                    id: uid(), roomId: room.id, wall: wallDir,
+                    type: 'opening', variant: tool,
+                    position: parseFloat(clampedPos.toFixed(2)), width: opW,
+                    height: fp.roomHeight, sillHeight: 0, swingDirection: 'inward',
+                }
+                pushHistory()
+                setFp(prev => ({ ...prev, openings: [...prev.openings, op] })); setSelectedId(op.id); return
+            }
+            const segHit = hitLineSegment(wx, wz)
+            if (segHit) {
+                const { seg, t, fromId, toId } = segHit
+                const a = fpRef.current.lineNodes.find(n => n.id === fromId)!
+                const b = fpRef.current.lineNodes.find(n => n.id === toId)!
+                const segLen = Math.hypot(b.x - a.x, b.z - a.z)
+                const opW = tool === 'opening-archway' ? 1.1 : 1.5
+                const rawPos = t * segLen
+                const clampedPos = Math.max(opW / 2, Math.min(segLen - opW / 2, rawPos))
+                const clampedT = clampedPos / segLen
+                const op: EditorOpening = {
+                    id: uid(), roomId: seg.id, wall: 'north',
+                    type: 'opening', variant: tool,
+                    position: parseFloat(clampedPos.toFixed(2)), width: opW,
+                    height: fp.roomHeight, sillHeight: 0, swingDirection: 'inward',
+                    segmentNodeIds: [fromId, toId], segmentT: clampedT,
+                }
+                pushHistory()
+                setFp(prev => ({ ...prev, openings: [...prev.openings, op] }))
+                setSelectedId(op.id)
+                return
+            }
+        }
+
     }, [evWorld, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, selectedId, pushHistory, selectedFurnitureType])
 
 
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const { wx, wz, cx, cy } = evWorld(e)
 
-        // Cursor
+        // Cursor — direct DOM update to avoid re-render
+        let newCursor: string
         if (spaceHeldRef.current || tool === 'pan') {
-            setCanvasCursor(spacePanRef.current || panToolRef.current ? 'grabbing' : 'grab')
+            newCursor = spacePanRef.current || panToolRef.current ? 'grabbing' : 'grab'
         } else if (resizeHandleRef.current) {
             const map: Record<string, string> = { nw: 'nw-resize', ne: 'ne-resize', sw: 'sw-resize', se: 'se-resize', n: 'n-resize', s: 's-resize', e: 'e-resize', w: 'w-resize' }
-            setCanvasCursor(map[resizeHandleRef.current.handle] ?? 'move')
+            newCursor = map[resizeHandleRef.current.handle] ?? 'move'
         } else if (dragRoomRef.current) {
-            setCanvasCursor('grabbing')
+            newCursor = 'grabbing'
         } else {
-            const toolCursors: Record<EditorTool, string> = { select: 'default', pan: 'grab', room: 'crosshair', pencil: 'crosshair', line: 'crosshair', bend: 'crosshair', door: 'cell', window: 'cell', delete: 'not-allowed', annotate: 'crosshair', furniture: 'copy' }
-            setCanvasCursor(toolCursors[tool] ?? 'default')
+            const doorWindowCursor = 'cell'
+            const toolCursors: Record<EditorTool, string> = {
+                select: 'default',
+                pan: 'grab',
+                room: 'crosshair',
+                pencil: 'crosshair',
+                line: 'crosshair',
+                bend: 'crosshair',
+                'door-swing-single': doorWindowCursor,
+                'door-swing-double': doorWindowCursor,
+                'door-sliding': doorWindowCursor,
+                'door-pocket': doorWindowCursor,
+                'door-folding': doorWindowCursor,
+                'door-garage': doorWindowCursor,
+                'window-fixed': doorWindowCursor,
+                'window-sliding': doorWindowCursor,
+                'window-casement': doorWindowCursor,
+                'window-bay': doorWindowCursor,
+                'window-skylight': doorWindowCursor,
+                'opening-archway': doorWindowCursor,
+                'opening-passage': doorWindowCursor,
+                'stairs-straight': 'crosshair',
+                'stairs-l': 'crosshair',
+                'stairs-u': 'crosshair',
+                'stairs-spiral': 'crosshair',
+                'stairs-ramp': 'crosshair',
+                elevator: 'crosshair',
+                delete: 'not-allowed',
+                annotate: 'crosshair',
+                furniture: 'copy',
+            }
+            newCursor = toolCursors[tool] ?? 'default'
+        }
+        if (canvasDivRef.current && canvasDivRef.current.style.cursor !== newCursor) {
+            canvasDivRef.current.style.cursor = newCursor
         }
 
         if (spacePanRef.current) {
@@ -2642,7 +1724,11 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
 
         if (furnitureDragRef.current) {
             const fd = furnitureDragRef.current
-            setFp(prev => ({ ...prev, furniture: (prev.furniture ?? []).map(f => f.id === fd.id ? { ...f, x: snapM(wx - fd.ox), z: snapM(wz - fd.oz) } : f) }))
+            setFp(prev => ({
+                ...prev,
+                furniture: (prev.furniture ?? []).map(f => f.id === fd.id ? { ...f, x: snapM(wx - fd.ox), z: snapM(wz - fd.oz) } : f),
+                stairs: (prev.stairs ?? []).map(s => s.id === fd.id ? { ...s, x: snapM(wx - fd.ox), z: snapM(wz - fd.oz) } : s),
+            }))
             return
         }
 
@@ -2683,27 +1769,37 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             setDrawRect(newRect)
             return
         }
-        // Hover
+        // Hover — use ref to avoid unnecessary state updates
+        let newHoverId: string | null = null
         const node = hitLineNode(wx, wz)
-        if (node) { setHoveredId(node.id); return }
-        const segHit = hitLineSegment(wx, wz)
-        if (segHit) { setHoveredId(segHit.seg.id); return }
-
-        // Furniture hover — checked before room so furniture inside rooms gets priority
-        const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
-            const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
-            const dx = wx - f.x, dz = wz - f.z
-            const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
-            const lx = dx * cosR - dz * sinR
-            const lz = dx * sinR + dz * cosR
-            return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
-        })
-        if (hovFurniture) { setHoveredId(hovFurniture.id); return }
-
-        // Room hover — only if no furniture was hit
-        const room = hitRoom(wx, wz)
-        setHoveredId(room?.id ?? null)
-    }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment])
+        if (node) { newHoverId = node.id }
+        else {
+            const segHit = hitLineSegment(wx, wz)
+            if (segHit) { newHoverId = segHit.seg.id }
+            else {
+                // Furniture hover — checked before room so furniture inside rooms gets priority
+                const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
+                    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                    const dx = wx - f.x, dz = wz - f.z
+                    const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                    const lx = dx * cosR - dz * sinR
+                    const lz = dx * sinR + dz * cosR
+                    return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
+                })
+                if (hovFurniture) { newHoverId = hovFurniture.id }
+                else {
+                    // Room hover — only if no furniture was hit
+                    const room = hitRoom(wx, wz)
+                    newHoverId = room?.id ?? null
+                }
+            }
+        }
+        if (hoveredIdRef.current !== newHoverId) {
+            hoveredIdRef.current = newHoverId
+            setHoveredId(newHoverId)
+            scheduleRedraw()
+        }
+    }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment, scheduleRedraw])
 
     const handleMouseUp = useCallback(() => {
         isMouseDownRef.current = false
@@ -2862,46 +1958,14 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                     alignItems: 'center', padding: '10px 0', gap: 4,
                     overflowY: 'auto',
                 }}>
-                    {TOOLS.map(t => {
-                        const isActive = tool === t.id
-                        return (
-                            <button
-                                key={t.id}
-                                title={`${t.label} (${t.key})`}
-                                onClick={() => { setTool(t.id); setDrawStart(null); setDrawRect(null) }}
-                                style={{
-                                    width: 52, height: 52,
-                                    borderRadius: 10,
-                                    border: isActive
-                                        ? '1.5px solid rgba(99,102,241,0.7)'
-                                        : '1.5px solid transparent',
-                                    background: isActive
-                                        ? 'rgba(99,102,241,0.22)'
-                                        : 'transparent',
-                                    color: 'white',
-                                    opacity: isActive ? 1 : 0.5,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 3,
-                                    transition: 'all 130ms',
-                                    flexShrink: 0,
-                                }}
-                            >
-                                {ToolIcons[t.id]}
-                                <span style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: '0.04em', opacity: 0.7 }}>
-                                    {t.key}
-                                </span>
-                            </button>
-                        )
-                    })}
+                    <Toolbar tool={tool} setTool={setTool} />
+
                     <div style={{ flex: 1 }} />
                     <div style={{ fontSize: 9, color: 'rgba(100,116,139,0.4)', textAlign: 'center', lineHeight: 1.7, paddingBottom: 4 }}>
                         <div>{fp.rooms.length}R</div>
                         <div>{fp.lineSegments.length}W</div>
                         <div>{fp.openings.length}O</div>
+                        <div>{(fp.stairs ?? []).length}S</div>
                     </div>
                 </div>
 
@@ -2946,14 +2010,18 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                             ))}
                         </div>
                     )}
+
                     {/* Tool hint */}
                     <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: 'rgba(10,9,7,0.82)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '5px 12px', fontSize: 11, color: 'rgba(100,116,139,0.8)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                         {tool === 'select' && 'Click to select · Drag room/node · Click segment to drag whole wall'}
-                        {tool === 'pan' && 'Click and drag to pan the canvas'}                        {tool === 'room' && (drawStart ? 'Drag to set room size · Release to place' : 'Click and drag to draw a room')}
+                        {tool === 'pan' && 'Click and drag to pan the canvas'}
+                        {tool === 'room' && (drawStart ? 'Drag to set room size · Release to place' : 'Click and drag to draw a room')}
                         {tool === 'line' && (lineActiveNodeRef.current ? 'Click to continue wall · Click existing node to close' : 'Click to start a wall segment')}
                         {tool === 'bend' && (lineActiveNodeRef.current ? 'Click to place curved wall point · Click existing node to close' : 'Click to start a curved wall')}
-                        {tool === 'door' && 'Click on a room wall or line wall to place a door'}
-                        {tool === 'window' && 'Click on a room wall or line wall to place a window'}
+                        {isDoorTool && 'Click on a room wall or line wall to place a door'}
+                        {isWindowTool && 'Click on a room wall or line wall to place a window'}
+                        {isOpeningTool && 'Click on a room wall or line wall to place an opening'}
+                        {isStairsTool && 'Click and drag to place stairs · Drag to set orientation'}
                         {tool === 'delete' && 'Click on a room, wall or node to delete it'}
                         {tool === 'pencil' && 'Draw freehand — release to create room from bounding box'}
                         {tool === 'annotate' && 'Click anywhere to add a label · Click existing label to edit · Delete tool removes labels'}
@@ -3008,11 +2076,47 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 {/* Right: 3D preview + properties */}
                 <div style={{ width: '45%', flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-                        <div style={{ position: 'absolute', top: 8, left: 10, zIndex: 5, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.5)' }}>3D PREVIEW</div>
+                        <div style={{ position: 'absolute', top: 8, left: 10, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.5)' }}>3D PREVIEW</span>
+                            <button
+                                onClick={() => setWalkMode(w => !w)}
+                                style={{
+                                    height: 24, padding: '0 10px', borderRadius: 6,
+                                    border: walkMode ? '1px solid rgba(34,197,94,0.6)' : '1px solid rgba(255,255,255,0.15)',
+                                    background: walkMode ? 'rgba(34,197,94,0.2)' : 'rgba(10,9,7,0.75)',
+                                    color: walkMode ? 'rgba(34,197,94,0.95)' : 'rgba(148,163,184,0.7)',
+                                    fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 4,
+                                    transition: 'all 150ms', backdropFilter: 'blur(10px)',
+                                }}
+                            >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                    <circle cx="12" cy="7" r="4" />
+                                </svg>
+                                {walkMode ? 'Exit Walk' : 'Walk Mode'}
+                            </button>
+                        </div>
+                        {walkMode && (
+                            <div style={{
+                                position: 'absolute', top: 40, left: 10, zIndex: 5,
+                                background: 'rgba(10,9,7,0.85)', border: '1px solid rgba(34,197,94,0.3)',
+                                borderRadius: 8, padding: '8px 12px', fontSize: 10,
+                                color: 'rgba(34,197,94,0.8)', lineHeight: 1.8,
+                                backdropFilter: 'blur(10px)',
+                            }}>
+                                <div style={{ fontWeight: 700, marginBottom: 2 }}>🚶 WALK MODE</div>
+                                <div>Click canvas to lock cursor</div>
+                                <div><kbd style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>W A S D</kbd> Move</div>
+                                <div><kbd style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>Mouse</kbd> Look around</div>
+                                <div><kbd style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>ESC</kbd> Unlock cursor</div>
+                            </div>
+                        )}
                         <Canvas shadows camera={{ position: [8, 10, 12], fov: 50, near: 0.1, far: 500 }} style={{ width: '100%', height: '100%', background: '#0F0E0C' }} onWheel={e => e.stopPropagation()}>
-                            <Scene3D fp={fp} sceneConfig={sceneConfig} />                        </Canvas>
+                            <Scene3D fp={fp} sceneConfig={sceneConfig} walkMode={walkMode} />
+                        </Canvas>
                         {/* Scene config panel — floats over the 3D canvas */}
-                        <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} />
+                        <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} />
                     </div>
 
                     <div style={{ height: 240, flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(10,9,7,0.95)', overflowY: 'auto' }}>

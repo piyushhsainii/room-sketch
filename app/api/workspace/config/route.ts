@@ -83,7 +83,8 @@ export async function POST(request: Request) {
     if (error) throw new Error(error.message);
 
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (error) {
+    console.log(error);
     return NextResponse.json(
       { error: "Failed to save config" },
       { status: 500 },

@@ -4,7 +4,6 @@ import { readSessionFromCookies } from "@/lib/auth/session";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 // GET — returns user's projects (keep existing logic if this file already exists,
-// otherwise this is the full implementation)
 export async function GET() {
   const session = await readSessionFromCookies();
   if (!session || !session.userId)

@@ -11,9 +11,10 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useState } from 'react'
 import type { SceneJSON } from '@/types/workspace'
-import type { FloorPlanState, SceneConfig } from '@/components/workspace/FloorPlanEditor'
+import type { SceneConfig } from '@/components/workspace/FloorPlanEditor'
 import { createSupabaseAdmin } from '@/lib/supabase/admin'
 import { floorPlanStateToSceneJSON } from '@/lib/workspace/floorPlanConvertor'
+import { FloorPlanState } from './Tools/constants'
 
 // Lazy-load the editor (Three.js is heavy)
 const FloorPlanEditor = dynamic(

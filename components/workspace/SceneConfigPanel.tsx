@@ -2,7 +2,6 @@ import { useMemo, useState } from "react"
 import { RoomSceneConfig, SceneConfig } from "./FloorPlanEditor"
 import { DEFAULT_SCENE_CONFIG, DOOR_STYLES, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, WALL_COLORS } from "./Tools/constants"
 import { deriveClosedPolygons } from "@/lib/helpers"
-import * as THREE from 'three'
 
 export function SceneConfigPanel({
     fp, config, onChange, onChangeFp, embedded
@@ -22,16 +21,13 @@ export function SceneConfigPanel({
     const derivedPolygons = useMemo(() => deriveClosedPolygons(fp.lineNodes, fp.lineSegments), [fp.lineNodes, fp.lineSegments])
 
     function patchRoom(patch: Partial<RoomSceneConfig>) {
-
         const targetIds = applyAll ? fp.rooms.map(r => r.id) : [selectedRoomId]
         let rooms = [...config.rooms]
         for (const id of targetIds) {
             const existing = rooms.find(r => r.roomId === id)
-            if (existing) {
-                rooms = rooms.map(r => r.roomId === id ? { ...r, ...patch } : r)
-            } else {
-                rooms = [...rooms, { roomId: id, wallColor: '#8B7B6B', floorMaterial: 'wood' as FloorMaterial, ...patch }]
-            }
+            rooms = existing
+                ? rooms.map(r => r.roomId === id ? { ...r, ...patch } : r)
+                : [...rooms, { roomId: id, ...patch }]
         }
         onChange({ ...config, rooms })
     }
@@ -300,9 +296,5 @@ function CfgToggle({ label, value, onChange }: { label: string; value: boolean; 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 
 function getRoomSceneCfg(config: SceneConfig, roomId: string): RoomSceneConfig {
-    return config.rooms.find(r => r.roomId === roomId) ?? {
-        roomId,
-        wallColor: '#FFFFFF',
-        floorMaterial: 'plain',
-    }
+    return config.rooms.find(r => r.roomId === roomId) ?? { roomId }
 }

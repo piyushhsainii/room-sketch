@@ -469,3 +469,21 @@ export const FURNITURE_LABELS: Record<FurnitureType, string> = {
     wardrobe: 'WRB', bathtub: 'Bath', toilet: 'WC', plant: '♣',
     chair: 'Chr', coffee_table: 'C.T',
 }
+
+export const OPENING_VARIANT_LABELS: Record<string, string> = {
+    'door-swing-single': 'Single Swing Door',
+    'door-swing-double': 'Double Swing Door',
+    'door-sliding': 'Sliding Door',
+    'door-pocket': 'Pocket Door',
+    'door-folding': 'Bi-fold Door',
+    'door-garage': 'Garage Door',
+    'window-fixed': 'Fixed Window',
+    'window-sliding': 'Sliding Window',
+    'window-casement': 'Casement Window',
+    'window-bay': 'Bay Window',
+    'window-skylight': 'Skylight',
+    'opening-archway': 'Archway',
+    'opening-passage': 'Open Passage',
+}
+
+

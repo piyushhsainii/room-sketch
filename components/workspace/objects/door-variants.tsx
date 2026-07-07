@@ -12,44 +12,72 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
     const inward = op.swingDirection !== 'outward'
     const swingSign = inward ? 1 : -1
     const variant = op.variant ?? 'door-swing-single'
-    const T = 0.04 // panel thickness
+    const T = 0.045 // panel thickness
 
-    // World-space anchor for the opening's centerline (no swing/offset applied)
     const basePos: [number, number, number] = wallAxis === 'x'
         ? [room.x + opMid, op.height / 2, wPos[2]]
         : [wPos[0], op.height / 2, room.z + opMid]
 
-    function swingingPanel(hingeSign: 1 | -1, panelWidth: number, panelOffset: number, keySuffix: string, angleOverride?: number) {
-        const openAngle = angleOverride ?? (Math.PI / 6) * swingSign
-        const hingeOffset = hingeSign * (panelWidth / 2) + panelOffset
-        const pos: [number, number, number] = wallAxis === 'x'
-            ? [room.x + opMid + hingeOffset - hingeSign * (panelWidth / 2) * Math.cos(openAngle) + hingeSign * (panelWidth / 2), op.height / 2, wPos[2] + (panelWidth / 2) * Math.sin(openAngle)]
-            : [wPos[0] + (panelWidth / 2) * Math.sin(openAngle), op.height / 2, room.z + opMid + hingeOffset - hingeSign * (panelWidth / 2) * Math.cos(openAngle) + hingeSign * (panelWidth / 2)]
-        const rot: [number, number, number] = wallAxis === 'x' ? [0, openAngle, 0] : [0, openAngle + Math.PI / 2, 0]
+    // Renders one door leaf, hinged at one edge, at a given open angle.
+    // angle = 0 → flush/closed, regardless of hingeSign or centerOffset.
+    function DoorFace({ width, height }: { width: number; height: number }) {
+        const inset = Math.min(0.06, width * 0.08)
         return (
-            <mesh key={keySuffix} position={pos} rotation={rot} castShadow>
-                <boxGeometry args={[panelWidth, op.height, T]} />
-                <DoorMat style={doorStyle} />
-            </mesh>
+            <group>
+                <mesh castShadow receiveShadow>
+                    <boxGeometry args={[width, height, T]} />
+                    <DoorMat style={doorStyle} />
+                </mesh>
+                {/* upper panel */}
+                <mesh position={[0, height * 0.2, T / 2 + 0.003]}>
+                    <boxGeometry args={[width - inset * 2, height * 0.42, 0.006]} />
+                    <meshStandardMaterial color="#EDEDEA" roughness={0.55} />
+                </mesh>
+                {/* lower panel */}
+                <mesh position={[0, -height * 0.24, T / 2 + 0.003]}>
+                    <boxGeometry args={[width - inset * 2, height * 0.42, 0.006]} />
+                    <meshStandardMaterial color="#EDEDEA" roughness={0.55} />
+                </mesh>
+                {/* handle */}
+                <mesh position={[width / 2 - inset - 0.03, 0, T / 2 + 0.02]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+                    <cylinderGeometry args={[0.012, 0.012, 0.11, 12]} />
+                    <meshStandardMaterial color="#B9B9B4" metalness={0.55} roughness={0.35} />
+                </mesh>
+            </group>
+        )
+    }
+
+    function swingingPanel(hingeSign: 1 | -1, panelWidth: number, centerOffset: number, key: string, openAngle: number) {
+        // Hinge sits at the edge opposite the direction the panel extends when flush.
+        const hingeAlong = centerOffset - hingeSign * (panelWidth / 2)
+        const along = hingeAlong + hingeSign * (panelWidth / 2) * Math.cos(openAngle)
+        const perp = hingeSign * (panelWidth / 2) * Math.sin(openAngle)
+
+        const pos: [number, number, number] = wallAxis === 'x'
+            ? [room.x + opMid + along, op.height / 2, wPos[2] + perp]
+            : [wPos[0] + perp, op.height / 2, room.z + opMid + along]
+        const rot: [number, number, number] = wallAxis === 'x' ? [0, openAngle, 0] : [0, openAngle + Math.PI / 2, 0]
+
+        return (
+            <group key={key} position={pos} rotation={rot}>
+                <DoorFace width={panelWidth} height={op.height} />
+            </group>
         )
     }
 
     switch (variant) {
         case 'door-swing-double': {
             const half = op.width / 2
-            const leftOffset = wallAxis === 'x' ? -half / 2 : -half / 2
             return (
                 <group>
-                    {swingingPanel(-1, half, -half / 2, 'doorL', (Math.PI / 6))}
-                    {swingingPanel(1, half, half / 2, 'doorR', -(Math.PI / 6))}
+                    {swingingPanel(-1, half, -half / 2, 'doorL', 0)}
+                    {swingingPanel(1, half, half / 2, 'doorR', 0)}
                 </group>
             )
         }
 
         case 'door-sliding':
         case 'door-pocket': {
-            // Panel slides along the wall — no rotation, offset toward one side.
-            // Pocket doors slide fully "into" the wall so only a sliver stays visible.
             const slideFrac = variant === 'door-pocket' ? 0.88 : 0.5
             const offset = op.width * slideFrac
             const visibleWidth = variant === 'door-pocket' ? op.width * (1 - slideFrac) + 0.06 : op.width
@@ -66,7 +94,6 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
         }
 
         case 'door-folding': {
-            // Accordion — several narrow panels alternating a small fold angle.
             const panelCount = 4
             const panelW = op.width / panelCount
             const foldAngle = Math.PI / 8
@@ -89,8 +116,6 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
         }
 
         case 'door-garage': {
-            // Rolled up into slats near the header — represented as a stack of
-            // thin horizontal slats near the top of the opening.
             const slats = 5
             const slatH = Math.min(0.5, op.height * 0.4) / slats
             const panels: React.ReactNode[] = []
@@ -112,6 +137,6 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
 
         case 'door-swing-single':
         default:
-            return swingingPanel(-1, op.width, 0, 'doorSingle')
+            return swingingPanel(-1, op.width, 0, 'doorSingle', 0)
     }
 }

@@ -3,29 +3,51 @@
 @import "tailwindcss";
 
 :root {
-  --color-bg: #F8FAFC;
+  --color-bg: #f8fafc;
   --color-surface: rgba(255, 255, 255, 0.86);
   --color-surface-2: rgba(255, 255, 255, 1);
-  --color-border: #E2E8F0;
+  --color-border: #e2e8f0;
 
-  --color-text-primary: #0F172A;
-  --color-text-secondary: #64748B;
-  --color-text-tertiary: #94A3B8;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #64748b;
+  --color-text-tertiary: #94a3b8;
 
-  --color-accent: #4F46E5;
-  --color-accent-hover: #4338CA;
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
   --color-accent-light: rgba(79, 70, 229, 0.14);
 
-  --color-success: #10B981;
+  --color-success: #10b981;
   --color-success-light: rgba(16, 185, 129, 0.14);
   --color-warning: #f59e0b;
-  --color-danger: #EF4444;
+  --color-danger: #ef4444;
   --color-danger-light: rgba(239, 68, 68, 0.14);
 
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-elevated: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
-  --shadow-modal: 0 20px 60px rgba(0,0,0,0.15);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-elevated:
+    0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.15);
   --shadow-soft: 0 20px 60px rgba(15, 23, 42, 0.12);
+  --fp-text: #1a1a1a;
+  --fp-text-muted: rgba(26, 26, 26, 0.6);
+  --fp-text-faint: rgba(26, 26, 26, 0.4);
+  --fp-border: rgba(15, 15, 15, 0.1);
+  --fp-border-strong: rgba(15, 15, 15, 0.18);
+  --fp-bg: #ffffff;
+  --fp-bg-subtle: #f7f7f5;
+  --fp-bg-hover: #f0f0ee;
+  --fp-bg-canvas: #fafaf8;
+  --fp-accent: #6366f1;
+  --fp-accent-bg: rgba(99, 102, 241, 0.1);
+  --fp-accent-bg-strong: rgba(99, 102, 241, 0.14);
+  --fp-accent-border: rgba(99, 102, 241, 0.5);
+  --fp-danger: #dc2626;
+  --fp-danger-bg: rgba(220, 38, 38, 0.06);
+  --fp-danger-border: rgba(220, 38, 38, 0.3);
+  --fp-success: #059669;
+  --fp-success-bg: rgba(16, 185, 129, 0.12);
+  --fp-success-border: rgba(16, 185, 129, 0.5);
+  --fp-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --fp-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 /* ── Secondary color palette ───────────────────────────────────────────── */
@@ -265,8 +287,8 @@ body {
   left: 0;
   width: 220px;
   height: 100vh;
-  background: #FFFFFF;
-  border-right: 1px solid #E2E8F0;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   z-index: 10;
@@ -2353,7 +2375,7 @@ button:hover .ra-sparkIcon {
 }
 
 .ra-skeleton {
-  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
   background-size: 200% 100%;
   animation: revampShimmer 1.5s infinite;
   border-radius: 8px;

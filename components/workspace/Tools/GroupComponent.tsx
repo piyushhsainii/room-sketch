@@ -150,17 +150,17 @@ export function GroupButton({
                     onClick={() => onSelect(currentLeaf.id)}
                     style={{
                         width: 48, height: 48, borderRadius: 10,
-                        border: isActive ? '1.5px solid rgba(99,102,241,0.7)' : hover ? '1.5px solid rgba(148,163,184,0.35)' : '1.5px solid transparent',
-                        background: isActive ? 'rgba(99,102,241,0.22)' : hover ? 'rgba(148,163,184,0.1)' : 'transparent',
-                        color: 'white',
-                        opacity: isActive ? 1 : hover ? 0.9 : 0.5,
+                        border: isActive ? '1.5px solid rgba(99,102,241,0.7)' : hover ? '1.5px solid rgba(15,15,15,0.14)' : '1.5px solid transparent',
+                        background: isActive ? 'rgba(99,102,241,0.14)' : hover ? 'rgba(15,15,15,0.05)' : 'transparent',
+                        color: isActive ? '#6366F1' : '#1A1A1A',
                         cursor: 'pointer',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                         position: 'relative',
+                        opacity: isActive ? 1 : hover ? 0.95 : 0.65,
                         transform: pressed ? 'scale(0.92)' : hover ? 'scale(1.06)' : 'scale(1)',
                         boxShadow: isActive
-                            ? '0 0 0 1px rgba(99,102,241,0.15), 0 4px 12px rgba(99,102,241,0.25)'
-                            : hover ? '0 3px 8px rgba(0,0,0,0.25)' : 'none',
+                            ? '0 0 0 1px rgba(99,102,241,0.15), 0 4px 12px rgba(99,102,241,0.18)'
+                            : hover ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
                         transition: 'transform 150ms cubic-bezier(0.34,1.56,0.64,1), background 130ms, border-color 130ms, box-shadow 180ms, opacity 130ms',
                         flexShrink: 0,
                     }}
@@ -174,7 +174,7 @@ export function GroupButton({
                         }} />
                     )}
                     {currentLeaf.icon}
-                    <span style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: '0.04em', opacity: 0.7 }}>
+                    <span style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: '0.04em', opacity: 0.7, color: 'inherit' }}>
                         {currentLeaf.key ?? ''}
                     </span>
                     {hasVariants && (
@@ -202,12 +202,12 @@ export function GroupButton({
                         opacity: flyoutOpen ? 1 : 0,
                         pointerEvents: flyoutOpen ? 'auto' : 'none',
                         transition: 'opacity 130ms ease, transform 130ms cubic-bezier(0.34,1.56,0.64,1)',
-                        background: 'rgba(15,23,42,0.98)', border: '1px solid rgba(148,163,184,0.15)',
-                        borderRadius: 12, padding: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+                        background: '#FFFFFF', border: '1px solid rgba(15,15,15,0.1)',
+                        borderRadius: 12, padding: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.12)',
                         zIndex: 9999, width: 200,
                     }}
                 >
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: 'rgba(148,163,184,0.7)', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 2 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: 'rgba(26,26,26,0.5)', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 2 }}>
                         {group.label}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
@@ -222,15 +222,14 @@ export function GroupButton({
                                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                                         padding: '8px 4px', borderRadius: 8,
                                         border: selected ? '1px solid rgba(99,102,241,0.6)' : '1px solid transparent',
-                                        background: selected ? 'rgba(99,102,241,0.18)' : 'transparent',
-                                        color: 'white', cursor: 'pointer', transition: 'background 120ms, transform 120ms',
+                                        background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
+                                        color: '#1A1A1A', cursor: 'pointer', transition: 'background 120ms, transform 120ms',
                                     }}
                                     onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.06)')}
                                     onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
                                 >
                                     {leaf.icon}
-                                    <span style={{ fontSize: 8, fontWeight: 500, textAlign: 'center', lineHeight: 1.15, opacity: 0.85 }}>
-                                        {leaf.label}
+                                    <span style={{ fontSize: 8, fontWeight: 500, textAlign: 'center', lineHeight: 1.15, opacity: 0.75, color: 'inherit' }}>                                        {leaf.label}
                                     </span>
                                 </button>
                             )

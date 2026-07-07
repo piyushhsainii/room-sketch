@@ -25,7 +25,10 @@ function WallMatPBR({ color, roughness }: { color: string; roughness: number }) 
     )
 }
 
-export function WallMat({ color, roughness }: { color: string; roughness: number }) {
+export function WallMat({ color, roughness, textured = false }: { color: string; roughness: number; textured?: boolean }) {
+    if (!textured) {
+        return <meshStandardMaterial color={color} roughness={roughness} metalness={0} />
+    }
     return (
         <Suspense fallback={<meshStandardMaterial color={color} roughness={roughness} metalness={0} />}>
             <WallMatPBR color={color} roughness={roughness} />

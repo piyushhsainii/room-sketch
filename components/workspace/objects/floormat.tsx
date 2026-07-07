@@ -47,6 +47,9 @@ function FloorMatFallback({ mat }: { mat: string }) {
 }
 
 export function FloorMat({ mat, worldWidth, worldDepth }: { mat: string; worldWidth?: number; worldDepth?: number }) {
+    if (mat === 'plain') {
+        return <meshStandardMaterial color="#F2F2F0" roughness={0.95} metalness={0} />
+    }
     const cfg = FLOOR_TEX[mat] ?? FLOOR_TEX['wood']!
     return (
         <Suspense fallback={<FloorMatFallback mat={mat} />}>

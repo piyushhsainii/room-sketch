@@ -1,5 +1,25 @@
-import DashboardClient from "@/components/dashboard/DashboardClient";
+import BenchStrip from "@/components/landing/BenchStrip";
+import Capabilities from "@/components/landing/Capabilities";
+import FinalCta from "@/components/landing/FinalCta";
+import Footer from "@/components/landing/Footer";
+import Hero from "@/components/landing/Hero";
+import HowItWorks from "@/components/landing/HowItWorks";
+import Nav from "@/components/landing/Nav";
+import Pricing from "@/components/landing/Pricing";
+import ScrollReveal from "@/components/landing/ScrollReveal";
 
 export default function Home() {
-  return <DashboardClient />;
+  return (
+    <main>
+      <ScrollReveal />
+      <Nav />
+      <Hero />
+      <BenchStrip />
+      <HowItWorks />
+      <Capabilities />
+      <Pricing />
+      <FinalCta />
+      <Footer />
+    </main>
+  );
 }

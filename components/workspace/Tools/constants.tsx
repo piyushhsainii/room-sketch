@@ -79,7 +79,7 @@ export type LineSegment = {
     closed: boolean
 }
 
-export type FloorMaterial = 'wood' | 'marble' | 'concrete' | 'tiles' | 'fabric' | 'plaster'
+export type FloorMaterial = 'wood' | 'marble' | 'concrete' | 'tiles' | 'fabric' | 'plaster' | 'plain'
 export type DoorStyle = 'natural' | 'white' | 'dark' | 'glass'
 
 
@@ -100,6 +100,7 @@ export type PlacedFurniture = {
 
 
 export const FLOOR_MATERIALS: { id: FloorMaterial; label: string; preview: string; roughness: number; color: string }[] = [
+    { id: 'plain', label: 'Plain', preview: '🪵', roughness: 0.7, color: '#C8A878' },
     { id: 'wood', label: 'Wood', preview: '🪵', roughness: 0.7, color: '#C8A878' },
     { id: 'marble', label: 'Marble', preview: '⬜', roughness: 0.12, color: '#EAE6E0' },
     { id: 'concrete', label: 'Concrete', preview: '🩶', roughness: 0.92, color: '#A8A8A8' },
@@ -342,14 +343,16 @@ export const TOOL_GROUPS: ToolGroup[] = [
 ]
 
 
+// wherever DEFAULT_SCENE_CONFIG is defined (constants.ts), it should read:
 export const DEFAULT_SCENE_CONFIG: SceneConfig = {
-    ambientIntensity: 2.0,
-    wallRoughness: 0.85,
+    ambientIntensity: 0.9,
+    wallRoughness: 0.95,     // higher roughness = flatter, less specular highlight
+    wallTextured: false,
     showFurniture: true,
     showLabels: true,
     fogEnabled: false,
     doorStyle: 'natural',
-    globalFloorMaterial: 'wood',
+    globalFloorMaterial: 'plain', // add a 'plain' entry to FLOOR_MATERIALS
     rooms: [],
 }
 export const WALL_COLORS = [
@@ -362,7 +365,7 @@ export const WALL_COLORS = [
 
 export const TEXTURE_BASE = '/textures'
 
-export const FLOOR_TEXTURE_URLS: Record<FloorMaterial, {
+export const FLOOR_TEXTURE_URLS: Record<Exclude<FloorMaterial, 'plain'>, {
     map: string; normalMap: string; roughnessMap: string; repeat: number
     roughness: number; metalness: number
 }> = {

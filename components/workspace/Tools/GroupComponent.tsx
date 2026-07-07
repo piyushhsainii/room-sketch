@@ -39,7 +39,7 @@ function Tooltip({ label, shortcut, children }: { label: string; shortcut?: stri
                     role="tooltip"
                     style={{
                         position: 'fixed',
-                        top: rect.top + rect.height / 2,
+                        top: rect.top + rect.height / 2 - 60,
                         left: rect.right + 10,
                         transform: `translateY(-50%) translateX(${visible ? '0px' : '-4px'}) scale(${visible ? 1 : 0.92})`,
                         opacity: visible ? 1 : 0,

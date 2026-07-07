@@ -15,6 +15,9 @@ import { SceneConfigPanel } from './SceneConfigPanel'
 import { FurnitureMesh } from './furniture/furnitureMesh'
 import { StairsMesh } from './furniture/stairsMesh'
 import { WalkModeControls } from './WalkModeControls'
+import { DoorVariant3D } from './objects/door-variants'
+import { Dock } from '../ui/Dock'
+import { Sheet } from '../ui/Sheet'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -763,30 +766,16 @@ function Room3D({ room, openings, roomHeight, wallColor = '#FFFFFF', wallRoughne
                         }
 
                         if (op.type === 'door') {
-                            const inward = op.swingDirection !== 'outward'
-                            const swingSign = inward ? 1 : -1
-                            const opMid = op.position
-                            const openAngle = (Math.PI / 6) * swingSign // 30° open
-                            // Hinge at one edge of the opening
-                            const hingeOffset = -op.width / 2
-                            // For x-axis walls, the door swings along z; for z-axis walls, along x
-                            const doorPos: [number, number, number] = wall.axis === 'x'
-                                ? [
-                                    room.x + opMid + hingeOffset + (op.width / 2) * Math.cos(openAngle),
-                                    op.height / 2,
-                                    wPos[2] + (op.width / 2) * Math.sin(openAngle)
-                                ]
-                                : [
-                                    wPos[0] + (op.width / 2) * Math.sin(openAngle),
-                                    op.height / 2,
-                                    room.z + opMid + hingeOffset + (op.width / 2) * Math.cos(openAngle)
-                                ]
-                            const doorRot: [number, number, number] = wall.axis === 'x'
-                                ? [0, openAngle, 0]
-                                : [0, openAngle + Math.PI / 2, 0]
-                            panels.push(<mesh key={`door${i}`} position={doorPos} rotation={doorRot} castShadow><boxGeometry args={[op.width, op.height, 0.04]} />
-                                <DoorMat style={doorStyle} />
-                            </mesh>)
+                            panels.push(
+                                <DoorVariant3D
+                                    key={`door${i}`}
+                                    op={op}
+                                    wallAxis={wall.axis}
+                                    room={room}
+                                    wPos={wPos}
+                                    doorStyle={doorStyle}
+                                />
+                            )
                         }
 
                         cursor = op.position + op.width / 2
@@ -1010,9 +999,7 @@ function PropsPanel({ fp, selectedId, onChange, onDelete }: {
                     </button>
                 </div>
             </>}
-            <PropField label="Textured walls">
-                <input type="checkbox" checked={config.wallTextured} onChange={e => onChange({ ...config, wallTextured: e.target.checked })} />
-            </PropField>
+
             <button onClick={onDelete} style={{ marginTop: 4, height: 28, borderRadius: 6, border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: 'rgba(248,113,113,0.8)', fontSize: 11, cursor: 'pointer' }}>
                 Delete {room ? 'room' : opening ? 'opening' : node ? 'node' : furniture ? 'furniture' : stairs ? 'stairs' : 'segment'}
             </button>
@@ -1058,6 +1045,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
     const [isFullscreen, setIsFullscreen] = useState(false)
+    const [sheetOpen, setSheetOpen] = useState(false)
     const editorRef = useRef<HTMLDivElement>(null)
     const drawStartRef = useRef<{ x: number; z: number } | null>(null)
     const drawRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
@@ -2319,7 +2307,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                             </div>
 
                             {/* Docked tabs: Properties | Scene Config */}
-                            <div style={{ borderTop: `1px solid ${THEME.border}`, background: THEME.bgPanel, display: 'flex', flexDirection: 'column', height: 340, flexShrink: 0 }}>
+                            {/* <div style={{ borderTop: `1px solid ${THEME.border}`, background: THEME.bgPanel, display: 'flex', flexDirection: 'column', height: 340, flexShrink: 0 }}>
                                 <div style={{ display: 'flex', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0 }}>
                                     {(['properties', 'scene'] as const).map(t => (
                                         <button
@@ -2364,15 +2352,96 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                         />
                                     )}
                                     {rightTab === 'scene' && (
-                                        <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} />
-
+                                        <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} embedded />
                                     )}
                                 </div>
-                            </div>
+                            </div> */}
                         </div>
                     )}
                 </div>
             </div>
+            <Dock
+                items={[
+                    {
+                        id: 'properties',
+                        label: 'Properties',
+                        active: sheetOpen && rightTab === 'properties',
+                        onClick: () => { setRightTab('properties'); setSheetOpen(true) },
+                        icon: (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="7" height="7" rx="1" />
+                                <rect x="14" y="3" width="7" height="7" rx="1" />
+                                <rect x="14" y="14" width="7" height="7" rx="1" />
+                                <rect x="3" y="14" width="7" height="7" rx="1" />
+                            </svg>
+                        ),
+                    },
+                    {
+                        id: 'scene',
+                        label: 'Scene Config',
+                        active: sheetOpen && rightTab === 'scene',
+                        onClick: () => { setRightTab('scene'); setSheetOpen(true) },
+                        icon: (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="3" />
+                                <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41" />
+                            </svg>
+                        ),
+                    },
+                ]}
+            />
+            <Sheet
+                open={sheetOpen}
+                onOpenChange={setSheetOpen}
+                width={340}
+                title={
+                    <div style={{ display: 'flex', gap: 2, background: THEME.bg === '#F7F7F5' ? 'rgba(0,0,0,0.04)' : undefined, borderRadius: 7, padding: 3 }}>
+                        {(['properties', 'scene'] as const).map(t => (
+                            <button
+                                key={t}
+                                onClick={() => setRightTab(t)}
+                                style={{
+                                    height: 26, padding: '0 10px', borderRadius: 5, border: 'none',
+                                    background: rightTab === t ? THEME.accent : 'transparent',
+                                    color: rightTab === t ? 'white' : THEME.textMuted,
+                                    fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 150ms',
+                                }}
+                            >
+                                {t === 'properties' ? 'PROPERTIES' : 'SCENE CONFIG'}
+                            </button>
+                        ))}
+                    </div>
+                }
+            >
+                {rightTab === 'properties' && (
+                    <PropsPanel
+                        fp={fp}
+                        selectedId={selectedId}
+                        onChange={setFp}
+                        onDelete={() => {
+                            if (!selectedId) return
+                            setFp(prev => {
+                                const isRoom = prev.rooms.some(r => r.id === selectedId)
+                                const isNode = prev.lineNodes.some(n => n.id === selectedId)
+                                const isSeg = prev.lineSegments.some(s => s.id === selectedId)
+                                const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
+                                const isStairs = (prev.stairs ?? []).some(st => st.id === selectedId)
+
+                                if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
+                                if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
+                                if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
+                                if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
+                                if (isStairs) return { ...prev, stairs: (prev.stairs ?? []).filter(st => st.id !== selectedId) }
+                                return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
+                            })
+                            setSelectedId(null)
+                        }}
+                    />
+                )}
+                {rightTab === 'scene' && (
+                    <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} embedded />
+                )}
+            </Sheet>
         </div>
     )
 }

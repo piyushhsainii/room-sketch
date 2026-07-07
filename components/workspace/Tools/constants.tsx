@@ -351,7 +351,7 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
     showFurniture: true,
     showLabels: true,
     fogEnabled: false,
-    doorStyle: 'natural',
+    doorStyle: 'white',
     globalFloorMaterial: 'plain', // add a 'plain' entry to FLOOR_MATERIALS
     rooms: [],
 }

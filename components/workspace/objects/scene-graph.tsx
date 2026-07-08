@@ -44,58 +44,62 @@ function buildSceneGraph(fp: FloorPlanState) {
     ]
 }
 
+import { ScrollableList } from "../../ui/ScrollableList"
+
 export function SceneGraphPanel({ fp, selectedId, onSelect }: {
     fp: FloorPlanState
     selectedId: string | null
     onSelect: (id: string) => void
 }) {
-    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ models: true, walls: false, doors: true, windows: true, openings: false, rooms: true, annotations: false })
+    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})  // ← closed by default
     const groups = buildSceneGraph(fp)
 
     return (
         <div style={{ padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(100,116,139,0.6)', padding: '2px 6px 6px' }}>SCENE GRAPH</div>
-            {groups.map(g => (
-                <div key={g.key}>
-                    <button
-                        onClick={() => setOpenGroups(prev => ({ ...prev, [g.key]: !prev[g.key] }))}
-                        style={{
-                            width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-                            height: 30, padding: '0 6px', background: 'transparent', border: 'none',
-                            cursor: 'pointer', borderRadius: 6, color: THEME.text, fontSize: 12, fontWeight: 600,
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"
-                            style={{ transform: openGroups[g.key] ? 'rotate(90deg)' : 'none', transition: 'transform 120ms', flexShrink: 0 }}>
-                            <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                        <span style={{ flex: 1, textAlign: 'left' }}>{g.label}</span>
-                        <span style={{ fontSize: 11, color: 'rgba(100,116,139,0.6)', fontWeight: 400 }}>{g.entries.length}</span>
-                    </button>
-                    {openGroups[g.key] && g.entries.map(entry => (
+            <ScrollableList maxHeight={320}>
+                {groups.map(g => (
+                    <div key={g.key}>
                         <button
-                            key={entry.id}
-                            onClick={() => onSelect(entry.id)}
+                            onClick={() => setOpenGroups(prev => ({ ...prev, [g.key]: !prev[g.key] }))}
                             style={{
                                 width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-                                height: 26, padding: '0 6px 0 26px', background: selectedId === entry.id ? 'rgba(99,102,241,0.12)' : 'transparent',
-                                border: 'none', cursor: 'pointer', borderRadius: 6,
-                                color: selectedId === entry.id ? THEME.accent : 'rgba(71,85,105,0.85)', fontSize: 11.5,
+                                height: 30, padding: '0 6px', background: 'transparent', border: 'none',
+                                cursor: 'pointer', borderRadius: 6, color: THEME.text, fontSize: 12, fontWeight: 600,
                             }}
-                            onMouseEnter={e => { if (selectedId !== entry.id) e.currentTarget.style.background = 'rgba(0,0,0,0.03)' }}
-                            onMouseLeave={e => { if (selectedId !== entry.id) e.currentTarget.style.background = 'transparent' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.04)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                            <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.label}</span>
-                            {entry.sub && <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.5)', flexShrink: 0 }}>{entry.sub}</span>}
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"
+                                style={{ transform: openGroups[g.key] ? 'rotate(90deg)' : 'none', transition: 'transform 120ms', flexShrink: 0 }}>
+                                <polyline points="9 18 15 12 9 6" />
+                            </svg>
+                            <span style={{ flex: 1, textAlign: 'left' }}>{g.label}</span>
+                            <span style={{ fontSize: 11, color: 'rgba(100,116,139,0.6)', fontWeight: 400 }}>{g.entries.length}</span>
                         </button>
-                    ))}
-                    {openGroups[g.key] && g.entries.length === 0 && (
-                        <div style={{ padding: '4px 6px 6px 26px', fontSize: 10.5, color: 'rgba(100,116,139,0.4)' }}>None yet</div>
-                    )}
-                </div>
-            ))}
+                        {openGroups[g.key] && g.entries.map(entry => (
+                            <button
+                                key={entry.id}
+                                onClick={() => onSelect(entry.id)}
+                                style={{
+                                    width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                                    height: 26, padding: '0 6px 0 26px', background: selectedId === entry.id ? 'rgba(99,102,241,0.12)' : 'transparent',
+                                    border: 'none', cursor: 'pointer', borderRadius: 6,
+                                    color: selectedId === entry.id ? THEME.accent : 'rgba(71,85,105,0.85)', fontSize: 11.5,
+                                }}
+                                onMouseEnter={e => { if (selectedId !== entry.id) e.currentTarget.style.background = 'rgba(0,0,0,0.03)' }}
+                                onMouseLeave={e => { if (selectedId !== entry.id) e.currentTarget.style.background = 'transparent' }}
+                            >
+                                <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.label}</span>
+                                {entry.sub && <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.5)', flexShrink: 0 }}>{entry.sub}</span>}
+                            </button>
+                        ))}
+                        {openGroups[g.key] && g.entries.length === 0 && (
+                            <div style={{ padding: '4px 6px 6px 26px', fontSize: 10.5, color: 'rgba(100,116,139,0.4)' }}>None yet</div>
+                        )}
+                    </div>
+                ))}
+            </ScrollableList>
         </div>
     )
 }

@@ -87,7 +87,9 @@ export type ClosedShape = { id: string; nodeIds: string[]; label: string; color:
 
 export type Annotation = { id: string; x: number; z: number; text: string; fontSize: number }
 
-export type FurnitureType = 'sofa' | 'bed' | 'dining_table' | 'desk' | 'wardrobe' | 'bathtub' | 'toilet' | 'plant' | 'chair' | 'coffee_table'
+export type FurnitureType =
+    | 'sofa' | 'bed' | 'dining_table' | 'desk' | 'wardrobe' | 'bathtub' | 'toilet' | 'plant' | 'chair' | 'coffee_table'
+    | 'single_sofa' | 'lamp' | 'mirror' | 'kitchen_stove' | 'chimney' | 'commode' | 'shower' | 'shoe_rack'
 
 export type PlacedFurniture = {
     id: string
@@ -449,6 +451,14 @@ export const FURNITURE_FOOTPRINTS: Record<FurnitureType, { w: number; d: number 
     plant: { w: 0.4, d: 0.4 },
     chair: { w: 0.55, d: 0.55 },
     coffee_table: { w: 1.2, d: 0.65 },
+    single_sofa: { w: 0.95, d: 0.9 },
+    lamp: { w: 0.35, d: 0.35 },
+    mirror: { w: 0.7, d: 0.06 },
+    kitchen_stove: { w: 0.6, d: 0.6 },
+    chimney: { w: 0.9, d: 0.55 },
+    commode: { w: 0.5, d: 0.45 },
+    shower: { w: 0.9, d: 0.9 },
+    shoe_rack: { w: 0.9, d: 0.32 },
 }
 
 export const FURNITURE_COLORS: Record<FurnitureType, string> = {
@@ -462,12 +472,23 @@ export const FURNITURE_COLORS: Record<FurnitureType, string> = {
     plant: 'rgba(65,140,65,0.88)',
     chair: 'rgba(145,135,115,0.88)',
     coffee_table: 'rgba(140,118,88,0.88)',
+    single_sofa: 'rgba(170,150,125,0.88)',
+    lamp: 'rgba(230,200,120,0.88)',
+    mirror: 'rgba(180,200,215,0.88)',
+    kitchen_stove: 'rgba(90,95,100,0.88)',
+    chimney: 'rgba(60,65,70,0.88)',
+    commode: 'rgba(210,210,205,0.88)',
+    shower: 'rgba(150,190,200,0.88)',
+    shoe_rack: 'rgba(120,95,70,0.88)',
 }
 
 export const FURNITURE_LABELS: Record<FurnitureType, string> = {
     sofa: 'Sofa', bed: 'Bed', dining_table: 'Table', desk: 'Desk',
     wardrobe: 'WRB', bathtub: 'Bath', toilet: 'WC', plant: '♣',
     chair: 'Chr', coffee_table: 'C.T',
+    single_sofa: 'S.Sofa', lamp: 'Lamp', mirror: 'Mirr',
+    kitchen_stove: 'Stove', chimney: 'Chim', commode: 'Cmd',
+    shower: 'Shwr', shoe_rack: 'Shoe',
 }
 
 export const OPENING_VARIANT_LABELS: Record<string, string> = {
@@ -486,4 +507,14 @@ export const OPENING_VARIANT_LABELS: Record<string, string> = {
     'opening-passage': 'Open Passage',
 }
 
+export type FurnitureCategory = 'seating' | 'bedroom' | 'tables' | 'storage' | 'kitchen' | 'bathroom' | 'decor'
 
+export const FURNITURE_CATEGORIES: { id: FurnitureCategory; label: string; items: FurnitureType[] }[] = [
+    { id: 'seating', label: 'Seating', items: ['sofa', 'single_sofa', 'chair'] },
+    { id: 'bedroom', label: 'Bedroom', items: ['bed', 'wardrobe'] },
+    { id: 'tables', label: 'Tables', items: ['dining_table', 'coffee_table', 'desk'] },
+    { id: 'storage', label: 'Storage', items: ['wardrobe', 'shoe_rack'] },
+    { id: 'kitchen', label: 'Kitchen', items: ['kitchen_stove', 'chimney'] },
+    { id: 'bathroom', label: 'Bathroom', items: ['bathtub', 'toilet', 'commode', 'shower'] },
+    { id: 'decor', label: 'Decor', items: ['plant', 'lamp', 'mirror'] },
+]

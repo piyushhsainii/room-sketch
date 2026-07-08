@@ -1,25 +1,37 @@
-import { EditorOpening, EditorRoom } from "../Tools/constants"
+import { EditorOpening } from "../Tools/constants"
 import { DoorMat } from "./doormat"
 
-export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
+/**
+ * Renders a door leaf (or set of leaves) for any wall orientation.
+ *
+ * This is intentionally NOT tied to `EditorRoom`/`wallAxis` (rectangular-room
+ * concepts) — it takes a generic wall `angle` (radians, same convention as
+ * `Math.atan2(dz, dx)` used for line-wall segments) and a `basePos` (world
+ * position of the opening's centerline, at door mid-height). This lets both
+ * `Room3D` (rect rooms) and `LineWalls3D` (freeform line walls) call the
+ * exact same door-rendering code, so every door variant looks identical
+ * regardless of which wall system placed it.
+ *
+ * Wall-panel boxes elsewhere in the codebase are authored as
+ * [length, height, thickness] with length along local X, then rotated by
+ * `-angle` to point along the wall direction — this component follows that
+ * same convention so door leaves land exactly in the opening regardless of
+ * wall angle.
+ */
+export function DoorVariant3D({ op, angle, basePos, doorStyle }: {
     op: EditorOpening
-    wallAxis: 'x' | 'z'
-    room: EditorRoom
-    wPos: [number, number, number]
+    angle: number
+    basePos: [number, number, number]
     doorStyle: string
 }) {
-    const opMid = op.position
     const inward = op.swingDirection !== 'outward'
     const swingSign = inward ? 1 : -1
     const variant = op.variant ?? 'door-swing-single'
     const T = 0.045 // panel thickness
 
-    const basePos: [number, number, number] = wallAxis === 'x'
-        ? [room.x + opMid, op.height / 2, wPos[2]]
-        : [wPos[0], op.height / 2, room.z + opMid]
+    const dirX = Math.cos(angle), dirZ = Math.sin(angle)
+    const perpX = -dirZ, perpZ = dirX
 
-    // Renders one door leaf, hinged at one edge, at a given open angle.
-    // angle = 0 → flush/closed, regardless of hingeSign or centerOffset.
     function DoorFace({ width, height }: { width: number; height: number }) {
         const inset = Math.min(0.06, width * 0.08)
         return (
@@ -28,17 +40,14 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
                     <boxGeometry args={[width, height, T]} />
                     <DoorMat style={doorStyle} />
                 </mesh>
-                {/* upper panel */}
                 <mesh position={[0, height * 0.2, T / 2 + 0.003]}>
                     <boxGeometry args={[width - inset * 2, height * 0.42, 0.006]} />
                     <meshStandardMaterial color="#EDEDEA" roughness={0.55} />
                 </mesh>
-                {/* lower panel */}
                 <mesh position={[0, -height * 0.24, T / 2 + 0.003]}>
                     <boxGeometry args={[width - inset * 2, height * 0.42, 0.006]} />
                     <meshStandardMaterial color="#EDEDEA" roughness={0.55} />
                 </mesh>
-                {/* handle */}
                 <mesh position={[width / 2 - inset - 0.03, 0, T / 2 + 0.02]} rotation={[Math.PI / 2, 0, 0]} castShadow>
                     <cylinderGeometry args={[0.012, 0.012, 0.11, 12]} />
                     <meshStandardMaterial color="#B9B9B4" metalness={0.55} roughness={0.35} />
@@ -47,16 +56,20 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
         )
     }
 
+    // hingeSign: which edge of the opening the leaf is hinged on (-1 = start edge, +1 = end edge)
+    // panelWidth: leaf width. centerOffset: leaf's flush-position center, measured
+    // along the wall from the opening's own center (0 = opening center).
     function swingingPanel(hingeSign: 1 | -1, panelWidth: number, centerOffset: number, key: string, openAngle: number) {
-        // Hinge sits at the edge opposite the direction the panel extends when flush.
         const hingeAlong = centerOffset - hingeSign * (panelWidth / 2)
         const along = hingeAlong + hingeSign * (panelWidth / 2) * Math.cos(openAngle)
         const perp = hingeSign * (panelWidth / 2) * Math.sin(openAngle)
 
-        const pos: [number, number, number] = wallAxis === 'x'
-            ? [room.x + opMid + along, op.height / 2, wPos[2] + perp]
-            : [wPos[0] + perp, op.height / 2, room.z + opMid + along]
-        const rot: [number, number, number] = wallAxis === 'x' ? [0, openAngle, 0] : [0, openAngle + Math.PI / 2, 0]
+        const pos: [number, number, number] = [
+            basePos[0] + dirX * along + perpX * perp,
+            basePos[1],
+            basePos[2] + dirZ * along + perpZ * perp,
+        ]
+        const rot: [number, number, number] = [0, -angle + openAngle, 0]
 
         return (
             <group key={key} position={pos} rotation={rot}>
@@ -68,10 +81,11 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
     switch (variant) {
         case 'door-swing-double': {
             const half = op.width / 2
+            const restAngle = (Math.PI / 40) * swingSign // ~4.5° ajar, still reads closed
             return (
                 <group>
-                    {swingingPanel(-1, half, -half / 2, 'doorL', 0)}
-                    {swingingPanel(1, half, half / 2, 'doorR', 0)}
+                    {swingingPanel(-1, half, -half / 2, 'doorL', restAngle)}
+                    {swingingPanel(1, half, half / 2, 'doorR', -restAngle)}
                 </group>
             )
         }
@@ -81,15 +95,18 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
             const slideFrac = variant === 'door-pocket' ? 0.88 : 0.5
             const offset = op.width * slideFrac
             const visibleWidth = variant === 'door-pocket' ? op.width * (1 - slideFrac) + 0.06 : op.width
-            const pos: [number, number, number] = wallAxis === 'x'
-                ? [basePos[0] + offset, basePos[1], basePos[2]]
-                : [basePos[0], basePos[1], basePos[2] + offset]
-            const size: [number, number, number] = wallAxis === 'x' ? [visibleWidth, op.height, T] : [T, op.height, visibleWidth]
+            const pos: [number, number, number] = [
+                basePos[0] + dirX * offset,
+                basePos[1],
+                basePos[2] + dirZ * offset,
+            ]
             return (
-                <mesh position={pos} castShadow>
-                    <boxGeometry args={size} />
-                    <DoorMat style={doorStyle} />
-                </mesh>
+                <group position={pos} rotation={[0, -angle, 0]}>
+                    <mesh castShadow>
+                        <boxGeometry args={[visibleWidth, op.height, T]} />
+                        <DoorMat style={doorStyle} />
+                    </mesh>
+                </group>
             )
         }
 
@@ -100,16 +117,20 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
             const panels: React.ReactNode[] = []
             for (let i = 0; i < panelCount; i++) {
                 const centerOffset = -op.width / 2 + panelW * (i + 0.5)
-                const angle = (i % 2 === 0 ? 1 : -1) * foldAngle * swingSign
-                const pos: [number, number, number] = wallAxis === 'x'
-                    ? [room.x + opMid + centerOffset, op.height / 2, wPos[2] + Math.abs(Math.sin(angle)) * (panelW / 2)]
-                    : [wPos[0] + Math.abs(Math.sin(angle)) * (panelW / 2), op.height / 2, room.z + opMid + centerOffset]
-                const rot: [number, number, number] = wallAxis === 'x' ? [0, angle, 0] : [0, angle + Math.PI / 2, 0]
+                const angleFold = (i % 2 === 0 ? 1 : -1) * foldAngle * swingSign
+                const perp = Math.abs(Math.sin(angleFold)) * (panelW / 2)
+                const pos: [number, number, number] = [
+                    basePos[0] + dirX * centerOffset + perpX * perp,
+                    basePos[1],
+                    basePos[2] + dirZ * centerOffset + perpZ * perp,
+                ]
                 panels.push(
-                    <mesh key={`fold${i}`} position={pos} rotation={rot} castShadow>
-                        <boxGeometry args={[panelW * 0.96, op.height, T]} />
-                        <DoorMat style={doorStyle} />
-                    </mesh>
+                    <group key={`fold${i}`} position={pos} rotation={[0, -angle + angleFold, 0]}>
+                        <mesh castShadow>
+                            <boxGeometry args={[panelW * 0.96, op.height, T]} />
+                            <DoorMat style={doorStyle} />
+                        </mesh>
+                    </group>
                 )
             }
             return <group>{panels}</group>
@@ -121,15 +142,14 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
             const panels: React.ReactNode[] = []
             for (let i = 0; i < slats; i++) {
                 const y = op.height - slatH * (i + 0.5) - 0.02
-                const pos: [number, number, number] = wallAxis === 'x'
-                    ? [room.x + opMid, y, wPos[2]]
-                    : [wPos[0], y, room.z + opMid]
-                const size: [number, number, number] = wallAxis === 'x' ? [op.width * 0.98, slatH * 0.85, T] : [T, slatH * 0.85, op.width * 0.98]
+                const pos: [number, number, number] = [basePos[0], y, basePos[2]]
                 panels.push(
-                    <mesh key={`slat${i}`} position={pos} castShadow>
-                        <boxGeometry args={size} />
-                        <DoorMat style={doorStyle} />
-                    </mesh>
+                    <group key={`slat${i}`} position={pos} rotation={[0, -angle, 0]}>
+                        <mesh castShadow>
+                            <boxGeometry args={[op.width * 0.98, slatH * 0.85, T]} />
+                            <DoorMat style={doorStyle} />
+                        </mesh>
+                    </group>
                 )
             }
             return <group>{panels}</group>
@@ -137,6 +157,6 @@ export function DoorVariant3D({ op, wallAxis, room, wPos, doorStyle }: {
 
         case 'door-swing-single':
         default:
-            return swingingPanel(-1, op.width, 0, 'doorSingle', 0)
+            return swingingPanel(-1, op.width, 0, 'doorSingle', (Math.PI / 40) * swingSign)
     }
 }

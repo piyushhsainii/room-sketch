@@ -5,19 +5,21 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, } from '@react-three/drei'
 import * as THREE from 'three'
 import { Toolbar } from './Tools/ToolBar'
-import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType } from './Tools/constants'
+import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureCategory, FurnitureType, GRID_M, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType } from './Tools/constants'
 import { deriveClosedPolygons } from '@/lib/helpers'
 import { FloorMat } from './objects/floormat'
 import { WallMat } from './objects/wallmat'
 import { LineWalls3D } from './objects/line-walls-3d'
 import { SceneConfigPanel } from './SceneConfigPanel'
-import { FurnitureMesh } from './furniture/furnitureMesh'
 import { StairsMesh } from './furniture/stairsMesh'
 import { WalkModeControls } from './WalkModeControls'
 import { DoorVariant3D } from './objects/door-variants'
 import { Dock } from '../ui/Dock'
 import { WindowVariant3D } from './objects/window-variant3d'
 import { SceneGraphPanel } from './objects/scene-graph'
+import { ArchHeader3D } from './objects/arch-header'
+import { FurnitureMesh } from './furniture/furnitureMesh'
+import { ScrollableList } from '../ui/ScrollableList'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -264,6 +266,29 @@ function draw2D(
                 ctx.fill()
                 ctx.stroke()
                 ctx.restore()
+            }
+        }
+        const selShape = fp.closedShapes?.find(sh => sh.id === selectedId)
+        if (selShape) {
+            const nodes = selShape.nodeIds.map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean) as LineNode[]
+            if (nodes.length >= 3) {
+                const xs = nodes.map(n => n.x), zs = nodes.map(n => n.z)
+                const minX = Math.min(...xs), maxX = Math.max(...xs)
+                const minZ = Math.min(...zs), maxZ = Math.max(...zs)
+                const handles = [
+                    { x: maxX, z: maxZ }, { x: maxX, z: minZ },
+                    { x: minX, z: maxZ }, { x: minX, z: minZ },
+                ]
+                for (const h of handles) {
+                    ctx.save()
+                    ctx.beginPath()
+                    ctx.rect(cx(h.x) - 5, cy(h.z) - 5, 10, 10)
+                    ctx.fillStyle = 'white'
+                    ctx.strokeStyle = 'rgba(99,102,241,0.9)'
+                    ctx.lineWidth = 1.5
+                    ctx.fill(); ctx.stroke()
+                    ctx.restore()
+                }
             }
         }
     }
@@ -758,15 +783,28 @@ function Room3D({ room, openings, roomHeight, wallColor = '#FFFFFF', wallRoughne
                         const isPassage = op.type === 'opening' && op.variant === 'opening-passage'
                         const isArchway = op.type === 'opening' && op.variant === 'opening-archway'
                         const headerH = H - op.height
-                        if (headerH > 0.02 && !isPassage) {
+                        if (!isPassage && headerH > 0.02) {
                             const opMid = op.position
-                            const hPos: [number, number, number] = wall.axis === 'x' ? [room.x + opMid, op.height + headerH / 2, wPos[2]] : [wPos[0], op.height + headerH / 2, room.z + opMid]
-                            const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, headerH, T] : [T, headerH, op.width]
-                            const archColor = isArchway ? '#A0907E' : wallColor
-                            panels.push(<mesh key={`h${i}`} position={hPos} castShadow receiveShadow><boxGeometry args={hSize} /><WallMat color={archColor} roughness={wallRoughness} />
-                            </mesh>)
-                        }
+                            const basePos: [number, number, number] = wall.axis === 'x'
+                                ? [room.x + opMid, op.height, wPos[2]]
+                                : [wPos[0], op.height, room.z + opMid]
 
+                            if (isArchway) {
+                                panels.push(
+                                    <group key={`h${i}`} position={basePos}>
+                                        <ArchHeader3D width={op.width} headerH={headerH} thickness={T} wallAxis={wall.axis} color={wallColor} roughness={wallRoughness} />
+                                    </group>
+                                )
+                            } else {
+                                const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, headerH, T] : [T, headerH, op.width]
+                                panels.push(
+                                    <mesh key={`h${i}`} position={[basePos[0], op.height + headerH / 2, basePos[2]]} castShadow receiveShadow>
+                                        <boxGeometry args={hSize} />
+                                        <WallMat color={wallColor} roughness={wallRoughness} />
+                                    </mesh>
+                                )
+                            }
+                        }
                         if (op.type === 'window' && op.sillHeight > 0.02) {
                             const opMid = op.position
                             const sPos: [number, number, number] = wall.axis === 'x' ? [room.x + opMid, op.sillHeight / 2, wPos[2]] : [wPos[0], op.sillHeight / 2, room.z + opMid]
@@ -775,32 +813,33 @@ function Room3D({ room, openings, roomHeight, wallColor = '#FFFFFF', wallRoughne
                             </mesh>)
                         }
 
-                        // if (op.type === 'window') {
-                        //     const opMid = op.position
-                        //     const gPos: [number, number, number] = wall.axis === 'x' ? [room.x + opMid, op.sillHeight + op.height / 2, wPos[2]] : [wPos[0], op.sillHeight + op.height / 2, room.z + opMid]
-
-                        //     const gSize: [number, number, number] = wall.axis === 'x' ? [op.width, op.height, 0.025] : [0.025, op.height, op.width]
-
-                        //     panels.push(<mesh key={`g${i}`} position={gPos}><boxGeometry args={gSize} /><meshStandardMaterial color="#93C5FD" transparent opacity={0.35} roughness={0.05} metalness={0.15} side={THREE.DoubleSide} /></mesh>)
-                        // }
-
                         if (op.type === 'window') {
-                            panels.push(<WindowVariant3D key={`g${i}`} op={op} wallAxis={wall.axis} room={room} wPos={wPos} />)
+                            const opMid = op.position
+                            const angle = wall.axis === 'x' ? 0 : Math.PI / 2
+                            const winBasePos: [number, number, number] = wall.axis === 'x'
+                                ? [room.x + opMid, op.sillHeight + op.height / 2, wPos[2]]
+                                : [wPos[0], op.sillHeight + op.height / 2, room.z + opMid]
+                            panels.push(
+                                <WindowVariant3D key={`g${i}`} op={op} angle={angle} basePos={winBasePos} />
+                            )
                         }
 
                         if (op.type === 'door') {
+                            const opMid = op.position
+                            const angle = wall.axis === 'x' ? 0 : Math.PI / 2
+                            const doorBasePos: [number, number, number] = wall.axis === 'x'
+                                ? [room.x + opMid, op.height / 2, wPos[2]]
+                                : [wPos[0], op.height / 2, room.z + opMid]
                             panels.push(
                                 <DoorVariant3D
                                     key={`door${i}`}
                                     op={op}
-                                    wallAxis={wall.axis}
-                                    room={room}
-                                    wPos={wPos}
+                                    angle={angle}
+                                    basePos={doorBasePos}
                                     doorStyle={doorStyle}
                                 />
                             )
                         }
-
                         cursor = op.position + op.width / 2
                     }
                 }
@@ -838,11 +877,11 @@ function Scene3D({ fp, sceneConfig, walkMode = false }: { fp: FloorPlanState; sc
             <LineWalls3D
                 fp={fp}
                 wallRoughness={cfg.wallRoughness}
+                wallColor="#FFFFFF"
                 floorMaterial={cfg.globalFloorMaterial ?? 'plain'}
                 doorStyle={cfg.doorStyle ?? 'natural'}
                 closedShapes={fp.closedShapes}
             />
-
             {/* Furniture — guarded by showFurniture toggle */}
             {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
                 <FurnitureMesh key={f.id} f={f} />
@@ -882,12 +921,11 @@ function PropsPanel({ fp, selectedId, onChange, onDelete }: {
     const furniture = (fp.furniture ?? []).find(f => f.id === selectedId)
     const stairs = (fp.stairs ?? []).find(s => s.id === selectedId)
 
-    if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom) return (
+    if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape) return (
         <div style={{ padding: 16, fontSize: 11, color: 'rgba(100,116,139,0.5)', textAlign: 'center' }}>
             Select a room, wall, node or opening to edit properties
         </div>
     )
-
     const patchRoom = (patch: Partial<EditorRoom>) =>
         onChange({ ...fp, rooms: fp.rooms.map(r => r.id === room?.id ? { ...r, ...patch } : r) })
 
@@ -1079,7 +1117,6 @@ const inputStyle: React.CSSProperties = {
     color: THEME.text, fontSize: 12,
     padding: '0 8px', outline: 'none',
 }
-// ── Main export ───────────────────────────────────────────────────────────────
 
 type Props = {
     onSave?: (fp: FloorPlanState, sceneConfig: SceneConfig) => void
@@ -1098,6 +1135,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     const drawStartRef = useRef<{ x: number; z: number } | null>(null)
     const drawRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
     const isDrawingRef = useRef(false)
+    const [openFurnitureCats, setOpenFurnitureCats] = useState<Set<string>>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
     const [tool, setTool] = useState<EditorTool>('room')
     const [pencilPoints, setPencilPoints] = useState<{ x: number, z: number }[]>([])
     const isPencilDrawing = useRef(false)
@@ -1134,7 +1172,10 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     const [editingAnnotation, setEditingAnnotation] = useState<{ id: string; text: string; x: number; y: number } | null>(null)
     const annotationInputRef = useRef<HTMLInputElement>(null)
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
+    const [furnitureCategoryIdx, setFurnitureCategoryIdx] = useState(0)
+    const wallDragRef = useRef<{ roomId: string; wall: 'north' | 'south' | 'east' | 'west'; startRoom: EditorRoom } | null>(null)
     const furnitureDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
+    const shapeResizeRef = useRef<{ shapeId: string; handle: string; startNodes: Map<string, { x: number; z: number }>; bbox: { minX: number; maxX: number; minZ: number; maxZ: number } } | null>(null)
     const resizeHandleRef = useRef<{ handle: string; room: EditorRoom; startWx: number; startWz: number } | null>(null)
     fpRef.current = fp
     const pushHistory = useCallback(() => {
@@ -1201,10 +1242,12 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                     const isRoom = prev.rooms.some(r => r.id === selectedId)
                     const isNode = prev.lineNodes.some(n => n.id === selectedId)
                     const isSeg = prev.lineSegments.some(s => s.id === selectedId)
+                    const isShape = (prev.closedShapes ?? []).some(sh => sh.id === selectedId)
 
                     if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
                     if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
                     if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
+                    if (isShape) return { ...prev, closedShapes: (prev.closedShapes ?? []).filter(sh => sh.id !== selectedId) }
                     const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
                     if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
                     const isStairs = (prev.stairs ?? []).some(s => s.id === selectedId)
@@ -1422,8 +1465,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             panToolRef.current = { sx: cx, sy: cy, px: panRef.current.x, py: panRef.current.y }
             return
         }
-
-        // ── Resize handle check ───────────────────────────────────────────────
+        // ── Resize handle check (rooms + closed shapes) ──────────────────────
         if (tool === 'select' && selectedId) {
             const selRoom = fpRef.current.rooms.find(r => r.id === selectedId)
             if (selRoom) {
@@ -1448,17 +1490,41 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                     }
                 }
             }
-        }
 
+            const selShape = fpRef.current.closedShapes?.find(sh => sh.id === selectedId)
+            if (selShape) {
+                const nodes = selShape.nodeIds.map(id => fpRef.current.lineNodes.find(n => n.id === id)).filter(Boolean) as LineNode[]
+                if (nodes.length >= 3) {
+                    const xs = nodes.map(n => n.x), zs = nodes.map(n => n.z)
+                    const minX = Math.min(...xs), maxX = Math.max(...xs)
+                    const minZ = Math.min(...zs), maxZ = Math.max(...zs)
+                    const scale = PX_PER_M * zoomRef.current
+                    const handles = [
+                        { id: 'se', x: maxX, z: maxZ }, { id: 'ne', x: maxX, z: minZ },
+                        { id: 'sw', x: minX, z: maxZ }, { id: 'nw', x: minX, z: minZ },
+                    ]
+                    for (const h of handles) {
+                        const hcx = h.x * scale + panRef.current.x
+                        const hcy = h.z * scale + panRef.current.y
+                        const rect = canvasRef.current!.getBoundingClientRect()
+                        if (Math.hypot(e.clientX - rect.left - hcx, e.clientY - rect.top - hcy) < 8) {
+                            const startNodes = new Map<string, { x: number, z: number }>()
+                            for (const n of nodes) startNodes.set(n.id, { x: n.x, z: n.z })
+                            shapeResizeRef.current = { shapeId: selShape.id, handle: h.id, startNodes, bbox: { minX, maxX, minZ, maxZ } }
+                            return
+                        }
+                    }
+                }
+            }
+        }
         // ── Select tool ───────────────────────────────────────────────────────
         if (tool === 'select') {
-            // Priority: node → furniture → segment → room → closed shape
-            // Furniture is intentionally before room so items inside rooms are selectable
             const node = hitLineNode(wx, wz)
             if (node) { setSelectedId(node.id); dragRoomRef.current = { id: node.id, ox: wx - node.x, oz: wz - node.z, type: 'node' }; return }
+
             const op = hitOpening(wx, wz)
             if (op) { setSelectedId(op.id); dragRoomRef.current = null; return }
-            // Furniture check — before room so overlapping furniture wins
+
             const hitFurnitureFirst = (fpRef.current.furniture ?? []).findLast(f => {
                 const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
                 const dx = wx - f.x, dz = wz - f.z
@@ -1474,7 +1540,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 return
             }
 
-            // Stairs/elevator check — before room so overlapping stairs wins
             const hitStairsFirst = (fpRef.current.stairs ?? []).findLast(s => {
                 const dx = wx - (s.x + s.width / 2), dz = wz - (s.z + s.depth / 2)
                 const cosR = Math.cos(-s.rotation), sinR = Math.sin(-s.rotation)
@@ -1488,57 +1553,10 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 return
             }
 
-            const room = hitRoom(wx, wz)
-            if (room) { setSelectedId(room.id); dragRoomRef.current = { id: room.id, ox: wx - room.x, oz: wz - room.z, type: 'room' }; return }
-            const segHit = hitLineSegment(wx, wz)
-            if (segHit) {
-                setSelectedId(segHit.seg.id)
-                // Find ALL nodes connected to this segment's graph via BFS
-                const allNodes = fpRef.current.lineNodes
-                const allSegs = fpRef.current.lineSegments
-                const adj = new Map<string, string[]>()
-                for (const s of allSegs) {
-                    for (let i = 0; i < s.nodeIds.length - 1; i++) {
-                        const a = s.nodeIds[i]!, b = s.nodeIds[i + 1]!
-                        if (!adj.has(a)) adj.set(a, [])
-                        if (!adj.has(b)) adj.set(b, [])
-                        adj.get(a)!.push(b)
-                        adj.get(b)!.push(a)
-                    }
-                }
-                // BFS from any node in the hit segment
-                const visited = new Set<string>()
-                const queue = [segHit.seg.nodeIds[0]!]
-                while (queue.length) {
-                    const cur = queue.shift()!
-                    if (visited.has(cur)) continue
-                    visited.add(cur)
-                    for (const nb of adj.get(cur) ?? []) {
-                        if (!visited.has(nb)) queue.push(nb)
-                    }
-                }
-                const startPositions = new Map<string, { x: number, z: number }>()
-                for (const nid of visited) {
-                    const n = fpRef.current.lineNodes.find(nd => nd.id === nid)
-                    if (n) startPositions.set(nid, { x: n.x, z: n.z })
-                }
-                if (shapeDragRef.current) {
-                    const sd = shapeDragRef.current
-                    const ddx = snapM(wx - sd.ox)
-                    const ddz = snapM(wz - sd.oz)
-                    setFp(prev => ({
-                        ...prev,
-                        lineNodes: prev.lineNodes.map(n => {
-                            const start = sd.startPositions.get(n.id)
-                            if (!start) return n
-                            return { ...n, x: start.x + ddx, z: start.z + ddz }
-                        })
-                    }))
-                    return
-                }
-                segDragRef.current = { segId: segHit.seg.id, ox: wx, oz: wz, nodeIds: [...visited], startPositions }
-                dragRoomRef.current = null; return
-            }
+            // ── Closed shape — checked BEFORE line segments so interior clicks   
+            // select/drag the whole shape rather than falling through to the     
+            // nearest border segment. Segment-only editing still works via the   
+            // Scene Graph or by first selecting the shape then a node.           
             const shape = hitClosedShape(wx, wz)
             if (shape) {
                 setSelectedId(shape.id)
@@ -1552,7 +1570,49 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 return
             }
 
-            // Hit-test furniture
+            const room = hitRoom(wx, wz)
+            if (room) { setSelectedId(room.id); dragRoomRef.current = { id: room.id, ox: wx - room.x, oz: wz - room.z, type: 'room' }; return }
+
+            const wallHit = hitRoomWall(wx, wz)
+            if (wallHit) {
+                setSelectedId(`${wallHit.room.id}::wall::${wallHit.wall}`)
+                wallDragRef.current = { roomId: wallHit.room.id, wall: wallHit.wall, startRoom: { ...wallHit.room } }
+                dragRoomRef.current = null
+                return
+            }
+
+            const segHit = hitLineSegment(wx, wz)
+            if (segHit) {
+                setSelectedId(segHit.seg.id)
+                const allSegs = fpRef.current.lineSegments
+                const adj = new Map<string, string[]>()
+                for (const s of allSegs) {
+                    for (let i = 0; i < s.nodeIds.length - 1; i++) {
+                        const a = s.nodeIds[i]!, b = s.nodeIds[i + 1]!
+                        if (!adj.has(a)) adj.set(a, [])
+                        if (!adj.has(b)) adj.set(b, [])
+                        adj.get(a)!.push(b)
+                        adj.get(b)!.push(a)
+                    }
+                }
+                const visited = new Set<string>()
+                const queue = [segHit.seg.nodeIds[0]!]
+                while (queue.length) {
+                    const cur = queue.shift()!
+                    if (visited.has(cur)) continue
+                    visited.add(cur)
+                    for (const nb of adj.get(cur) ?? []) if (!visited.has(nb)) queue.push(nb)
+                }
+                const startPositions = new Map<string, { x: number, z: number }>()
+                for (const nid of visited) {
+                    const n = fpRef.current.lineNodes.find(nd => nd.id === nid)
+                    if (n) startPositions.set(nid, { x: n.x, z: n.z })
+                }
+                segDragRef.current = { segId: segHit.seg.id, ox: wx, oz: wz, nodeIds: [...visited], startPositions }
+                dragRoomRef.current = null
+                return
+            }
+
             const hitFurniture = (fpRef.current.furniture ?? []).find(f => {
                 const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
                 const dx = wx - f.x, dz = wz - f.z
@@ -1586,6 +1646,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             setPencilPoints([{ x: snapM(wx), z: snapM(wz) }])
             return
         }
+
         // ── Line / Bend tool ──────────────────────────────────────────────────
         if (tool === 'line' || tool === 'bend') {
             const snapX = snapM(wx), snapZ = snapM(wz)
@@ -1640,9 +1701,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
         const opW = isDoorTool ? (tool === 'door-swing-double' ? 1.6 : 0.9) : 1.2
 
         if (isDoorTool || isWindowTool) {
-            // Try room first
-            const wallHit = hitRoomWall(wx, wz)
-            if (wallHit) { setSelectedId(`${wallHit.room.id}::wall::${wallHit.wall}`); dragRoomRef.current = null; return }
             const room = hitRoom(wx, wz)
             if (room) {
                 const wallDir = getWallHit(room, wx, wz, 0.5)
@@ -1893,13 +1951,20 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const { wx, wz, cx, cy } = evWorld(e)
 
-        // Cursor — direct DOM update to avoid re-render
+        // ── Cursor — direct DOM update to avoid re-render ──────────────────
         let newCursor: string
         if (spaceHeldRef.current || tool === 'pan') {
             newCursor = spacePanRef.current || panToolRef.current ? 'grabbing' : 'grab'
+        } else if (shapeResizeRef.current) {
+            newCursor = 'nwse-resize'
         } else if (resizeHandleRef.current) {
             const map: Record<string, string> = { nw: 'nw-resize', ne: 'ne-resize', sw: 'sw-resize', se: 'se-resize', n: 'n-resize', s: 's-resize', e: 'e-resize', w: 'w-resize' }
             newCursor = map[resizeHandleRef.current.handle] ?? 'move'
+        } else if (wallDragRef.current) {
+            const map: Record<string, string> = { north: 'n-resize', south: 's-resize', east: 'e-resize', west: 'w-resize' }
+            newCursor = map[wallDragRef.current.wall] ?? 'move'
+        } else if (shapeDragRef.current) {
+            newCursor = 'grabbing'
         } else if (dragRoomRef.current) {
             newCursor = 'grabbing'
         } else {
@@ -1940,6 +2005,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             canvasDivRef.current.style.cursor = newCursor
         }
 
+        // ── Actual movement handling ────────────────────────────────────────
         if (spacePanRef.current) {
             const sp = spacePanRef.current
             const nx = sp.px + cx - sp.sx, ny = sp.py + cy - sp.sy
@@ -1954,6 +2020,48 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             setPan({ x: nx, y: ny })
             return
         }
+
+        if (shapeResizeRef.current) {
+            const { handle, startNodes, bbox } = shapeResizeRef.current
+            const { minX, maxX, minZ, maxZ } = bbox
+            const w0 = maxX - minX, d0 = maxZ - minZ
+            if (w0 < 0.01 || d0 < 0.01) return
+
+            let anchorX = minX, anchorZ = minZ
+            if (handle === 'se') { anchorX = minX; anchorZ = minZ }
+            if (handle === 'ne') { anchorX = minX; anchorZ = maxZ }
+            if (handle === 'sw') { anchorX = maxX; anchorZ = minZ }
+            if (handle === 'nw') { anchorX = maxX; anchorZ = maxZ }
+
+            const rawSx = (wx - anchorX) / (handle.includes('e') ? w0 : -w0)
+            const rawSz = (wz - anchorZ) / (handle.includes('s') ? d0 : -d0)
+            const sx = Math.max(0.2, rawSx)
+            const sz = Math.max(0.2, rawSz)
+
+            setFp(prev => ({
+                ...prev,
+                lineNodes: prev.lineNodes.map(n => {
+                    const start = startNodes.get(n.id)
+                    if (!start) return n
+                    const nx = anchorX + (start.x - anchorX) * sx
+                    const nz = anchorZ + (start.z - anchorZ) * sz
+                    return { ...n, x: snapM(nx), z: snapM(nz) }
+                })
+            }))
+            return
+        }
+
+        if (wallDragRef.current) {
+            const { roomId, wall, startRoom } = wallDragRef.current
+            let newX = startRoom.x, newZ = startRoom.z, newW = startRoom.width, newD = startRoom.depth
+            if (wall === 'east') newW = Math.max(MIN_ROOM, snapM(wx) - startRoom.x)
+            if (wall === 'west') { newX = Math.min(snapM(wx), startRoom.x + startRoom.width - MIN_ROOM); newW = startRoom.x + startRoom.width - newX }
+            if (wall === 'south') newD = Math.max(MIN_ROOM, snapM(wz) - startRoom.z)
+            if (wall === 'north') { newZ = Math.min(snapM(wz), startRoom.z + startRoom.depth - MIN_ROOM); newD = startRoom.z + startRoom.depth - newZ }
+            setFp(prev => ({ ...prev, rooms: prev.rooms.map(r => r.id === roomId ? { ...r, x: newX, z: newZ, width: newW, depth: newD } : r) }))
+            return
+        }
+
         if (resizeHandleRef.current) {
             const { handle, room } = resizeHandleRef.current
             let newX = room.x, newZ = room.z, newW = room.width, newD = room.depth
@@ -1992,7 +2100,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
 
         if (dragRoomRef.current) {
             const dr = dragRoomRef.current
-            // Snap the destination, not the offset — prevents jitter
             const nx = snapM(wx - dr.ox)
             const nz = snapM(wz - dr.oz)
             if (dr.type === 'node') {
@@ -2002,9 +2109,9 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             }
             return
         }
+
         if (segDragRef.current) {
             const sd = segDragRef.current
-            // Compute snapped total delta from drag start
             const ddx = snapM(wx - sd.ox)
             const ddz = snapM(wz - sd.oz)
             if (sd.startPositions && sd.startPositions.size > 0) {
@@ -2019,6 +2126,23 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             }
             return
         }
+
+        // ── Whole closed-shape drag — was completely missing before ────────
+        if (shapeDragRef.current) {
+            const sd = shapeDragRef.current
+            const ddx = snapM(wx - sd.ox)
+            const ddz = snapM(wz - sd.oz)
+            setFp(prev => ({
+                ...prev,
+                lineNodes: prev.lineNodes.map(n => {
+                    const start = sd.startPositions.get(n.id)
+                    if (!start) return n
+                    return { ...n, x: start.x + ddx, z: start.z + ddz }
+                })
+            }))
+            return
+        }
+
         if (tool === 'line' || tool === 'bend') setPreview({ x: snapM(wx), z: snapM(wz) })
         if (isDrawingRef.current && drawStartRef.current) {
             const ds = drawStartRef.current
@@ -2027,7 +2151,8 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             setDrawRect(newRect)
             return
         }
-        // Hover — use ref to avoid unnecessary state updates
+
+        // ── Hover detection ──────────────────────────────────────────────
         let newHoverId: string | null = null
         const node = hitLineNode(wx, wz)
         if (node) { newHoverId = node.id }
@@ -2035,32 +2160,36 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             const hoveredOpening = hitOpening(wx, wz)
             if (hoveredOpening) { newHoverId = hoveredOpening.id }
             else {
-                const segHit = hitLineSegment(wx, wz)
-                if (segHit) { newHoverId = segHit.seg.id }
+                const hovShape = hitClosedShape(wx, wz)
+                if (hovShape) { newHoverId = hovShape.id }
                 else {
-                    const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
-                        const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
-                        const dx = wx - f.x, dz = wz - f.z
-                        const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
-                        const lx = dx * cosR - dz * sinR
-                        const lz = dx * sinR + dz * cosR
-                        return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
-                    })
-                    if (hovFurniture) { newHoverId = hovFurniture.id }
+                    const segHit = hitLineSegment(wx, wz)
+                    if (segHit) { newHoverId = segHit.seg.id }
                     else {
-                        const hovStairs = (fpRef.current.stairs ?? []).findLast(st => {
-                            const dx2 = wx - (st.x + st.width / 2), dz2 = wz - (st.z + st.depth / 2)
-                            const cosR2 = Math.cos(-st.rotation), sinR2 = Math.sin(-st.rotation)
-                            const lx2 = dx2 * cosR2 - dz2 * sinR2, lz2 = dx2 * sinR2 + dz2 * cosR2
-                            return Math.abs(lx2) < st.width / 2 + 0.05 && Math.abs(lz2) < st.depth / 2 + 0.05
+                        const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
+                            const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                            const dx = wx - f.x, dz = wz - f.z
+                            const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                            const lx = dx * cosR - dz * sinR
+                            const lz = dx * sinR + dz * cosR
+                            return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
                         })
-                        if (hovStairs) { newHoverId = hovStairs.id }
+                        if (hovFurniture) { newHoverId = hovFurniture.id }
                         else {
-                            const wallHit = hitRoomWall(wx, wz)
-                            if (wallHit) { newHoverId = `${wallHit.room.id}::wall::${wallHit.wall}` }
+                            const hovStairs = (fpRef.current.stairs ?? []).findLast(st => {
+                                const dx2 = wx - (st.x + st.width / 2), dz2 = wz - (st.z + st.depth / 2)
+                                const cosR2 = Math.cos(-st.rotation), sinR2 = Math.sin(-st.rotation)
+                                const lx2 = dx2 * cosR2 - dz2 * sinR2, lz2 = dx2 * sinR2 + dz2 * cosR2
+                                return Math.abs(lx2) < st.width / 2 + 0.05 && Math.abs(lz2) < st.depth / 2 + 0.05
+                            })
+                            if (hovStairs) { newHoverId = hovStairs.id }
                             else {
-                                const room = hitRoom(wx, wz)
-                                newHoverId = room?.id ?? null
+                                const wallHit = hitRoomWall(wx, wz)
+                                if (wallHit) { newHoverId = `${wallHit.room.id}::wall::${wallHit.wall}` }
+                                else {
+                                    const room = hitRoom(wx, wz)
+                                    newHoverId = room?.id ?? null
+                                }
                             }
                         }
                     }
@@ -2073,21 +2202,24 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             scheduleRedraw()
         }
         setHoverTooltip(newHoverId ? { text: labelForHover(newHoverId, fpRef.current), x: e.clientX, y: e.clientY } : null)
-    }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment, scheduleRedraw])
+    }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, scheduleRedraw])
 
     const handleMouseUp = useCallback(() => {
         isMouseDownRef.current = false
+        const hadDrag = Boolean(dragRoomRef.current || segDragRef.current || resizeHandleRef.current || shapeDragRef.current || wallDragRef.current)
+        shapeResizeRef.current = null
         furnitureDragRef.current = null
-        setMidPan(null); spacePanRef.current = null; panToolRef.current = null; segDragRef.current = null; dragRoomRef.current = null
-        shapeDragRef.current = null
-        if (dragRoomRef.current || segDragRef.current || resizeHandleRef.current) {
-            pushHistory()
-        }
         setMidPan(null)
         dragRoomRef.current = null
         spacePanRef.current = null
         panToolRef.current = null
         segDragRef.current = null
+        shapeDragRef.current = null
+        resizeHandleRef.current = null
+        wallDragRef.current = null   // ← add this — was never cleared, so cursor stuck permanently
+
+        if (hadDrag) pushHistory()
+
         if (canvasRef.current && spaceHeldRef.current) canvasRef.current.style.cursor = 'grab'
         else if (canvasRef.current) canvasRef.current.style.cursor = ''
         resizeHandleRef.current = null
@@ -2258,37 +2390,82 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                         onMouseDown={handleMouseDown}
                         onMouseMove={handleMouseMove}
                         onMouseUp={handleMouseUp}
-                        onMouseLeave={() => { isMouseDownRef.current = false; furnitureDragRef.current = null; setMidPan(null); dragRoomRef.current = null; segDragRef.current = null; setHoverTooltip(null) }}
+                        onMouseLeave={() => {
+                            isMouseDownRef.current = false;
+                            furnitureDragRef.current = null;
+                            setMidPan(null);
+                            dragRoomRef.current = null;
+                            segDragRef.current = null;
+                            setHoverTooltip(null)
+                            shapeResizeRef.current = null
+                            wallDragRef.current = null   // ← add this too
+                        }}
                         onContextMenu={handleContextMenu}
                     />
                     {tool === 'furniture' && (
-                        <div style={{ position: 'absolute', bottom: 52, left: '50%', transform: 'translateX(-50%)', background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 480, justifyContent: 'center', boxShadow: THEME.shadowLg }}>
-                            <div style={{ width: '100%', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: THEME.textMuted, textAlign: 'center', marginBottom: 2 }}>SELECT FURNITURE TYPE</div>
-                            {([
-                                { id: 'sofa', label: 'Sofa' }, { id: 'bed', label: 'Bed' },
-                                { id: 'dining_table', label: 'Table' }, { id: 'desk', label: 'Desk' },
-                                { id: 'wardrobe', label: 'WRB' }, { id: 'bathtub', label: 'Bath' },
-                                { id: 'toilet', label: 'WC' }, { id: 'plant', label: 'Plant' },
-                                { id: 'chair', label: 'Chair' }, { id: 'coffee_table', label: 'Coffee T.' },
-                            ] as { id: FurnitureType; label: string }[]).map(item => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => setSelectedFurnitureType(item.id)}
-                                    style={{
-                                        height: 32, padding: '0 10px', borderRadius: 7, cursor: 'pointer',
-                                        border: selectedFurnitureType === item.id ? `1.5px solid ${THEME.accent}` : `1px solid ${THEME.borderStrong}`,
-                                        background: selectedFurnitureType === item.id ? 'rgba(99,102,241,0.12)' : '#FAFAFA',
-                                        color: selectedFurnitureType === item.id ? THEME.accent : THEME.textMuted,
-                                        fontSize: 11, fontWeight: selectedFurnitureType === item.id ? 700 : 400,
-                                        transition: 'all 120ms',
-                                    }}
-                                >
-                                    {item.label}
-                                </button>
-                            ))}
+                        <div
+                            style={{
+                                position: 'absolute', bottom: 52, left: '50%', transform: 'translateX(-50%)',
+                                background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 12,
+                                width: 260, display: 'flex', flexDirection: 'column',
+                                boxShadow: THEME.shadowLg, overflow: 'hidden',
+                            }}
+                        >
+                            <div style={{ padding: '10px 12px', borderBottom: `1px solid ${THEME.border}`, fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: THEME.textMuted }}>
+                                FURNITURE
+                            </div>
+                            <div style={{ padding: '6px 8px' }}>
+                                <ScrollableList maxHeight={300}>
+                                    {FURNITURE_CATEGORIES.map(cat => {
+                                        const isOpen = openFurnitureCats.has(cat.id)
+                                        return (
+                                            <div key={cat.id}>
+                                                <button
+                                                    onClick={() => setOpenFurnitureCats(prev => {
+                                                        const next = new Set(prev)
+                                                        next.has(cat.id) ? next.delete(cat.id) : next.add(cat.id)
+                                                        return next
+                                                    })}
+                                                    style={{
+                                                        width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                                                        padding: '8px 4px', background: 'transparent', border: 'none',
+                                                        cursor: 'pointer', textAlign: 'left',
+                                                    }}
+                                                >
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
+                                                        style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 120ms', flexShrink: 0 }}>
+                                                        <polyline points="9 18 15 12 9 6" />
+                                                    </svg>
+                                                    <span style={{ fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text }}>{cat.label}</span>
+                                                    <span style={{ fontSize: 11, color: THEME.textFaint }}>{cat.items.length}</span>
+                                                </button>
+                                                {isOpen && (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: 22 }}>
+                                                        {cat.items.map(id => (
+                                                            <button
+                                                                key={id}
+                                                                onClick={() => setSelectedFurnitureType(id)}
+                                                                style={{
+                                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                                    padding: '7px 8px', borderRadius: 6, border: 'none',
+                                                                    background: selectedFurnitureType === id ? 'rgba(99,102,241,0.1)' : 'transparent',
+                                                                    color: selectedFurnitureType === id ? THEME.accent : THEME.text,
+                                                                    fontSize: 12, fontWeight: selectedFurnitureType === id ? 600 : 400,
+                                                                    cursor: 'pointer', textAlign: 'left', width: '100%',
+                                                                }}
+                                                            >
+                                                                {FURNITURE_LABELS[id]}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </ScrollableList>
+                            </div>
                         </div>
                     )}
-
                     {/* Tool hint */}
                     <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '6px 14px', fontSize: 11, color: THEME.textMuted, pointerEvents: 'none', whiteSpace: 'nowrap', boxShadow: THEME.shadow }}>
                         {tool === 'select' && 'Click to select · Drag room/node · Click segment to drag whole wall'}
@@ -2420,57 +2597,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                     <Scene3D fp={fp} sceneConfig={sceneConfig} walkMode={walkMode} />
                                 </Canvas>
                             </div>
-
-                            {/* Docked tabs: Properties | Scene Config */}
-                            {/* <div style={{ borderTop: `1px solid ${THEME.border}`, background: THEME.bgPanel, display: 'flex', flexDirection: 'column', height: 340, flexShrink: 0 }}>
-                                <div style={{ display: 'flex', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0 }}>
-                                    {(['properties', 'scene'] as const).map(t => (
-                                        <button
-                                            key={t}
-                                            onClick={() => setRightTab(t)}
-                                            style={{
-                                                flex: 1, height: 38, border: 'none', background: 'transparent',
-                                                borderBottom: rightTab === t ? `2px solid ${THEME.accent}` : '2px solid transparent',
-                                                color: rightTab === t ? THEME.accent : THEME.textMuted,
-                                                fontSize: 11, fontWeight: 700, letterSpacing: '0.03em', cursor: 'pointer',
-                                                transition: 'all 150ms',
-                                            }}
-                                        >
-                                            {t === 'properties' ? 'PROPERTIES' : 'SCENE CONFIG'}
-                                        </button>
-                                    ))}
-                                </div>
-                                <div style={{ flex: 1, overflowY: 'auto' }}>
-                                    {rightTab === 'properties' && (
-                                        <PropsPanel
-                                            fp={fp}
-                                            selectedId={selectedId}
-                                            onChange={setFp}
-                                            onDelete={() => {
-                                                if (!selectedId) return
-                                                setFp(prev => {
-                                                    const isRoom = prev.rooms.some(r => r.id === selectedId)
-                                                    const isNode = prev.lineNodes.some(n => n.id === selectedId)
-                                                    const isSeg = prev.lineSegments.some(s => s.id === selectedId)
-                                                    const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
-                                                    const isStairs = (prev.stairs ?? []).some(st => st.id === selectedId)
-
-                                                    if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                                                    if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
-                                                    if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                                                    if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
-                                                    if (isStairs) return { ...prev, stairs: (prev.stairs ?? []).filter(st => st.id !== selectedId) }
-                                                    return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
-                                                })
-                                                setSelectedId(null)
-                                            }}
-                                        />
-                                    )}
-                                    {rightTab === 'scene' && (
-                                        <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} embedded />
-                                    )}
-                                </div>
-                            </div> */}
                         </div>
                     )}
                 </div>
@@ -2519,7 +2645,28 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                 fp={fp}
                                 selectedId={selectedId}
                                 onChange={setFp}
-                                onDelete={() => { /* ...unchanged... */ }}
+                                onDelete={() => {
+                                    if (!selectedId || selectedId.includes('::wall::')) return
+                                    setFp(prev => {
+                                        const isRoom = prev.rooms.some(r => r.id === selectedId)
+                                        const isNode = prev.lineNodes.some(n => n.id === selectedId)
+                                        const isSeg = prev.lineSegments.some(s => s.id === selectedId)
+                                        const isShape = (prev.closedShapes ?? []).some(sh => sh.id === selectedId)
+                                        const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
+                                        const isStairs = (prev.stairs ?? []).some(st => st.id === selectedId)
+                                        const isAnn = (prev.annotations ?? []).some(a => a.id === selectedId)
+
+                                        if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
+                                        if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
+                                        if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
+                                        if (isShape) return { ...prev, closedShapes: (prev.closedShapes ?? []).filter(sh => sh.id !== selectedId) }
+                                        if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
+                                        if (isStairs) return { ...prev, stairs: (prev.stairs ?? []).filter(st => st.id !== selectedId) }
+                                        if (isAnn) return { ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== selectedId) }
+                                        return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
+                                    })
+                                    setSelectedId(null)
+                                }}
                             />
                         </>
                     )}

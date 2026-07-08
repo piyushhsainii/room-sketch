@@ -149,6 +149,156 @@ export function FurnitureMesh({ f }: { f: PlacedFurniture }) {
                     )))}
                 </group>
             )}
+            {f.type === 'single_sofa' && (
+                <group>
+                    {/* Base */}
+                    <mesh position={[0, 0.21 * s, 0]} castShadow receiveShadow>
+                        <boxGeometry args={[0.95 * s, 0.42 * s, 0.9 * s]} />
+                        <meshStandardMaterial color="#AE9678" roughness={0.85} />
+                    </mesh>
+                    {/* Back */}
+                    <mesh position={[0, 0.60 * s, 0.36 * s]} castShadow>
+                        <boxGeometry args={[0.95 * s, 0.5 * s, 0.14 * s]} />
+                        <meshStandardMaterial color="#9E876A" roughness={0.85} />
+                    </mesh>
+                    {/* Arms */}
+                    <mesh position={[-0.44 * s, 0.44 * s, 0]} castShadow><boxGeometry args={[0.12 * s, 0.42 * s, 0.9 * s]} /><meshStandardMaterial color="#96826A" roughness={0.8} /></mesh>
+                    <mesh position={[0.44 * s, 0.44 * s, 0]} castShadow><boxGeometry args={[0.12 * s, 0.42 * s, 0.9 * s]} /><meshStandardMaterial color="#96826A" roughness={0.8} /></mesh>
+                    {/* Cushion */}
+                    <mesh position={[0, 0.46 * s, -0.06 * s]} castShadow><boxGeometry args={[0.68 * s, 0.1 * s, 0.66 * s]} /><meshStandardMaterial color="#DCCFB8" roughness={0.95} /></mesh>
+                    {/* Legs */}
+                    {([-0.38, 0.38] as number[]).flatMap(x => [-0.38, 0.38].map(z => (
+                        <mesh key={`${x}${z}`} position={[x * s, 0.05 * s, z * s]}><boxGeometry args={[0.06 * s, 0.1 * s, 0.06 * s]} /><meshStandardMaterial color="#6B5B4E" roughness={0.5} metalness={0.1} /></mesh>
+                    )))}
+                </group>
+            )}
+            {f.type === 'lamp' && (
+                <group>
+                    {/* Base */}
+                    <mesh position={[0, 0.02 * s, 0]} castShadow>
+                        <cylinderGeometry args={[0.12 * s, 0.14 * s, 0.04 * s, 20]} />
+                        <meshStandardMaterial color="#2A2A28" roughness={0.5} metalness={0.3} />
+                    </mesh>
+                    {/* Pole */}
+                    <mesh position={[0, 0.7 * s, 0]} castShadow>
+                        <cylinderGeometry args={[0.015 * s, 0.015 * s, 1.3 * s, 10]} />
+                        <meshStandardMaterial color="#3A3A38" roughness={0.5} metalness={0.4} />
+                    </mesh>
+                    {/* Shade */}
+                    <mesh position={[0, 1.42 * s, 0]} castShadow>
+                        <coneGeometry args={[0.22 * s, 0.32 * s, 20, 1, true]} />
+                        <meshStandardMaterial color="#F0E6D0" roughness={0.9} side={2} emissive="#FFEBC0" emissiveIntensity={0.15} />
+                    </mesh>
+                </group>
+            )}
+            {f.type === 'mirror' && (
+                <group position={[0, 0.9 * s, 0]}>
+                    {/* Frame */}
+                    <mesh castShadow>
+                        <boxGeometry args={[0.7 * s, 0.9 * s, 0.04 * s]} />
+                        <meshStandardMaterial color="#D8D4CC" roughness={0.6} />
+                    </mesh>
+                    {/* Glass */}
+                    <mesh position={[0, 0, 0.023 * s]}>
+                        <boxGeometry args={[0.64 * s, 0.84 * s, 0.01 * s]} />
+                        <meshStandardMaterial color="#C8DCE8" roughness={0.02} metalness={0.6} />
+                    </mesh>
+                </group>
+            )}
+            {f.type === 'kitchen_stove' && (
+                <group>
+                    {/* Body */}
+                    <mesh position={[0, 0.45 * s, 0]} castShadow receiveShadow>
+                        <boxGeometry args={[0.6 * s, 0.9 * s, 0.6 * s]} />
+                        <meshStandardMaterial color="#E4E4E0" roughness={0.4} metalness={0.15} />
+                    </mesh>
+                    {/* Burners */}
+                    {([-0.14, 0.14] as number[]).flatMap(x => [-0.14, 0.14].map(z => (
+                        <mesh key={`${x}${z}`} position={[x * s, 0.905 * s, z * s]}>
+                            <cylinderGeometry args={[0.09 * s, 0.09 * s, 0.01 * s, 20]} />
+                            <meshStandardMaterial color="#1A1A1A" roughness={0.3} metalness={0.5} />
+                        </mesh>
+                    )))}
+                    {/* Oven door */}
+                    <mesh position={[0, 0.32 * s, 0.305 * s]}>
+                        <boxGeometry args={[0.5 * s, 0.5 * s, 0.02 * s]} />
+                        <meshStandardMaterial color="#B8B8B4" roughness={0.3} metalness={0.3} />
+                    </mesh>
+                </group>
+            )}
+            {f.type === 'chimney' && (
+                <group position={[0, 1.5 * s, 0]}>
+                    {/* Duct */}
+                    <mesh castShadow>
+                        <boxGeometry args={[0.45 * s, 0.55 * s, 0.25 * s]} />
+                        <meshStandardMaterial color="#5A5D62" roughness={0.4} metalness={0.4} />
+                    </mesh>
+                    {/* Canopy */}
+                    <mesh position={[0, 0.275 * s + 0.05 * s, 0]} castShadow>
+                        <boxGeometry args={[0.9 * s, 0.1 * s, 0.55 * s]} />
+                        <meshStandardMaterial color="#3E4044" roughness={0.35} metalness={0.5} />
+                    </mesh>
+                </group>
+            )}
+            {f.type === 'commode' && (
+                <group>
+                    <mesh position={[0, 0.4 * s, 0]} castShadow receiveShadow>
+                        <boxGeometry args={[0.5 * s, 0.8 * s, 0.45 * s]} />
+                        <meshStandardMaterial color="#EFEFEA" roughness={0.5} />
+                    </mesh>
+                    {/* Countertop lip */}
+                    <mesh position={[0, 0.82 * s, 0]}>
+                        <boxGeometry args={[0.54 * s, 0.04 * s, 0.49 * s]} />
+                        <meshStandardMaterial color="#FFFFFF" roughness={0.2} />
+                    </mesh>
+                    {/* Handle */}
+                    <mesh position={[0, 0.4 * s, 0.226 * s]}>
+                        <boxGeometry args={[0.16 * s, 0.03 * s, 0.02 * s]} />
+                        <meshStandardMaterial color="#C0A870" roughness={0.2} metalness={0.6} />
+                    </mesh>
+                </group>
+            )}
+            {f.type === 'shower' && (
+                <group>
+                    {/* Tray */}
+                    <mesh position={[0, 0.01 * s, 0]} receiveShadow>
+                        <boxGeometry args={[0.9 * s, 0.02 * s, 0.9 * s]} />
+                        <meshStandardMaterial color="#DCE6E8" roughness={0.15} metalness={0.05} />
+                    </mesh>
+                    {/* Glass panels */}
+                    <mesh position={[-0.445 * s, 1.0 * s, 0]}>
+                        <boxGeometry args={[0.02 * s, 2.0 * s, 0.9 * s]} />
+                        <meshStandardMaterial color="#BFD8DE" transparent opacity={0.25} roughness={0.05} metalness={0.1} />
+                    </mesh>
+                    <mesh position={[0, 1.0 * s, -0.445 * s]}>
+                        <boxGeometry args={[0.9 * s, 2.0 * s, 0.02 * s]} />
+                        <meshStandardMaterial color="#BFD8DE" transparent opacity={0.25} roughness={0.05} metalness={0.1} />
+                    </mesh>
+                    {/* Shower head */}
+                    <mesh position={[0, 1.9 * s, 0]} castShadow>
+                        <cylinderGeometry args={[0.06 * s, 0.06 * s, 0.08 * s, 16]} />
+                        <meshStandardMaterial color="#B9B9B4" metalness={0.6} roughness={0.3} />
+                    </mesh>
+                </group>
+            )}
+            {f.type === 'shoe_rack' && (
+                <group>
+                    <mesh position={[-0.43 * s, 0.425 * s, 0]}>
+                        <boxGeometry args={[0.04 * s, 0.85 * s, 0.32 * s]} />
+                        <meshStandardMaterial color="#6B5138" roughness={0.7} />
+                    </mesh>
+                    <mesh position={[0.43 * s, 0.425 * s, 0]}>
+                        <boxGeometry args={[0.04 * s, 0.85 * s, 0.32 * s]} />
+                        <meshStandardMaterial color="#6B5138" roughness={0.7} />
+                    </mesh>
+                    {[0, 1, 2].map(i => (
+                        <mesh key={i} position={[0, (0.85 / 3) * (i + 0.5) * s, 0]} castShadow>
+                            <boxGeometry args={[0.86 * s, 0.03 * s, 0.32 * s]} />
+                            <meshStandardMaterial color="#7A5F42" roughness={0.7} />
+                        </mesh>
+                    ))}
+                </group>
+            )}
         </group>
     )
 }

@@ -26,11 +26,18 @@ export function StairsMesh({ s, roomHeight }: { s: PlacedStairs; roomHeight: num
     )
 }
 
-/* ── Straight Stairs ──────────────────────────────────────────────────── */
+const RISER = 0.18   // realistic step height
+const RUN = 0.28      // realistic tread depth
+
 function StraightStairs({ w, d, h }: { w: number; d: number; h: number }) {
-    const numTreads = Math.max(8, Math.round(h / 0.18))
-    const treadH = h / numTreads
-    const treadD = d / numTreads
+    // Cap the flight to what's realistically achievable in both dimensions —
+    // never force-climb the full room height across too-shallow a footprint.
+    const maxTreadsByHeight = Math.round(h / RISER)
+    const maxTreadsByDepth = Math.floor(d / RUN)
+    const numTreads = Math.max(3, Math.min(maxTreadsByHeight, maxTreadsByDepth))
+
+    const usedH = numTreads * RISER
+    const usedD = numTreads * RUN
     const treadW = w - 0.04
 
     return (
@@ -38,31 +45,28 @@ function StraightStairs({ w, d, h }: { w: number; d: number; h: number }) {
             {Array.from({ length: numTreads }, (_, i) => (
                 <mesh
                     key={i}
-                    position={[0, treadH * (i + 0.5), -d / 2 + treadD * (i + 0.5)]}
+                    position={[0, RISER * (i + 0.5), -usedD / 2 + RUN * (i + 0.5)]}
                     castShadow
                     receiveShadow
                 >
-                    <boxGeometry args={[treadW, treadH * 0.9, treadD * 0.95]} />
+                    <boxGeometry args={[treadW, RISER * 0.9, RUN * 0.95]} />
                     <meshStandardMaterial color={STAIR_COLOR} roughness={0.7} />
                 </mesh>
             ))}
-            {/* Side stringers */}
-            <StraightStringer x={-w / 2 + 0.02} d={d} h={h} />
-            <StraightStringer x={w / 2 - 0.02} d={d} h={h} />
-            {/* Railings */}
-            <Railing x={-w / 2} d={d} h={h} />
-            <Railing x={w / 2} d={d} h={h} />
+            <StraightStringer x={-w / 2 + 0.02} d={usedD} h={usedH} />
+            <StraightStringer x={w / 2 - 0.02} d={usedD} h={usedH} />
+            <Railing x={-w / 2} d={usedD} h={usedH} />
+            <Railing x={w / 2} d={usedD} h={usedH} />
         </group>
     )
 }
-
 function StraightStringer({ x, d, h }: { x: number; d: number; h: number }) {
     const len = Math.hypot(d, h)
     const angle = Math.atan2(h, d)
     return (
         <mesh
             position={[x, h / 2, 0]}
-            rotation={[angle, 0, 0]}
+            rotation={[-angle, 0, 0]}
             castShadow
         >
             <boxGeometry args={[0.04, 0.08, len]} />
@@ -90,7 +94,7 @@ function Railing({ x, d, h }: { x: number; d: number; h: number }) {
             {/* Top rail */}
             <mesh
                 position={[x, h / 2 + railH, 0]}
-                rotation={[Math.atan2(h, d), 0, 0]}
+                rotation={[-Math.atan2(h, d), 0, 0]}
                 castShadow
             >
                 <boxGeometry args={[0.04, 0.04, Math.hypot(d, h)]} />

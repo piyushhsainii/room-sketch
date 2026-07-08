@@ -766,10 +766,8 @@ export default function DashboardClient() {
         </div>
       </div>
 
-      {/* Auth dialog */}
       <AuthDialog open={authDialogOpen} onClose={() => { setAuthDialogOpen(false); void refreshMe(); }} />
 
-      {/* Floor Plan Editor Modal - opens over everything */}
       {editorOpen && activeProject?.id && (
         <FloorPlanEditorModal
           projectId={activeProject.id}
@@ -777,7 +775,7 @@ export default function DashboardClient() {
             (activeProject as any).workspace_config?.floorPlanState ?? null
           }
           onSaved={(sceneJSON) => {
-            setEditorOpen(false);
+            // setEditorOpen(false);
             void refreshProjects(activeProject.id);
           }}
           onClose={() => setEditorOpen(false)}

@@ -5,12 +5,13 @@ import * as THREE from 'three'
 import { DoorMat } from './doormat';
 import { FloorMat } from './floormat';
 import { WallMat } from './wallmat';
+import { DoorVariant3D } from './door-variants';
+import { WindowVariant3D } from './window-variant3d';
 
 
-export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural', closedShapes }: {
-    fp: FloorPlanState; wallRoughness?: number; floorMaterial?: string; doorStyle?: string; closedShapes?: ClosedShape[]
+export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural', closedShapes, wallColor = '#FFFFFF' }: {
+    fp: FloorPlanState; wallRoughness?: number; floorMaterial?: string; doorStyle?: string; closedShapes?: ClosedShape[]; wallColor?: string
 }) {
-    const wallColor = '#8B7B6B'
     const H = fp.roomHeight
     const T = 0.15
 
@@ -128,45 +129,27 @@ export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', 
                                     const gx = a.x + (dx / len) * opPos2
                                     const gz = a.z + (dz / len) * opPos2
                                     panels.push(
-                                        <mesh
+                                        <WindowVariant3D
                                             key={`${seg.id}_${i}_g${si}`}
-                                            position={[gx, op.sillHeight + op.height / 2, gz]}
-                                            rotation={[0, -angle, 0]}
-                                        >
-                                            <boxGeometry args={[op.width, op.height, 0.025]} />
-                                            <meshStandardMaterial
-                                                color="#93C5FD"
-                                                transparent
-                                                opacity={0.35}
-                                                roughness={0.05}
-                                                metalness={0.15}
-                                                side={THREE.DoubleSide}
-                                            />
-                                        </mesh>
+                                            op={op}
+                                            angle={angle}
+                                            basePos={[gx, op.sillHeight + op.height / 2, gz]}
+                                        />
                                     )
                                 }
 
                                 // Door leaf — hinge at one edge, slightly ajar (30°)
                                 if (op.type === 'door') {
-                                    const openAngle = Math.PI / 6 // 30° open
-                                    const dirX = dx / len, dirZ = dz / len
-                                    const perpX = -dirZ, perpZ = dirX
-                                    // Hinge at the left edge of the opening
-                                    const hingeX = a.x + dirX * (opPos2 - op.width / 2)
-                                    const hingeZ = a.z + dirZ * (opPos2 - op.width / 2)
-                                    // Door leaf center offset from hinge along the open direction
-                                    const leafCx = hingeX + (Math.cos(openAngle) * dirX + Math.sin(openAngle) * perpX) * (op.width / 2)
-                                    const leafCz = hingeZ + (Math.cos(openAngle) * dirZ + Math.sin(openAngle) * perpZ) * (op.width / 2)
+                                    const doorX = a.x + (dx / len) * opPos2
+                                    const doorZ = a.z + (dz / len) * opPos2
                                     panels.push(
-                                        <mesh
+                                        <DoorVariant3D
                                             key={`${seg.id}_${i}_door${si}`}
-                                            position={[leafCx, op.height / 2, leafCz]}
-                                            rotation={[0, -angle + openAngle, 0]}
-                                            castShadow
-                                        >
-                                            <boxGeometry args={[op.width, op.height, 0.04]} />
-                                            <DoorMat style={doorStyle} />
-                                        </mesh>
+                                            op={op}
+                                            angle={angle}
+                                            basePos={[doorX, op.height / 2, doorZ]}
+                                            doorStyle={doorStyle}
+                                        />
                                     )
                                 }
 
@@ -225,12 +208,10 @@ export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', 
                     </mesh>
                 )
             })}
-
-            {/* Column joints at nodes */}
             {(fp.lineNodes ?? []).map(node => (
                 <mesh key={node.id} position={[node.x, H / 2, node.z]}>
                     <cylinderGeometry args={[T / 2, T / 2, H, 8]} />
-                    <meshStandardMaterial color="#6B5B4E" roughness={0.8} />
+                    <meshStandardMaterial color={wallColor} roughness={wallRoughness} />
                 </mesh>
             ))}
         </>

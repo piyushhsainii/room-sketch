@@ -1,37 +1,109 @@
-import { WALL_TEX } from "@/lib/helpers";
-import { useTexture } from "@react-three/drei";
-import { Suspense, useMemo } from "react";
 import * as THREE from 'three'
+import { useMemo } from 'react'
+import { WallMaterial, WALL_MAT_DEFS } from '../Tools/constants'
 
-function WallMatPBR({ color, roughness }: { color: string; roughness: number }) {
-    const textures = useTexture({ normalMap: WALL_TEX.normal, roughnessMap: WALL_TEX.rough })
-    useMemo(() => {
-        ;[textures.normalMap, textures.roughnessMap].forEach(t => {
-            if (!t) return
-            t.wrapS = t.wrapT = THREE.RepeatWrapping
-            t.repeat.set(2, 2)
-            t.needsUpdate = true
-        })
-    }, [textures])
-    return (
-        <meshStandardMaterial
-            color={color}
-            roughness={roughness}
-            metalness={0}
-            normalMap={textures.normalMap}
-            normalScale={new THREE.Vector2(0.35, 0.35)}
-            roughnessMap={textures.roughnessMap}
-        />
-    )
+interface WallMatProps {
+    color?: string
+    roughness?: number
+    textured?: boolean
+    mat?: WallMaterial
+    width?: number
+    height?: number
+    depth?: number
 }
 
-export function WallMat({ color, roughness, textured = false }: { color: string; roughness: number; textured?: boolean }) {
-    if (!textured) {
-        return <meshStandardMaterial color={color} roughness={roughness} metalness={0} />
+function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null {
+    if (mat === 'paint' || mat === 'pvc-panel-groove') return null // Handled via flat color or geometry
+
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 512
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, 0, 512, 512)
+
+    if (mat === 'wallpaper-stripe') {
+        ctx.fillStyle = '#E0E0E0'
+        for (let i = 0; i < 512; i += 64) ctx.fillRect(i, 0, 32, 512)
+    } else if (mat.includes('brick')) {
+        ctx.strokeStyle = '#555555'
+        ctx.lineWidth = 4
+        for (let y = 0; y < 512; y += 64) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke()
+            const offset = (y / 64) % 2 === 0 ? 0 : 64
+            for (let x = 0; x < 512; x += 128) {
+                ctx.beginPath(); ctx.moveTo(x + offset, y); ctx.lineTo(x + offset, y + 64); ctx.stroke()
+            }
+        }
+    } else if (mat === 'concrete-raw' || mat === 'wallpaper-textured') {
+        for (let i = 0; i < 20000; i++) {
+            ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.1})`
+            ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2)
+        }
     }
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    return tex
+}
+
+export function WallMat({ color, roughness, textured = false, mat = 'paint', width = 1, height = 2.7, depth = 0.15 }: WallMatProps) {
+    const def = WALL_MAT_DEFS[mat] || WALL_MAT_DEFS['paint']
+    const finalColor = color && color !== '#FFFFFF' ? color : def.color
+    const finalRoughness = roughness ?? def.roughness
+
+    const texture = useMemo(() => {
+        const tex = createProceduralTexture(mat)
+        if (tex) {
+            // Scale repeats based on real world dimensions
+            tex.repeat.set(width * def.repeatScale, height * def.repeatScale)
+            tex.needsUpdate = true
+        }
+        return tex
+    }, [mat, width, height, def.repeatScale])
+
+    // PVC Groove Geometry Injection (Generalized across wall width)
+    if (mat === 'pvc-panel-groove') {
+        const numGrooves = Math.floor(width / 0.15) // Groove every 15cm
+        const grooveW = 0.015
+        return (
+            <>
+                <meshStandardMaterial attach="material" color={finalColor} roughness={finalRoughness} metalness={def.metalness} />
+                <group position={[0, 0, depth / 2 + 0.002]}>
+                    {Array.from({ length: numGrooves }).map((_, i) => {
+                        const startX = -width / 2 + 0.075
+                        return (
+                            <mesh key={i} position={[startX + i * 0.15, 0, 0]} castShadow receiveShadow>
+                                <boxGeometry args={[grooveW, height, 0.005]} />
+                                <meshStandardMaterial color={finalColor} roughness={finalRoughness + 0.1} />
+                            </mesh>
+                        )
+                    })}
+                </group>
+                <group position={[0, 0, -depth / 2 - 0.002]}>
+                    {Array.from({ length: numGrooves }).map((_, i) => {
+                        const startX = -width / 2 + 0.075
+                        return (
+                            <mesh key={i} position={[startX + i * 0.15, 0, 0]} castShadow receiveShadow>
+                                <boxGeometry args={[grooveW, height, 0.005]} />
+                                <meshStandardMaterial color={finalColor} roughness={finalRoughness + 0.1} />
+                            </mesh>
+                        )
+                    })}
+                </group>
+            </>
+        )
+    }
+
     return (
-        <Suspense fallback={<meshStandardMaterial color={color} roughness={roughness} metalness={0} />}>
-            <WallMatPBR color={color} roughness={roughness} />
-        </Suspense>
+        <meshStandardMaterial
+            attach="material"
+            color={finalColor}
+            roughness={finalRoughness}
+            metalness={def.metalness}
+            map={texture || undefined}
+        />
     )
 }

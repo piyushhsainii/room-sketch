@@ -21,7 +21,7 @@ export default function Hero() {
             future home and start seeing it.
           </p>
           <div className="flex items-center gap-3 flex-wrap mb-8">
-            <a href="#" className="bg-[#F2F0EA] text-black text-[14px] font-medium px-7 py-3 rounded-[7px] hover:opacity-85 transition-opacity">
+            <a href="/dashboard" className="bg-[#F2F0EA] text-black text-[14px] font-medium px-7 py-3 rounded-[7px] hover:opacity-85 transition-opacity">
               Start drawing free →
             </a>
             <a href="#how-it-works" className="border border-line-strong text-graphite text-[14px] px-[22px] py-[11px] rounded-[7px] hover:border-ink hover:text-ink transition-colors">

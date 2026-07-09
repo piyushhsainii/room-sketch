@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { readSessionFromCookies } from "@/lib/auth/session";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import type { Json } from "@/supabase/types";
+// import type { Json } from "@/supabase/types";
 import type { WorkspaceConfig } from "@/types/workspace";
 
 export const runtime = "nodejs";
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     const { error } = await admin
       .from("projects")
       .update({
-        workspace_config: body.config as unknown as Json,
+        workspace_config: body.config,
         updated_at: new Date().toISOString(),
       })
       .eq("id", body.project_id)

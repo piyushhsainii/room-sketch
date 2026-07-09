@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FloorPlanState, FURNITURE_LABELS, OPENING_VARIANT_LABELS, STAIRS_LABELS } from "../Tools/constants";
+import { FloorPlanState, FURNITURE_LABELS, OPENING_VARIANT_LABELS, STAIRS_LABELS, WALL_DECOR_LABELS } from "../Tools/constants";
 import { THEME } from "../FloorPlanEditor";
 
 type SceneGraphEntry = { id: string; label: string; sub?: string }
@@ -30,7 +30,9 @@ function buildSceneGraph(fp: FloorPlanState) {
         ...(fp.furniture ?? []).map(f => ({ id: f.id, label: FURNITURE_LABELS[f.type] ?? f.type })),
         ...(fp.stairs ?? []).map(s => ({ id: s.id, label: STAIRS_LABELS[s.type] ?? s.type })),
     ]
-
+    const wallDecor: SceneGraphEntry[] = (fp.wallDecor ?? []).map(d => ({
+        id: d.id, label: WALL_DECOR_LABELS[d.type],
+    }))
     const annotations: SceneGraphEntry[] = (fp.annotations ?? []).filter(a => a.text).map(a => ({ id: a.id, label: a.text }))
 
     return [
@@ -41,6 +43,7 @@ function buildSceneGraph(fp: FloorPlanState) {
         { key: 'openings', label: 'Openings', entries: passages },
         { key: 'rooms', label: 'Rooms', entries: rooms },
         { key: 'annotations', label: 'Labels', entries: annotations },
+        { key: 'walldecor', label: 'Wall Decor', entries: wallDecor },
     ]
 }
 

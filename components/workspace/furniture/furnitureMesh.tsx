@@ -299,6 +299,82 @@ export function FurnitureMesh({ f }: { f: PlacedFurniture }) {
                     ))}
                 </group>
             )}
+            {f.type === 'led_strip' && (
+                <group>
+                    {/* Mounting channel */}
+                    <mesh position={[0, 2.4 * s, 0]} castShadow>
+                        <boxGeometry args={[1.2 * s, 0.02 * s, 0.03 * s]} />
+                        <meshStandardMaterial color="#E8E8E4" roughness={0.5} />
+                    </mesh>
+                    {/* Glowing strip */}
+                    <mesh position={[0, 2.4 * s, 0.018 * s]}>
+                        <boxGeometry args={[1.15 * s, 0.012 * s, 0.006 * s]} />
+                        <meshStandardMaterial
+                            color="#FFF4D6"
+                            emissive="#FFEBA8"
+                            emissiveIntensity={1.4}
+                            roughness={0.3}
+                            toneMapped={false}
+                        />
+                    </mesh>
+                    {/* Soft glow halo — subtle backlight bloom effect */}
+                    <mesh position={[0, 2.4 * s, -0.01 * s]}>
+                        <boxGeometry args={[1.25 * s, 0.05 * s, 0.02 * s]} />
+                        <meshStandardMaterial
+                            color="#FFEBA8"
+                            emissive="#FFEBA8"
+                            emissiveIntensity={0.5}
+                            transparent
+                            opacity={0.35}
+                            toneMapped={false}
+                        />
+                    </mesh>
+                </group>
+            )}
+
+            {f.type === 'wall_panel_pvc' && (
+                <group position={[0, 1.2 * s, 0]}>
+                    {/* Panel body */}
+                    <mesh castShadow receiveShadow>
+                        <boxGeometry args={[1.2 * s, 2.4 * s, 0.025 * s]} />
+                        <meshStandardMaterial color="#E4DDCF" roughness={0.35} metalness={0.02} />
+                    </mesh>
+                    {/* Vertical groove lines — typical fluted/slat PVC panel look */}
+                    {Array.from({ length: 8 }, (_, i) => {
+                        const gx = -0.52 * s + (1.04 * s / 7) * i
+                        return (
+                            <mesh key={i} position={[gx, 0, 0.014 * s]}>
+                                <boxGeometry args={[0.012 * s, 2.36 * s, 0.006 * s]} />
+                                <meshStandardMaterial color="#D2CABA" roughness={0.4} />
+                            </mesh>
+                        )
+                    })}
+                </group>
+            )}
+
+            {f.type === 'painting' && (
+                <group position={[0, 1.5 * s, 0]}>
+                    {/* Frame */}
+                    <mesh castShadow>
+                        <boxGeometry args={[0.9 * s, 0.7 * s, 0.035 * s]} />
+                        <meshStandardMaterial color="#3A2E22" roughness={0.5} />
+                    </mesh>
+                    {/* Canvas */}
+                    <mesh position={[0, 0, 0.019 * s]}>
+                        <boxGeometry args={[0.8 * s, 0.6 * s, 0.008 * s]} />
+                        <meshStandardMaterial color="#DCD2C0" roughness={0.85} />
+                    </mesh>
+                    {/* Simple abstract brushstroke blocks so it doesn't read as a blank card */}
+                    <mesh position={[-0.16 * s, 0.08 * s, 0.024 * s]}>
+                        <boxGeometry args={[0.28 * s, 0.22 * s, 0.004 * s]} />
+                        <meshStandardMaterial color="#8B6A4E" roughness={0.9} />
+                    </mesh>
+                    <mesh position={[0.14 * s, -0.1 * s, 0.024 * s]}>
+                        <boxGeometry args={[0.34 * s, 0.16 * s, 0.004 * s]} />
+                        <meshStandardMaterial color="#6B7F6B" roughness={0.9} />
+                    </mesh>
+                </group>
+            )}
         </group>
     )
 }

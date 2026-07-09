@@ -33,6 +33,7 @@ export type FloorPlanState = {
     annotations: Annotation[]
     furniture: PlacedFurniture[]
     stairs: PlacedStairs[]   // ← new
+    wallDecor: PlacedWallDecor[]
 }
 
 export const DEFAULT_FP: FloorPlanState = {
@@ -41,6 +42,7 @@ export const DEFAULT_FP: FloorPlanState = {
     annotations: [],
     furniture: [],
     stairs: [],   // ← new
+    wallDecor: [],
 }
 
 export const STAIRS_FOOTPRINTS: Record<StairsType, { w: number; d: number }> = {
@@ -79,7 +81,7 @@ export type LineSegment = {
     closed: boolean
 }
 
-export type FloorMaterial = 'wood' | 'marble' | 'concrete' | 'tiles' | 'fabric' | 'plaster' | 'plain'
+// export type FloorMaterial = 'wood' | 'marble' | 'concrete' | 'tiles' | 'fabric' | 'plaster' | 'plain'
 export type DoorStyle = 'natural' | 'white' | 'dark' | 'glass'
 
 
@@ -89,7 +91,7 @@ export type Annotation = { id: string; x: number; z: number; text: string; fontS
 
 export type FurnitureType =
     | 'sofa' | 'bed' | 'dining_table' | 'desk' | 'wardrobe' | 'bathtub' | 'toilet' | 'plant' | 'chair' | 'coffee_table'
-    | 'single_sofa' | 'lamp' | 'mirror' | 'kitchen_stove' | 'chimney' | 'commode' | 'shower' | 'shoe_rack'
+    | 'single_sofa' | 'lamp' | 'mirror' | 'kitchen_stove' | 'chimney' | 'commode' | 'shower' | 'shoe_rack' | 'led_strip' | 'wall_panel_pvc' | 'painting'
 
 export type PlacedFurniture = {
     id: string
@@ -128,6 +130,7 @@ export type EditorTool =
     | 'opening-archway' | 'opening-passage'
     | 'stairs-straight' | 'stairs-l' | 'stairs-u' | 'stairs-spiral' | 'stairs-ramp'
     | 'elevator'
+    | 'wall-decor-led' | 'wall-decor-pvc' | 'wall-decor-painting'   // ← new
     | 'annotate' | 'furniture' | 'delete'
 
 export interface ToolLeaf {
@@ -283,6 +286,19 @@ export const ICONS: Record<EditorTool, React.ReactNode> = {
         <path d="M10 11v6M14 11v6" />
         <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
     </>),
+    'wall-decor-led': S(<>
+        <rect x="2" y="9" width="20" height="4" rx="1" />
+        <line x1="2" y1="11" x2="22" y2="11" strokeDasharray="1 2" strokeWidth="1" />
+    </>),
+    'wall-decor-pvc': S(<>
+        <rect x="3" y="3" width="18" height="18" rx="1" />
+        <line x1="7" y1="3" x2="7" y2="21" /><line x1="12" y1="3" x2="12" y2="21" /><line x1="17" y1="3" x2="17" y2="21" />
+    </>),
+    'wall-decor-painting': S(<>
+        <rect x="3" y="3" width="18" height="18" rx="1" />
+        <circle cx="9" cy="9" r="2" />
+        <path d="M21 15l-5-5-8 8" />
+    </>),
 }
 
 // ── Tool groups (drives the toolbar layout) ─────────────────────────────────
@@ -342,21 +358,29 @@ export const TOOL_GROUPS: ToolGroup[] = [
     { id: 'annotate', label: 'Annotate', leaves: [{ id: 'annotate', label: 'Add Label', key: 'A', icon: ICONS.annotate }] },
     { id: 'furniture', label: 'Furniture', leaves: [{ id: 'furniture', label: 'Place Furniture', key: 'F', icon: ICONS.furniture }] },
     { id: 'delete', label: 'Delete', leaves: [{ id: 'delete', label: 'Delete', key: '⌫', icon: ICONS.delete }] },
+    {
+        id: 'wall-decor', label: 'Wall Decor', leaves: [
+            { id: 'wall-decor-led', label: 'LED Strip', icon: ICONS['wall-decor-led'] },
+            { id: 'wall-decor-pvc', label: 'PVC Wall Panel', icon: ICONS['wall-decor-pvc'] },
+            { id: 'wall-decor-painting', label: 'Painting', icon: ICONS['wall-decor-painting'] },
+        ]
+    },
 ]
 
 
-// wherever DEFAULT_SCENE_CONFIG is defined (constants.ts), it should read:
 export const DEFAULT_SCENE_CONFIG: SceneConfig = {
-    ambientIntensity: 0.9,
-    wallRoughness: 0.95,     // higher roughness = flatter, less specular highlight
+    ambientIntensity: 1.5,
+    wallRoughness: 0.85,
     wallTextured: false,
     showFurniture: true,
     showLabels: true,
     fogEnabled: false,
-    doorStyle: 'white',
-    globalFloorMaterial: 'plain', // add a 'plain' entry to FLOOR_MATERIALS
+    doorStyle: 'natural',
+    globalFloorMaterial: 'plain',
+    globalWallMaterial: 'paint',
     rooms: [],
 }
+
 export const WALL_COLORS = [
     '#F5F0E8', '#E8E0D0', '#D4C4A0', '#C8B898',
     '#E8D5C0', '#D4B896', '#F0E8D8', '#8B7B6B',
@@ -377,11 +401,37 @@ export const FLOOR_TEXTURE_URLS: Record<Exclude<FloorMaterial, 'plain'>, {
         roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
         repeat: 3, roughness: 0.72, metalness: 0.0,
     },
+    // ── ADDED: New Wood Variants ───────────────────────────────────
+    'wood-oak': {
+        map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`, // Swap out file if distinct oak image exists
+        normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
+        repeat: 3, roughness: 0.70, metalness: 0.0,
+    },
+    'wood-walnut': {
+        map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`, // Swap out file if distinct walnut image exists
+        normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
+        repeat: 3, roughness: 0.65, metalness: 0.0, // slightly glossier roughness adjustments
+    },
     marble: {
         map: `${TEXTURE_BASE}/Marble022_1K-JPG_Color.jpg`,
         normalMap: `${TEXTURE_BASE}/Marble022_1K-JPG_NormalGL.jpg`,
         roughnessMap: `${TEXTURE_BASE}/Marble022_1K-JPG_Roughness.jpg`,
         repeat: 1.5, roughness: 0.18, metalness: 0.04,
+    },
+    // ── ADDED: New Marble Variants ─────────────────────────────────
+    'marble-white': {
+        map: `${TEXTURE_BASE}/Marble022_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Marble022_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Marble022_1K-JPG_Roughness.jpg`,
+        repeat: 1.5, roughness: 0.15, metalness: 0.04,
+    },
+    'marble-black': {
+        map: `${TEXTURE_BASE}/Marble022_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Marble022_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Marble022_1K-JPG_Roughness.jpg`,
+        repeat: 1.5, roughness: 0.22, metalness: 0.06,
     },
     concrete: {
         map: `${TEXTURE_BASE}/Concrete025_1K-JPG_Color.jpg`,
@@ -394,6 +444,13 @@ export const FLOOR_TEXTURE_URLS: Record<Exclude<FloorMaterial, 'plain'>, {
         normalMap: `${TEXTURE_BASE}/Tiles101_1K-JPG_NormalGL.jpg`,
         roughnessMap: `${TEXTURE_BASE}/Tiles101_Roughness.jpg`,
         repeat: 2, roughness: 0.30, metalness: 0.04,
+    },
+    // ── ADDED: New Tile Variants ───────────────────────────────────
+    'tile-ceramic': {
+        map: `${TEXTURE_BASE}/Tiles101_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Tiles101_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Tiles101_Roughness.jpg`,
+        repeat: 2, roughness: 0.25, metalness: 0.02,
     },
     fabric: {
         map: `${TEXTURE_BASE}/Fabric049_1K-JPG_Color.jpg`,
@@ -459,8 +516,10 @@ export const FURNITURE_FOOTPRINTS: Record<FurnitureType, { w: number; d: number 
     commode: { w: 0.5, d: 0.45 },
     shower: { w: 0.9, d: 0.9 },
     shoe_rack: { w: 0.9, d: 0.32 },
+    led_strip: { w: 1.25, d: 0.05 },
+    wall_panel_pvc: { w: 1.2, d: 0.05 },
+    painting: { w: 0.9, d: 0.05 },
 }
-
 export const FURNITURE_COLORS: Record<FurnitureType, string> = {
     sofa: 'rgba(160,148,130,0.88)',
     bed: 'rgba(130,120,155,0.88)',
@@ -480,6 +539,9 @@ export const FURNITURE_COLORS: Record<FurnitureType, string> = {
     commode: 'rgba(210,210,205,0.88)',
     shower: 'rgba(150,190,200,0.88)',
     shoe_rack: 'rgba(120,95,70,0.88)',
+    led_strip: 'rgba(255,220,150,0.9)',
+    wall_panel_pvc: 'rgba(228,221,207,0.88)',
+    painting: 'rgba(120,105,85,0.88)',
 }
 
 export const FURNITURE_LABELS: Record<FurnitureType, string> = {
@@ -489,6 +551,7 @@ export const FURNITURE_LABELS: Record<FurnitureType, string> = {
     single_sofa: 'S.Sofa', lamp: 'Lamp', mirror: 'Mirr',
     kitchen_stove: 'Stove', chimney: 'Chim', commode: 'Cmd',
     shower: 'Shwr', shoe_rack: 'Shoe',
+    led_strip: 'LED', wall_panel_pvc: 'PVC Panel', painting: 'Art',
 }
 
 export const OPENING_VARIANT_LABELS: Record<string, string> = {
@@ -516,5 +579,81 @@ export const FURNITURE_CATEGORIES: { id: FurnitureCategory; label: string; items
     { id: 'storage', label: 'Storage', items: ['wardrobe', 'shoe_rack'] },
     { id: 'kitchen', label: 'Kitchen', items: ['kitchen_stove', 'chimney'] },
     { id: 'bathroom', label: 'Bathroom', items: ['bathtub', 'toilet', 'commode', 'shower'] },
-    { id: 'decor', label: 'Decor', items: ['plant', 'lamp', 'mirror'] },
+    { id: 'decor', label: 'Decor', items: ['plant', 'lamp', 'mirror', 'led_strip', 'wall_panel_pvc', 'painting'] },
 ]
+
+
+export type WallDecorType = 'led_strip' | 'wall_panel_pvc' | 'painting'
+
+export type PlacedWallDecor = {
+    id: string
+    type: WallDecorType
+    roomId: string
+    wall?: 'north' | 'south' | 'east' | 'west'
+    position: number
+    segmentNodeIds?: string[]
+    segmentT?: number
+    heightOffset: number
+    width: number
+    rotation?: number
+    scale: number
+}
+
+export const WALL_DECOR_LABELS: Record<WallDecorType, string> = {
+    led_strip: 'LED Strip',
+    wall_panel_pvc: 'PVC Wall Panel',
+    painting: 'Painting',
+}
+
+export const WALL_DECOR_DEFAULTS: Record<WallDecorType, { width: number; heightOffset: number }> = {
+    led_strip: { width: 1.2, heightOffset: 2.4 },
+    wall_panel_pvc: { width: 1.2, heightOffset: 0.0 },
+    painting: { width: 0.9, heightOffset: 1.5 },
+}
+
+export type FloorMaterial =
+    | 'wood' | 'marble' | 'concrete' | 'tiles' | 'fabric' | 'plaster' | 'plain' // existing
+    | 'wood-oak' | 'wood-walnut' | 'marble-white' | 'marble-black' | 'tile-ceramic' // new
+
+// New WallMaterial union
+export type WallMaterial =
+    | 'paint'
+    | 'wallpaper-stripe' | 'wallpaper-floral' | 'wallpaper-textured'
+    | 'pvc-panel-groove' | 'pvc-panel-brick'
+    | 'exposed-brick' | 'concrete-raw'
+
+export interface MaterialDef {
+    color: string
+    roughness: number
+    metalness: number
+    repeatScale: number
+    normalIntensity?: number
+    preview?: string
+}
+
+// Global Definitions
+export const FLOOR_MAT_DEFS: Record<FloorMaterial, MaterialDef> = {
+    plain: { color: '#C8A878', roughness: 0.7, metalness: 0, repeatScale: 1, preview: '🪵' },
+    wood: { color: '#C8A878', roughness: 0.6, metalness: 0, repeatScale: 2, preview: '🪵' },
+    'wood-oak': { color: '#D4B592', roughness: 0.5, metalness: 0, repeatScale: 2, preview: '🪵' },
+    'wood-walnut': { color: '#5C4033', roughness: 0.4, metalness: 0, repeatScale: 2, preview: '🪵' },
+    marble: { color: '#EAE6E0', roughness: 0.12, metalness: 0.1, repeatScale: 3, preview: '⬜' },
+    'marble-white': { color: '#F9F9F9', roughness: 0.05, metalness: 0.1, repeatScale: 4 },
+    'marble-black': { color: '#1A1A1A', roughness: 0.05, metalness: 0.2, repeatScale: 4 },
+    concrete: { color: '#A8A8A8', roughness: 0.92, metalness: 0, repeatScale: 4, preview: '🩶' },
+    tiles: { color: '#D4D0C8', roughness: 0.3, metalness: 0, repeatScale: 1, preview: '🔲' },
+    'tile-ceramic': { color: '#F0F0F0', roughness: 0.1, metalness: 0, repeatScale: 1 },
+    fabric: { color: '#B8A898', roughness: 0.98, metalness: 0, repeatScale: 5, preview: '🟫' },
+    plaster: { color: '#D8D0C8', roughness: 0.88, metalness: 0, repeatScale: 2, preview: '🟪' },
+}
+
+export const WALL_MAT_DEFS: Record<WallMaterial, MaterialDef> = {
+    paint: { color: '#FFFFFF', roughness: 0.95, metalness: 0, repeatScale: 1 },
+    'wallpaper-stripe': { color: '#E5E5DF', roughness: 0.8, metalness: 0, repeatScale: 2, normalIntensity: 0.2 },
+    'wallpaper-floral': { color: '#D2D8D2', roughness: 0.9, metalness: 0, repeatScale: 3 },
+    'wallpaper-textured': { color: '#F0EAD6', roughness: 1.0, metalness: 0, repeatScale: 4, normalIntensity: 0.8 },
+    'pvc-panel-groove': { color: '#E8E8E8', roughness: 0.4, metalness: 0.1, repeatScale: 1 },
+    'pvc-panel-brick': { color: '#DCDCDC', roughness: 0.6, metalness: 0, repeatScale: 1.5, normalIntensity: 1.0 },
+    'exposed-brick': { color: '#8B4513', roughness: 0.9, metalness: 0, repeatScale: 2, normalIntensity: 1.5 },
+    'concrete-raw': { color: '#808080', roughness: 0.95, metalness: 0, repeatScale: 3, normalIntensity: 0.5 },
+}

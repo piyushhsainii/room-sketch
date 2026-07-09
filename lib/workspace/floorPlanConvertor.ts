@@ -1,14 +1,10 @@
+import { FloorPlanState } from "@/components/workspace/Tools/constants";
 import type {
   SceneJSON,
   SceneRoom,
   RoomDoor,
   RoomWindow,
 } from "@/types/workspace";
-import type {
-  FloorPlanState,
-  EditorRoom,
-  EditorOpening,
-} from "@/components/workspace/FloorPlanEditor";
 
 function getFloorMaterial(name: string): SceneRoom["floor_material"] {
   const n = name.toLowerCase();

@@ -1,5 +1,5 @@
 import React from 'react'
-import { ClosedShape, FloorPlanState, LineNode } from '../Tools/constants';
+import { ClosedShape, FloorMaterial, FloorPlanState, LineNode } from '../Tools/constants';
 import { deriveClosedPolygons } from '@/lib/helpers';
 import * as THREE from 'three'
 import { DoorMat } from './doormat';
@@ -7,6 +7,7 @@ import { FloorMat } from './floormat';
 import { WallMat } from './wallmat';
 import { DoorVariant3D } from './door-variants';
 import { WindowVariant3D } from './window-variant3d';
+import { WallDecorMesh } from './wall-decor-mesh';
 
 
 export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural', closedShapes, wallColor = '#FFFFFF' }: {
@@ -169,14 +170,18 @@ export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', 
                     .filter(Boolean) as LineNode[]
                 if (nodes.length < 3) return null
 
-                // Compute bounding box for aspect-correct textures
+                let area2 = 0
+                for (let i = 0; i < nodes.length; i++) {
+                    const p1 = nodes[i]!, p2 = nodes[(i + 1) % nodes.length]!
+                    area2 += p1.x * p2.z - p2.x * p1.z
+                }
+                if (Math.abs(area2) / 2 < 0.05) return null
+
                 const xs = nodes.map(n => n.x), zs = nodes.map(n => n.z)
                 const minX = Math.min(...xs), maxX = Math.max(...xs)
                 const minZ = Math.min(...zs), maxZ = Math.max(...zs)
                 const worldW = maxX - minX
                 const worldD = maxZ - minZ
-
-                // Look up per-shape floor material
                 const nodeIdSet = new Set(nodeIds)
                 const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
                     s.nodeIds.length === nodeIds.length &&
@@ -184,9 +189,6 @@ export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', 
                 )
                 const shapeMat = matchedShape?.floorMaterial ?? floorMaterial
 
-                // THREE.Shape is in XY plane.
-                // After rotation [-PI/2, 0, 0]: shape X → world X, shape Y → world -Z
-                // Pass (node.x, -node.z) so the floor aligns with the walls.
                 const shape = new THREE.Shape()
                 shape.moveTo(nodes[0]!.x, -nodes[0]!.z)
                 for (let i = 1; i < nodes.length; i++) {
@@ -204,7 +206,11 @@ export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', 
                         receiveShadow
                     >
                         <primitive object={geometry} attach="geometry" />
-                        <FloorMat mat={shapeMat} worldWidth={worldW} worldDepth={worldD} />
+                        <FloorMat
+                            mat={shapeMat as FloorMaterial}
+                            width={worldW}
+                            depth={worldD}
+                        />
                     </mesh>
                 )
             })}
@@ -214,6 +220,25 @@ export function LineWalls3D({ fp, wallRoughness = 0.85, floorMaterial = 'wood', 
                     <meshStandardMaterial color={wallColor} roughness={wallRoughness} />
                 </mesh>
             ))}
+
+            {/* Wall decor on line-wall segments */}
+            {(fp.wallDecor ?? []).filter(d => d.segmentNodeIds).map(d => {
+                const a = fp.lineNodes.find(n => n.id === d.segmentNodeIds![0])
+                const b = fp.lineNodes.find(n => n.id === d.segmentNodeIds![1])
+                if (!a || !b) return null
+                const t = d.segmentT ?? 0
+                const angle = Math.atan2(b.z - a.z, b.x - a.x)
+                const dx = a.x + (b.x - a.x) * t
+                const dz = a.z + (b.z - a.z) * t
+                return (
+                    <WallDecorMesh
+                        key={d.id}
+                        decor={d}
+                        angle={angle}
+                        basePos={[dx, d.heightOffset, dz]}
+                    />
+                )
+            })}
         </>
     )
 }

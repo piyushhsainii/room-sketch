@@ -7,10 +7,9 @@ import { WalkModeControls } from "./WalkModeControls"
 import { FurnitureMesh } from "./furniture/furnitureMesh"
 import { SceneConfig } from "./FloorPlanEditor"
 
-export function Scene3D({ fp, sceneConfig, walkMode = false }: {
-    fp: FloorPlanState
-    sceneConfig?: SceneConfig
-    walkMode?: boolean
+function Scene3D({ fp, sceneConfig, walkMode = false, onSelectRoom }: {
+    fp: FloorPlanState; sceneConfig?: SceneConfig; walkMode?: boolean
+    onSelectRoom?: (roomId: string) => void
 }) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG // import this from constants/FloorPlanEditor
 
@@ -38,6 +37,7 @@ export function Scene3D({ fp, sceneConfig, walkMode = false }: {
                         floorMat={roomCfg?.floorMaterial ?? cfg.globalFloorMaterial ?? 'plain'}
                         doorStyle={cfg.doorStyle ?? 'natural'}
                         wallDecor={fp.wallDecor}
+                        onSelectRoom={onSelectRoom}
                     />
                 )
             })}
@@ -55,7 +55,7 @@ export function Scene3D({ fp, sceneConfig, walkMode = false }: {
             {cfg.showFurniture !== false && (fp.stairs ?? []).map(s => <StairsMesh key={s.id} s={s} roomHeight={fp.roomHeight} />)}
 
             {walkMode ? <WalkModeControls /> : (
-                <OrbitControls makeDefault enableDamping dampingFactor={0.05} minDistance={2} maxDistance={40} maxPolarAngle={Math.PI / 2 - 0.05} />
+                <OrbitControls makeDefault enableDamping dampingFactor={0.05} minDistance={2} maxDistance={160} maxPolarAngle={Math.PI / 2 - 0.05} />
             )}
 
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>

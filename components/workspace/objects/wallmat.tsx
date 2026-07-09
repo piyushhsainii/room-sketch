@@ -13,7 +13,7 @@ interface WallMatProps {
 }
 
 function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null {
-    if (mat === 'paint' || mat === 'pvc-panel-groove') return null // Handled via flat color or geometry
+    if (mat === 'paint' || mat === 'pvc-panel-groove') return null
 
     const canvas = document.createElement('canvas')
     canvas.width = 512
@@ -27,7 +27,47 @@ function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null 
     if (mat === 'wallpaper-stripe') {
         ctx.fillStyle = '#E0E0E0'
         for (let i = 0; i < 512; i += 64) ctx.fillRect(i, 0, 32, 512)
-    } else if (mat.includes('brick')) {
+    } else if (mat === 'wallpaper-floral') {
+        ctx.fillStyle = '#C9A9A6'
+        for (let i = 0; i < 40; i++) {
+            const x = Math.random() * 512, y = Math.random() * 512
+            ctx.beginPath()
+            ctx.arc(x, y, 8 + Math.random() * 10, 0, Math.PI * 2)
+            ctx.fill()
+        }
+    } else if (mat === 'brick-red' || mat === 'brick-white') {
+        // Brick fill color per variant, mortar lines on top
+        ctx.fillStyle = mat === 'brick-red' ? '#9C4A34' : '#D8D2C4'
+        ctx.fillRect(0, 0, 512, 512)
+        ctx.strokeStyle = mat === 'brick-red' ? '#5C2A1E' : '#A8A296'
+        ctx.lineWidth = 5
+        for (let y = 0; y < 512; y += 48) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke()
+            const offset = (y / 48) % 2 === 0 ? 0 : 64
+            for (let x = -64; x < 512; x += 128) {
+                ctx.beginPath(); ctx.moveTo(x + offset, y); ctx.lineTo(x + offset, y + 48); ctx.stroke()
+            }
+        }
+        // subtle per-brick shade variance so it doesn't look flat
+        for (let i = 0; i < 200; i++) {
+            ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`
+            ctx.fillRect(Math.random() * 512, Math.random() * 512, 20, 12)
+        }
+    } else if (mat === 'tile-ceramic') {
+        ctx.fillStyle = '#F2F1EC'
+        ctx.fillRect(0, 0, 512, 512)
+        ctx.strokeStyle = '#C9C7C0'
+        ctx.lineWidth = 3
+        const tileSize = 85
+        for (let x = 0; x <= 512; x += tileSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 512); ctx.stroke() }
+        for (let y = 0; y <= 512; y += tileSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke() }
+        // faint specular highlight streaks for a glossy read
+        for (let i = 0; i < 6; i++) {
+            const y = Math.random() * 512
+            ctx.fillStyle = 'rgba(255,255,255,0.15)'
+            ctx.fillRect(0, y, 512, 2)
+        }
+    } else if (mat.includes('brick')) { // pvc-panel-brick, exposed-brick fallback
         ctx.strokeStyle = '#555555'
         ctx.lineWidth = 4
         for (let y = 0; y < 512; y += 64) {
@@ -48,6 +88,7 @@ function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null 
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping
     return tex
 }
+
 
 export function WallMat({ color, roughness, textured = false, mat = 'paint', width = 1, height = 2.7, depth = 0.15 }: WallMatProps) {
     const def = WALL_MAT_DEFS[mat] || WALL_MAT_DEFS['paint']

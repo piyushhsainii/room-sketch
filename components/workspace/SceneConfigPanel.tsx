@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { RoomSceneConfig, SceneConfig } from "./FloorPlanEditor"
+import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
 import { DEFAULT_SCENE_CONFIG, DOOR_STYLES, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, WALL_COLORS } from "./Tools/constants"
 import { deriveClosedPolygons } from "@/lib/helpers"
 
@@ -121,13 +121,20 @@ export function SceneConfigPanel({
                         <div style={{ height: 1, background: 'var(--fp-border)' }} />
 
                         <div>
-                            <CfgLabel>Door Style</CfgLabel>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
+                            <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Door Style</h4>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                 {DOOR_STYLES.map(d => (
-                                    <button key={d.value} onClick={() => patchScene({ doorStyle: d.value })} style={{ height: 36, borderRadius: 7, border: config.doorStyle === d.value ? '1.5px solid var(--fp-accent-border)' : '1px solid var(--fp-border)', background: config.doorStyle === d.value ? 'var(--fp-accent-bg-strong)' : 'var(--fp-bg-subtle)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, padding: '0 8px', transition: 'all 130ms' }}>
-                                        <div style={{ width: 14, height: 14, borderRadius: 3, background: d.color, border: '1px solid var(--fp-border-strong)', flexShrink: 0, opacity: d.value === 'glass' ? 0.5 : 1 }} />
-                                        <span style={{ fontSize: 10, fontWeight: config.doorStyle === d.value ? 700 : 400, color: config.doorStyle === d.value ? 'var(--fp-accent)' : 'var(--fp-text-muted)' }}>{d.label}</span>
-                                    </button>
+                                    <button
+                                        key={d.value}
+                                        onClick={() => onChange({ ...config, doorStyle: d.value })}
+                                        title={d.label}
+                                        style={{
+                                            width: 28, height: 28, borderRadius: 4, cursor: 'pointer',
+                                            backgroundColor: d.color,
+                                            border: config.doorStyle === d.value ? `2px solid ${THEME.accent}` : `1px solid ${THEME.border}`,
+                                            boxShadow: config.doorStyle === d.value ? '0 0 0 2px rgba(37,99,235,0.2)' : 'none'
+                                        }}
+                                    />
                                 ))}
                             </div>
                         </div>

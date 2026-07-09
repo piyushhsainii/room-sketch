@@ -2,27 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, } from '@react-three/drei'
-import * as THREE from 'three'
 import { Toolbar } from './Tools/ToolBar'
-import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureCategory, FurnitureType, GRID_M, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
+import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
 import { deriveClosedPolygons } from '@/lib/helpers'
-import { FloorMat } from './objects/floormat'
-import { WallMat } from './objects/wallmat'
-import { LineWalls3D } from './objects/line-walls-3d'
 import { SceneConfigPanel } from './SceneConfigPanel'
-import { StairsMesh } from './furniture/stairsMesh'
-import { WalkModeControls } from './WalkModeControls'
-import { DoorVariant3D } from './objects/door-variants'
 import { Dock } from '../ui/Dock'
-import { WindowVariant3D } from './objects/window-variant3d'
 import { SceneGraphPanel } from './objects/scene-graph'
-import { ArchHeader3D } from './objects/arch-header'
-import { FurnitureMesh } from './furniture/furnitureMesh'
 import { ScrollableList } from '../ui/ScrollableList'
-import { Room3D } from './3dRoom'
 import { MaterialsPanel } from './MaterialsPanel'
-import { Scene3D } from './Walk3dScene'
+import Scene3D from './Walk3dScene'
+import SceneErrorBoundary from './objects/error-boundary'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -2599,22 +2588,28 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                         <div><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>ESC</kbd> Unlock cursor</div>
                                     </div>
                                 )}
-
-                                <Canvas
-                                    shadows
-                                    camera={{
-                                        position: [
-                                            (fp?.roomHeight ?? 2.8) * 3,
-                                            (fp?.roomHeight ?? 2.8) * 4,
-                                            (fp?.roomHeight ?? 2.8) * 4
-                                        ],
-                                        fov: 45, near: 0.1, far: 500
-                                    }}
-                                    style={{ width: '100%', height: '100%', background: '#EFEFEC' }}
-                                    onWheel={e => e.stopPropagation()}
-                                >
-                                    <Scene3D fp={fp} sceneConfig={sceneConfig} walkMode={walkMode} />
-                                </Canvas>
+                                <SceneErrorBoundary fallback={null}>
+                                    <Canvas
+                                        shadows
+                                        camera={{
+                                            position: [
+                                                (fp?.roomHeight ?? 2.8) * 3,
+                                                (fp?.roomHeight ?? 2.8) * 4,
+                                                (fp?.roomHeight ?? 2.8) * 4
+                                            ],
+                                            fov: 45, near: 0.1, far: 500
+                                        }}
+                                        style={{ width: '100%', height: '100%', background: '#EFEFEC' }}
+                                        onWheel={e => e.stopPropagation()}
+                                    >
+                                        <Scene3D
+                                            fp={fp}
+                                            sceneConfig={sceneConfig}
+                                            walkMode={walkMode}
+                                            onSelectRoom={(roomId) => { setSelectedId(roomId); setRightTab('materials') }}
+                                        />
+                                    </Canvas>
+                                </SceneErrorBoundary>
                             </div>
                         </div>
                     )}
@@ -2658,7 +2653,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                             color: rightTab === t ? 'white' : THEME.textMuted,
                             fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 150ms',
                         }}>
-                            {t === 'properties' ? 'PROPERTIES' : 'SCENE CONFIG'}
+                            {t === 'properties' ? 'PROPERTIES' : t === "scene" ? "SCENE" : "MATERIALS"}
                         </button>
                     ))}
                 </div>

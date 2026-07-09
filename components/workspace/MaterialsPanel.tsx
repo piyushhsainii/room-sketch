@@ -1,6 +1,6 @@
 // components/workspace/MaterialsPanel.tsx
 import React from 'react'
-import { FloorPlanState, FLOOR_MAT_DEFS, WALL_MAT_DEFS, FloorMaterial, WallMaterial } from './Tools/constants'
+import { FloorPlanState, FLOOR_MAT_DEFS, WALL_MAT_DEFS, FloorMaterial, WallMaterial, DOOR_STYLES } from './Tools/constants'
 import { SceneConfig, RoomSceneConfig } from './FloorPlanEditor'
 
 const THEME = { border: '#E5E7EB', text: '#111827', textMuted: '#6B7280', bg: '#FFFFFF', bgHover: '#F3F4F6', accent: '#2563EB' }
@@ -30,19 +30,25 @@ export function MaterialsPanel({ fp, config, onChange }: Props) {
         const defs = type === 'wall' ? WALL_MAT_DEFS : FLOOR_MAT_DEFS
         return (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                {Object.entries(defs).map(([key, def]) => (
-                    <button
-                        key={key}
-                        onClick={() => onSelect(key as WallMaterial | FloorMaterial)}
-                        title={key}
-                        style={{
-                            width: 28, height: 28, borderRadius: 4, cursor: 'pointer',
-                            backgroundColor: def.color,
-                            border: currentVal === key ? `2px solid ${THEME.accent}` : `1px solid ${THEME.border}`,
-                            boxShadow: currentVal === key ? '0 0 0 2px rgba(37,99,235,0.2)' : 'none'
-                        }}
-                    />
-                ))}
+                {Object.entries(defs).map(([key, def]) => {
+                    const hasImagePreview = def.preview?.startsWith('/')
+                    return (
+                        <button
+                            key={key}
+                            onClick={() => onSelect(key as WallMaterial | FloorMaterial)}
+                            title={key}
+                            style={{
+                                width: 28, height: 28, borderRadius: 4, cursor: 'pointer',
+                                backgroundColor: hasImagePreview ? undefined : def.color,
+                                backgroundImage: hasImagePreview ? `url(${def.preview})` : undefined,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center',
+                                border: currentVal === key ? `2px solid ${THEME.accent}` : `1px solid ${THEME.border}`,
+                                boxShadow: currentVal === key ? '0 0 0 2px rgba(37,99,235,0.2)' : 'none'
+                            }}
+                        />
+                    )
+                })}
             </div>
         )
     }
@@ -55,9 +61,27 @@ export function MaterialsPanel({ fp, config, onChange }: Props) {
                     <span style={{ fontSize: 12, color: THEME.textMuted }}>Wall Material</span>
                     {renderSwatches('wall', config.globalWallMaterial || 'paint', (v) => onChange({ ...config, globalWallMaterial: v as WallMaterial }))}
                 </div>
-                <div>
+                <div style={{ marginBottom: 12 }}>
                     <span style={{ fontSize: 12, color: THEME.textMuted }}>Floor Material</span>
                     {renderSwatches('floor', config.globalFloorMaterial || 'plain', (v) => onChange({ ...config, globalFloorMaterial: v as FloorMaterial }))}
+                </div>
+                <div>
+                    <span style={{ fontSize: 12, color: THEME.textMuted }}>Door Style</span>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                        {DOOR_STYLES.map(d => (
+                            <button
+                                key={d.value}
+                                onClick={() => onChange({ ...config, doorStyle: d.value })}
+                                title={d.label}
+                                style={{
+                                    width: 28, height: 28, borderRadius: 4, cursor: 'pointer',
+                                    backgroundColor: d.color,
+                                    border: config.doorStyle === d.value ? `2px solid ${THEME.accent}` : `1px solid ${THEME.border}`,
+                                    boxShadow: config.doorStyle === d.value ? '0 0 0 2px rgba(37,99,235,0.2)' : 'none'
+                                }}
+                            />
+                        ))}
+                    </div>
                 </div>
             </div>
 

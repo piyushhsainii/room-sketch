@@ -8,7 +8,7 @@ import { EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial
 
 function Room3D({
     room,
-    openings = [], // FIX: Guard against undefined/null openings array on initial loads
+    openings = [], // Guard against undefined/null openings array on initial loads
     roomHeight,
     wallColor = '#FFFFFF',
     wallRoughness = 0.95,
@@ -17,9 +17,10 @@ function Room3D({
     doorStyle = 'natural',
     wallDecor,
     wallMaterial = 'paint',
+    onSelectRoom
 }: {
     room: EditorRoom;
-    openings?: EditorOpening[]; // Changed to optional to support the default assignment safely
+    openings?: EditorOpening[];
     roomHeight: number
     wallColor?: string;
     wallRoughness?: number;
@@ -28,6 +29,7 @@ function Room3D({
     doorStyle?: string
     wallDecor?: PlacedWallDecor[]
     wallMaterial?: WallMaterial
+    onSelectRoom?: (roomId: string) => void
 }) {
     const cx = room.x + room.width / 2
     const cz = room.z + room.depth / 2
@@ -51,10 +53,17 @@ function Room3D({
         return axis === 'x' ? [W, H, T] : [T, H, D]
     }
 
+    const handleWallClick = (e: any) => { e.stopPropagation(); onSelectRoom?.(room.id) }
+
     return (
         <group>
             {/* Floor */}
-            <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+            <mesh
+                position={[cx, 0.002, cz]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                receiveShadow
+                onClick={handleWallClick}
+            >
                 <planeGeometry args={[W - T * 2, D - T * 2]} />
                 <FloorMat mat={floorMat as FloorMaterial} width={W - T * 2} depth={D - T * 2} />
             </mesh>
@@ -68,7 +77,12 @@ function Room3D({
                 if (wallOpenings.length === 0) {
                     const size = wallSize(wall.axis)
                     return (
-                        <mesh key={wall.name} position={wPos} castShadow receiveShadow>
+                        <mesh
+                            key={wall.name}
+                            position={wPos}
+                            castShadow receiveShadow
+                            onClick={handleWallClick}
+                        >
                             <boxGeometry args={size} />
                             <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} textured={wallTextured} width={size[0]} height={size[1]} depth={size[2]} />
                         </mesh>
@@ -85,7 +99,6 @@ function Room3D({
                     const segLen = segEnd - cursor
 
                     if (segLen > 0.02) {
-                        // FIX: Explicitly type as a 3D tuple to prevent compiler type strictness errors
                         const size: [number, number, number] = wall.axis === 'x' ? [segLen, H, T] : [T, H, segLen]
                         const segMid = cursor + segLen / 2
                         const pos: [number, number, number] = wall.axis === 'x'
@@ -93,9 +106,9 @@ function Room3D({
                             : [wPos[0], H / 2, room.z + segMid]
 
                         panels.push(
-                            <mesh key={`l${i}`} position={pos} castShadow receiveShadow>
+                            <mesh key={`l${i}`} position={pos} castShadow receiveShadow onClick={handleWallClick}>
                                 <boxGeometry args={size} />
-                                <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} width={size[0]} height={size[1]} depth={size[2]} />
+                                <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} textured={wallTextured} width={size[0]} height={size[1]} depth={size[2]} />
                             </mesh>
                         )
                     }
@@ -120,10 +133,9 @@ function Room3D({
                             } else {
                                 const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, headerH, T] : [T, headerH, op.width]
                                 panels.push(
-                                    <mesh key={`h${i}`} position={[basePos[0], op.height + headerH / 2, basePos[2]]} castShadow receiveShadow>
+                                    <mesh key={`h${i}`} position={[basePos[0], op.height + headerH / 2, basePos[2]]} castShadow receiveShadow onClick={handleWallClick}>
                                         <boxGeometry args={hSize} />
-                                        {/* FIX: Passed missing mat prop here */}
-                                        <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} width={hSize[0]} height={hSize[1]} depth={hSize[2]} />
+                                        <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} textured={wallTextured} width={hSize[0]} height={hSize[1]} depth={hSize[2]} />
                                     </mesh>
                                 )
                             }
@@ -134,10 +146,9 @@ function Room3D({
                             const sPos: [number, number, number] = wall.axis === 'x' ? [room.x + opMid, op.sillHeight / 2, wPos[2]] : [wPos[0], op.sillHeight / 2, room.z + opMid]
                             const sSize: [number, number, number] = wall.axis === 'x' ? [op.width, op.sillHeight, T] : [T, op.sillHeight, op.width]
                             panels.push(
-                                <mesh key={`s${i}`} position={sPos} castShadow receiveShadow>
+                                <mesh key={`s${i}`} position={sPos} castShadow receiveShadow onClick={handleWallClick}>
                                     <boxGeometry args={sSize} />
-                                    {/* FIX: Passed missing mat prop here */}
-                                    <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} width={sSize[0]} height={sSize[1]} depth={sSize[2]} />
+                                    <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} textured={wallTextured} width={sSize[0]} height={sSize[1]} depth={sSize[2]} />
                                 </mesh>
                             )
                         }

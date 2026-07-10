@@ -1,17 +1,21 @@
 // components/workspace/MaterialsPanel.tsx
-import React from 'react'
-import { FloorPlanState, FLOOR_MAT_DEFS, WALL_MAT_DEFS, FloorMaterial, WallMaterial, DOOR_STYLES } from './Tools/constants'
+import React, { useMemo } from 'react'
+import { FloorPlanState, FLOOR_MAT_DEFS, WALL_MAT_DEFS, FloorMaterial, WallMaterial, DOOR_STYLES, ClosedShape } from './Tools/constants'
 import { SceneConfig, RoomSceneConfig } from './FloorPlanEditor'
+import { deriveClosedPolygons } from '@/lib/helpers'
 
 const THEME = { border: '#E5E7EB', text: '#111827', textMuted: '#6B7280', bg: '#FFFFFF', bgHover: '#F3F4F6', accent: '#2563EB' }
+
+function uid() { return Math.random().toString(36).slice(2, 9) }
 
 interface Props {
     fp: FloorPlanState
     config: SceneConfig
     onChange: (cfg: SceneConfig) => void
+    onChangeFp?: (fp: FloorPlanState) => void
 }
 
-export function MaterialsPanel({ fp, config, onChange }: Props) {
+export function MaterialsPanel({ fp, config, onChange, onChangeFp }: Props) {
     const updateRoom = (roomId: string, changes: Partial<RoomSceneConfig>) => {
         const existing = config.rooms.find(r => r.roomId === roomId) ?? { roomId }
         const updated = { ...existing, ...changes }
@@ -20,6 +24,22 @@ export function MaterialsPanel({ fp, config, onChange }: Props) {
             updated
         ]
         onChange({ ...config, rooms: newRooms })
+    }
+
+    const derivedPolygons = useMemo(
+        () => deriveClosedPolygons(fp.lineNodes, fp.lineSegments),
+        [fp.lineNodes, fp.lineSegments]
+    )
+
+    const updateShape = (nodeIds: string[], matchedShape: ClosedShape | undefined, shapeLabel: string, patch: Partial<ClosedShape>) => {
+        if (!onChangeFp) return
+        let shapes = [...(fp.closedShapes ?? [])]
+        if (matchedShape) {
+            shapes = shapes.map(s => s.id === matchedShape.id ? { ...s, ...patch } : s)
+        } else {
+            shapes.push({ id: uid(), nodeIds: [...nodeIds], label: shapeLabel, color: '#8B7B6B', ...patch })
+        }
+        onChangeFp({ ...fp, closedShapes: shapes })
     }
 
     const renderSwatches = (
@@ -89,6 +109,9 @@ export function MaterialsPanel({ fp, config, onChange }: Props) {
 
             <div>
                 <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Room Overrides</h4>
+                {fp.rooms.length === 0 && (
+                    <div style={{ fontSize: 11, color: THEME.textMuted, padding: '8px 0' }}>No rooms yet.</div>
+                )}
                 {fp.rooms.map(room => {
                     const roomOverride = config.rooms.find(r => r.roomId === room.id)
                     const activeWall = roomOverride?.wallMaterial || config.globalWallMaterial || 'paint'
@@ -104,6 +127,40 @@ export function MaterialsPanel({ fp, config, onChange }: Props) {
                             <div>
                                 <span style={{ fontSize: 11, color: THEME.textMuted }}>Floor</span>
                                 {renderSwatches('floor', activeFloor, (v) => updateRoom(room.id, { floorMaterial: v as FloorMaterial }))}
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+
+            <div style={{ height: 1, background: THEME.border }} />
+
+            <div>
+                <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Area Overrides</h4>
+                {derivedPolygons.length === 0 && (
+                    <div style={{ fontSize: 11, color: THEME.textMuted, padding: '8px 0' }}>
+                        No closed areas detected. Connect line walls to form an enclosed shape.
+                    </div>
+                )}
+                {derivedPolygons.map((nodeIds, idx) => {
+                    const nodeIdSet = new Set(nodeIds)
+                    const matchedShape = (fp.closedShapes ?? []).find(s =>
+                        s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIdSet.has(id))
+                    )
+                    const shapeLabel = matchedShape?.label ?? `Area ${idx + 1}`
+                    const activeWall = matchedShape?.wallMaterial || config.globalWallMaterial || 'paint'
+                    const activeFloor = matchedShape?.floorMaterial || config.globalFloorMaterial || 'plain'
+
+                    return (
+                        <div key={idx} style={{ padding: '8px 0', borderBottom: `1px dashed ${THEME.border}` }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 8 }}>{shapeLabel}</div>
+                            <div style={{ marginBottom: 8 }}>
+                                <span style={{ fontSize: 11, color: THEME.textMuted }}>Wall</span>
+                                {renderSwatches('wall', activeWall, (v) => updateShape(nodeIds, matchedShape, shapeLabel, { wallMaterial: v as WallMaterial }))}
+                            </div>
+                            <div>
+                                <span style={{ fontSize: 11, color: THEME.textMuted }}>Floor</span>
+                                {renderSwatches('floor', activeFloor, (v) => updateShape(nodeIds, matchedShape, shapeLabel, { floorMaterial: v as FloorMaterial }))}
                             </div>
                         </div>
                     )

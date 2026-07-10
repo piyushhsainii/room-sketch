@@ -17,7 +17,10 @@ function Room3D({
     doorStyle = 'natural',
     wallDecor,
     wallMaterial = 'paint',
-    onSelectRoom
+    onSelectRoom,
+    interactive = false,
+    selectedId,
+    onSelect
 }: {
     room: EditorRoom;
     openings?: EditorOpening[];
@@ -25,11 +28,14 @@ function Room3D({
     wallColor?: string;
     wallRoughness?: number;
     wallTextured?: boolean;
-    floorMat?: string;
+    floorMat?: FloorMaterial;
     doorStyle?: string
     wallDecor?: PlacedWallDecor[]
     wallMaterial?: WallMaterial
     onSelectRoom?: (roomId: string) => void
+    interactive?: boolean
+    selectedId?: string | null
+    onSelect?: (id: string | null) => void
 }) {
     const cx = room.x + room.width / 2
     const cz = room.z + room.depth / 2
@@ -54,41 +60,48 @@ function Room3D({
     }
 
     const handleWallClick = (e: any) => { e.stopPropagation(); onSelectRoom?.(room.id) }
-
     return (
         <group>
             {/* Floor */}
             <mesh
-                position={[cx, 0.002, cz]}
-                rotation={[-Math.PI / 2, 0, 0]}
-                receiveShadow
-                onClick={handleWallClick}
+                position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow
+                onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(room.id) } : undefined}
+                onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
+                onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
             >
                 <planeGeometry args={[W - T * 2, D - T * 2]} />
-                <FloorMat mat={floorMat as FloorMaterial} width={W - T * 2} depth={D - T * 2} />
+                <FloorMat mat={floorMat} />
             </mesh>
 
-            {/* Walls */}
             {walls.map(wall => {
                 const wallOpenings = openings.filter(o => o.wall === wall.name && !o.segmentNodeIds)
                 const wallLen = wall.axis === 'x' ? W : D
                 const wPos = wallWorldPos(wall.name)
+                const wallId = `${room.id}::wall::${wall.name}`
+                const isWallSelected = interactive && selectedId === wallId
+
+                const wallClickHandlers = interactive ? {
+                    onClick: (e: any) => { e.stopPropagation(); onSelect?.(wallId) },
+                    onPointerOver: (e: any) => { e.stopPropagation(); document.body.style.cursor = 'pointer' },
+                    onPointerOut: () => { document.body.style.cursor = 'auto' },
+                } : {}
 
                 if (wallOpenings.length === 0) {
-                    const size = wallSize(wall.axis)
                     return (
-                        <mesh
-                            key={wall.name}
-                            position={wPos}
-                            castShadow receiveShadow
-                            onClick={handleWallClick}
-                        >
-                            <boxGeometry args={size} />
-                            <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} textured={wallTextured} width={size[0]} height={size[1]} depth={size[2]} />
+                        <mesh key={wall.name} position={wPos} castShadow receiveShadow {...wallClickHandlers}>
+                            <boxGeometry args={wallSize(wall.axis)} />
+                            <WallMat
+                                mat={wallMaterial}
+                                color={isWallSelected ? '#A5A6F5' : wallColor}
+                                roughness={wallRoughness}
+                                textured={wallTextured}
+                                width={wallSize(wall.axis)[0]}
+                                height={wallSize(wall.axis)[1]}
+                                depth={wallSize(wall.axis)[2]}
+                            />
                         </mesh>
                     )
                 }
-
                 const panels: React.ReactNode[] = []
                 const sorted = [...wallOpenings].sort((a, b) => a.position - b.position)
                 let cursor = 0
@@ -106,9 +119,9 @@ function Room3D({
                             : [wPos[0], H / 2, room.z + segMid]
 
                         panels.push(
-                            <mesh key={`l${i}`} position={pos} castShadow receiveShadow onClick={handleWallClick}>
+                            <mesh key={`l${i}`} position={pos} castShadow receiveShadow {...wallClickHandlers}>
                                 <boxGeometry args={size} />
-                                <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} textured={wallTextured} width={size[0]} height={size[1]} depth={size[2]} />
+                                <WallMat mat={wallMaterial} color={isWallSelected ? '#A5A6F5' : wallColor} roughness={wallRoughness} textured={wallTextured} width={size[0]} height={size[1]} depth={size[2]} />
                             </mesh>
                         )
                     }
@@ -133,9 +146,9 @@ function Room3D({
                             } else {
                                 const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, headerH, T] : [T, headerH, op.width]
                                 panels.push(
-                                    <mesh key={`h${i}`} position={[basePos[0], op.height + headerH / 2, basePos[2]]} castShadow receiveShadow onClick={handleWallClick}>
+                                    <mesh key={`h${i}`} position={[basePos[0], op.height + headerH / 2, basePos[2]]} castShadow receiveShadow {...wallClickHandlers}>
                                         <boxGeometry args={hSize} />
-                                        <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} textured={wallTextured} width={hSize[0]} height={hSize[1]} depth={hSize[2]} />
+                                        <WallMat mat={wallMaterial} color={isWallSelected ? '#A5A6F5' : wallColor} roughness={wallRoughness} textured={wallTextured} width={hSize[0]} height={hSize[1]} depth={hSize[2]} />
                                     </mesh>
                                 )
                             }
@@ -146,9 +159,9 @@ function Room3D({
                             const sPos: [number, number, number] = wall.axis === 'x' ? [room.x + opMid, op.sillHeight / 2, wPos[2]] : [wPos[0], op.sillHeight / 2, room.z + opMid]
                             const sSize: [number, number, number] = wall.axis === 'x' ? [op.width, op.sillHeight, T] : [T, op.sillHeight, op.width]
                             panels.push(
-                                <mesh key={`s${i}`} position={sPos} castShadow receiveShadow onClick={handleWallClick}>
+                                <mesh key={`s${i}`} position={sPos} castShadow receiveShadow {...wallClickHandlers}>
                                     <boxGeometry args={sSize} />
-                                    <WallMat mat={wallMaterial} color={wallColor} roughness={wallRoughness} textured={wallTextured} width={sSize[0]} height={sSize[1]} depth={sSize[2]} />
+                                    <WallMat mat={wallMaterial} color={isWallSelected ? '#A5A6F5' : wallColor} roughness={wallRoughness} textured={wallTextured} width={sSize[0]} height={sSize[1]} depth={sSize[2]} />
                                 </mesh>
                             )
                         }
@@ -160,7 +173,14 @@ function Room3D({
                                 ? [room.x + opMid, op.sillHeight + op.height / 2, wPos[2]]
                                 : [wPos[0], op.sillHeight + op.height / 2, room.z + opMid]
                             panels.push(
-                                <WindowVariant3D key={`g${i}`} op={op} angle={angle} basePos={winBasePos} />
+                                <group
+                                    key={`g${i}`}
+                                    onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(op.id) } : undefined}
+                                    onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
+                                    onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
+                                >
+                                    <WindowVariant3D key={`g${i}`} op={op} angle={angle} basePos={winBasePos} />
+                                </group>
                             )
                         }
 
@@ -171,13 +191,20 @@ function Room3D({
                                 ? [room.x + opMid, op.height / 2, wPos[2]]
                                 : [wPos[0], op.height / 2, room.z + opMid]
                             panels.push(
-                                <DoorVariant3D
+                                <group
                                     key={`door${i}`}
-                                    op={op}
-                                    angle={angle}
-                                    basePos={doorBasePos}
-                                    doorStyle={doorStyle}
-                                />
+                                    onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(op.id) } : undefined}
+                                    onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
+                                    onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
+                                >
+                                    <DoorVariant3D
+                                        key={`door${i}`}
+                                        op={op}
+                                        angle={angle}
+                                        basePos={doorBasePos}
+                                        doorStyle={doorStyle}
+                                    />
+                                </group>
                             )
                         }
                         cursor = op.position + op.width / 2
@@ -191,21 +218,20 @@ function Room3D({
                 if (!d.wall) return null
                 const isH = d.wall === 'north' || d.wall === 'south'
                 const angle = isH ? 0 : Math.PI / 2
-
-                const normalOffset = T / 2 + 0.02
                 let dx: number, dz: number
-                if (d.wall === 'north') { dx = room.x + d.position; dz = room.z + normalOffset }
-                else if (d.wall === 'south') { dx = room.x + d.position; dz = room.z + D - normalOffset }
-                else if (d.wall === 'west') { dx = room.x + normalOffset; dz = room.z + d.position }
-                else { dx = room.x + W - normalOffset; dz = room.z + d.position }
-
+                if (d.wall === 'north') { dx = room.x + d.position; dz = room.z + T / 2 }
+                else if (d.wall === 'south') { dx = room.x + d.position; dz = room.z + D - T / 2 }
+                else if (d.wall === 'west') { dx = room.x + T / 2; dz = room.z + d.position }
+                else { dx = room.x + W - T / 2; dz = room.z + d.position }
                 return (
-                    <WallDecorMesh
+                    <group
                         key={d.id}
-                        decor={d}
-                        angle={angle}
-                        basePos={[dx, d.heightOffset, dz]}
-                    />
+                        onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(d.id) } : undefined}
+                        onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
+                        onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
+                    >
+                        <WallDecorMesh decor={d} angle={angle} basePos={[dx, d.heightOffset, dz]} />
+                    </group>
                 )
             })}
         </group>

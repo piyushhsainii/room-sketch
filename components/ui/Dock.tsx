@@ -16,6 +16,9 @@ export function Dock({
     onExpandedChange: (v: boolean) => void
     children?: React.ReactNode
 }) {
+
+
+
     return (
         <div style={{ position: 'fixed', right: 14, top: '50%', transform: 'translateY(-50%)', zIndex: 150, display: 'flex', alignItems: 'stretch', gap: 8 }}>
             {expanded && (

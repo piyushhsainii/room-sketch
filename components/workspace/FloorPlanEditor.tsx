@@ -4,14 +4,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Toolbar } from './Tools/ToolBar'
 import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
-import { deriveClosedPolygons } from '@/lib/helpers'
+import { deriveClosedPolygons, getSegmentOpeningWorldPos, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import { SceneConfigPanel } from './SceneConfigPanel'
 import { Dock } from '../ui/Dock'
 import { SceneGraphPanel } from './objects/scene-graph'
 import { ScrollableList } from '../ui/ScrollableList'
 import { MaterialsPanel } from './MaterialsPanel'
-import Scene3D from './Walk3dScene'
+import Scene3D from './3DScene'
 import SceneErrorBoundary from './objects/error-boundary'
+import { PropsPanel } from './PropsPanel'
+import { draw2D } from './2dDraw'
+import WorkspaceNav from '../ui/WorkspaceNav'
+import ToolHintBar from '../ui/ToolHint'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -46,10 +50,7 @@ export const THEME = {
     shadowLg: '0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)',
 }
 
-function uid() { return Math.random().toString(36).slice(2, 9) }
-function snapM(v: number) { return Math.round(v / GRID_M) * GRID_M }
-function toWorld(canvasPx: number, panPx: number, zoom: number) { return (canvasPx - panPx) / (PX_PER_M * zoom) }
-function toCanvas(worldM: number, panPx: number, zoom: number) { return worldM * PX_PER_M * zoom + panPx }
+
 
 function labelForHover(id: string, fp: FloorPlanState): string {
     if (id.includes('::wall::')) {
@@ -72,7 +73,6 @@ function roomContainsPoint(room: EditorRoom, wx: number, wz: number) {
     return wx >= room.x && wx <= room.x + room.width &&
         wz >= room.z && wz <= room.z + room.depth
 }
-function snapFurniture(v: number) { return Math.round(v / 0.1) * 0.1 }
 
 function getWallHit(room: EditorRoom, wx: number, wz: number, thresholdM: number): 'north' | 'south' | 'east' | 'west' | null {
     const d = {
@@ -84,904 +84,6 @@ function getWallHit(room: EditorRoom, wx: number, wz: number, thresholdM: number
     const min = Math.min(d.north, d.south, d.west, d.east)
     if (min > thresholdM) return null
     return (Object.entries(d).find(([, v]) => v === min)![0]) as 'north' | 'south' | 'east' | 'west'
-}
-
-function getSegmentOpeningWorldPos(op: EditorOpening, nodes: LineNode[]): { wx: number; wz: number; angle: number } | null {
-    if (!op.segmentNodeIds || op.segmentT === undefined) return null
-    const a = nodes.find(n => n.id === op.segmentNodeIds![0])
-    const b = nodes.find(n => n.id === op.segmentNodeIds![1])
-    if (!a || !b) return null
-    const t = op.segmentT
-    const wx = a.x + (b.x - a.x) * t
-    const wz = a.z + (b.z - a.z) * t
-    const angle = Math.atan2(b.z - a.z, b.x - a.x)
-    return { wx, wz, angle }
-}
-function draw2D(
-    ctx: CanvasRenderingContext2D,
-    fp: FloorPlanState,
-    tool: EditorTool,
-    selectedId: string | null,
-    hoveredId: string | null,
-    drawRect: { x: number; z: number; w: number; d: number } | null,
-    pencilPoints: { x: number, z: number }[],
-    zoom: number,
-    pan: { x: number; y: number },
-    preview: { x: number; z: number } | null,
-    activeLineNodeId: string | null,
-) {
-    const W = ctx.canvas.width
-    const H = ctx.canvas.height
-    ctx.clearRect(0, 0, W, H)
-
-    const scale = PX_PER_M * zoom
-
-    // ── Grid ──────────────────────────────────────────────────────────────────
-    ctx.save()
-    ctx.strokeStyle = 'rgba(99,102,241,0.07)'
-    ctx.lineWidth = 1
-    const gx = ((pan.x % scale) + scale) % scale
-    const gy = ((pan.y % scale) + scale) % scale
-    for (let x = gx; x < W; x += scale) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke() }
-    for (let y = gy; y < H; y += scale) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke() }
-    ctx.restore()
-
-    const cx = (m: number) => toCanvas(m, pan.x, zoom)
-    const cy = (m: number) => toCanvas(m, pan.y, zoom)
-
-    const wallT = 0.15 * scale
-
-    // ── Rooms ─────────────────────────────────────────────────────────────────
-    for (const room of fp.rooms) {
-        const rx = cx(room.x), rz = cy(room.z)
-        const rw = room.width * scale, rd = room.depth * scale
-        const isSel = selectedId === room.id
-        const isHov = hoveredId === room.id
-
-        ctx.save()
-        ctx.fillStyle = isSel ? 'rgba(99,102,241,0.12)' : isHov ? 'rgba(99,102,241,0.07)' : 'rgba(30,27,24,0.6)'
-        ctx.fillRect(rx, rz, rw, rd)
-        ctx.restore()
-
-        ctx.save()
-        ctx.fillStyle = isSel ? 'rgba(99,102,241,0.9)' : isHov ? 'rgba(100,116,139,0.9)' : 'rgba(71,85,105,0.9)'
-        ctx.fillRect(rx, rz, rw, wallT)
-        ctx.fillRect(rx, rz + rd - wallT, rw, wallT)
-        ctx.fillRect(rx, rz, wallT, rd)
-        ctx.fillRect(rx + rw - wallT, rz, wallT, rd)
-        ctx.restore()
-
-        ctx.save()
-        ctx.fillStyle = 'rgba(148,163,184,0.8)'
-        ctx.font = `${Math.max(10, 12 * zoom)}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(room.label, rx + rw / 2, rz + rd / 2 - 8)
-        ctx.font = `${Math.max(9, 10 * zoom)}px system-ui`
-        ctx.fillStyle = 'rgba(100,116,139,0.7)'
-        ctx.fillText(`${room.width.toFixed(1)}m × ${room.depth.toFixed(1)}m`, rx + rw / 2, rz + rd / 2 + 10)
-        ctx.restore()
-
-        // ── Room Openings ────────────────────────────────────────────────────
-        for (const op of fp.openings.filter(o => o.roomId === room.id && !o.segmentNodeIds)) {
-            const isHorizontal = op.wall === 'north' || op.wall === 'south'
-            const opStart = op.position - op.width / 2
-            const opEnd = op.position + op.width / 2
-
-            let gx1: number, gy1: number, gx2: number, gy2: number
-
-            if (op.wall === 'north') {
-                gx1 = cx(room.x + opStart); gy1 = cy(room.z)
-                gx2 = cx(room.x + opEnd); gy2 = cy(room.z) + wallT
-            } else if (op.wall === 'south') {
-                gx1 = cx(room.x + opStart); gy1 = cy(room.z + room.depth) - wallT
-                gx2 = cx(room.x + opEnd); gy2 = cy(room.z + room.depth)
-            } else if (op.wall === 'west') {
-                gx1 = cx(room.x); gy1 = cy(room.z + opStart)
-                gx2 = cx(room.x) + wallT; gy2 = cy(room.z + opEnd)
-            } else {
-                gx1 = cx(room.x + room.width) - wallT; gy1 = cy(room.z + opStart)
-                gx2 = cx(room.x + room.width); gy2 = cy(room.z + opEnd)
-            }
-
-            ctx.clearRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
-
-            if (op.type === 'door') {
-                const doorPx = op.width * scale
-                ctx.save()
-                ctx.strokeStyle = '#818CF8'
-                ctx.lineWidth = 1.5
-                if (isHorizontal) {
-                    ctx.beginPath(); ctx.arc(gx1, (gy1 + gy2) / 2, doorPx, 0, Math.PI / 2); ctx.stroke()
-                    ctx.beginPath(); ctx.moveTo(gx1, (gy1 + gy2) / 2); ctx.lineTo(gx1 + doorPx, (gy1 + gy2) / 2); ctx.stroke()
-                } else {
-                    ctx.beginPath(); ctx.arc((gx1 + gx2) / 2, gy1, doorPx, 0, Math.PI / 2); ctx.stroke()
-                    ctx.beginPath(); ctx.moveTo((gx1 + gx2) / 2, gy1); ctx.lineTo((gx1 + gx2) / 2, gy1 + doorPx); ctx.stroke()
-                }
-                ctx.restore()
-            } else if (op.type === 'opening') {
-                if (op.variant === 'opening-archway') {
-                    // Archway — draw curved arch outline
-                    ctx.save()
-                    ctx.strokeStyle = 'rgba(200,180,140,0.85)'
-                    ctx.lineWidth = 1.8
-                    const archMidX = (gx1 + gx2) / 2
-                    const archTopPad = (gy2 - gy1) * 0.35
-                    ctx.beginPath()
-                    ctx.moveTo(gx1, gy2)
-                    ctx.lineTo(gx1, gy1 + archTopPad)
-                    ctx.quadraticCurveTo(gx1, gy1, archMidX, gy1)
-                    ctx.quadraticCurveTo(gx2, gy1, gx2, gy1 + archTopPad)
-                    ctx.lineTo(gx2, gy2)
-                    ctx.stroke()
-                    ctx.restore()
-                } else {
-                    // Open passage — plain dashed gap
-                    ctx.save()
-                    ctx.strokeStyle = 'rgba(180,170,150,0.6)'
-                    ctx.lineWidth = 1
-                    ctx.setLineDash([3, 3])
-                    ctx.strokeRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
-                    ctx.setLineDash([])
-                    ctx.restore()
-                }
-            } else {
-                ctx.save()
-                ctx.fillStyle = 'rgba(147,197,253,0.5)'
-                ctx.strokeStyle = '#60A5FA'
-                ctx.lineWidth = 1.5
-                ctx.fillRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
-                ctx.strokeRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
-                ctx.restore()
-            }
-        }
-    }
-    // ── Room resize handles ───────────────────────────────────────────────────
-    if (selectedId) {
-        const selRoom = fp.rooms.find(r => r.id === selectedId)
-        if (selRoom) {
-            const handles = [
-                { id: 'se', x: selRoom.x + selRoom.width, z: selRoom.z + selRoom.depth },
-                { id: 'ne', x: selRoom.x + selRoom.width, z: selRoom.z },
-                { id: 'sw', x: selRoom.x, z: selRoom.z + selRoom.depth },
-                { id: 'nw', x: selRoom.x, z: selRoom.z },
-                { id: 'n', x: selRoom.x + selRoom.width / 2, z: selRoom.z },
-                { id: 's', x: selRoom.x + selRoom.width / 2, z: selRoom.z + selRoom.depth },
-                { id: 'e', x: selRoom.x + selRoom.width, z: selRoom.z + selRoom.depth / 2 },
-                { id: 'w', x: selRoom.x, z: selRoom.z + selRoom.depth / 2 },
-            ]
-            for (const h of handles) {
-                ctx.save()
-                ctx.beginPath()
-                ctx.rect(cx(h.x) - 5, cy(h.z) - 5, 10, 10)
-                ctx.fillStyle = 'white'
-                ctx.strokeStyle = 'rgba(99,102,241,0.9)'
-                ctx.lineWidth = 1.5
-                ctx.fill()
-                ctx.stroke()
-                ctx.restore()
-            }
-        }
-        const selShape = fp.closedShapes?.find(sh => sh.id === selectedId)
-        if (selShape) {
-            const nodes = selShape.nodeIds.map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean) as LineNode[]
-            if (nodes.length >= 3) {
-                const xs = nodes.map(n => n.x), zs = nodes.map(n => n.z)
-                const minX = Math.min(...xs), maxX = Math.max(...xs)
-                const minZ = Math.min(...zs), maxZ = Math.max(...zs)
-                const handles = [
-                    { x: maxX, z: maxZ }, { x: maxX, z: minZ },
-                    { x: minX, z: maxZ }, { x: minX, z: minZ },
-                ]
-                for (const h of handles) {
-                    ctx.save()
-                    ctx.beginPath()
-                    ctx.rect(cx(h.x) - 5, cy(h.z) - 5, 10, 10)
-                    ctx.fillStyle = 'white'
-                    ctx.strokeStyle = 'rgba(99,102,241,0.9)'
-                    ctx.lineWidth = 1.5
-                    ctx.fill(); ctx.stroke()
-                    ctx.restore()
-                }
-            }
-        }
-    }
-    for (const d of fp.wallDecor ?? []) {
-        let dx: number, dz: number, angle: number
-        if (d.segmentNodeIds) {
-            const a = fp.lineNodes.find(n => n.id === d.segmentNodeIds![0])
-            const b = fp.lineNodes.find(n => n.id === d.segmentNodeIds![1])
-            if (!a || !b) continue
-            const t = d.segmentT ?? 0
-            dx = a.x + (b.x - a.x) * t
-            dz = a.z + (b.z - a.z) * t
-            angle = Math.atan2(b.z - a.z, b.x - a.x)
-        } else {
-            const room = fp.rooms.find(r => r.id === d.roomId)
-            if (!room || !d.wall) continue
-            if (d.wall === 'north') { dx = room.x + d.position; dz = room.z; angle = 0 }
-            else if (d.wall === 'south') { dx = room.x + d.position; dz = room.z + room.depth; angle = 0 }
-            else if (d.wall === 'west') { dx = room.x; dz = room.z + d.position; angle = Math.PI / 2 }
-            else { dx = room.x + room.width; dz = room.z + d.position; angle = Math.PI / 2 }
-        }
-        const isSel = selectedId === d.id
-        const isHov = hoveredId === d.id
-        const dw = d.width * scale
-
-        // Flip text right-side-up regardless of wall direction (same fix used for
-        // wall-segment length labels elsewhere in draw2D)
-        const displayAngle = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle
-
-        ctx.save()
-        ctx.translate(cx(dx), cy(dz))
-        ctx.rotate(angle)
-        ctx.fillStyle = isSel ? 'rgba(99,102,241,0.6)' : isHov ? 'rgba(200,180,140,0.7)' : 'rgba(200,180,140,0.5)'
-        ctx.strokeStyle = isSel ? 'rgba(165,168,255,0.9)' : 'rgba(160,140,100,0.6)'
-        ctx.lineWidth = isSel ? 1.5 : 1
-        ctx.fillRect(-dw / 2, -3, dw, 6)
-        ctx.strokeRect(-dw / 2, -3, dw, 6)
-        ctx.restore()
-
-        // Label drawn in a SEPARATE, un-rotated-by-wall-angle pass so text is
-        // always upright and legible, offset outward from the wall on its
-        // normal so overlapping items don't stack directly on top of each other
-        const normalX = Math.sin(angle), normalZ = -Math.cos(angle)
-        const labelOffset = 14
-        const label = WALL_DECOR_LABELS[d.type]
-        ctx.save()
-        ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-        const tw = ctx.measureText(label).width
-        const lx = cx(dx) + normalX * labelOffset
-        const ly = cy(dz) + normalZ * labelOffset
-        ctx.fillStyle = isSel ? '#000000' : 'rgba(255,255,255,0.9)'
-        ctx.beginPath()
-        ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
-        ctx.fill()
-        ctx.strokeStyle = isSel ? '#000000' : 'rgba(0,0,0,0.08)'
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.fillStyle = isSel ? '#FFFFFF' : 'rgba(80,60,40,0.9)'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(label, lx, ly)
-        ctx.restore()
-        ctx.save()
-        ctx.fillStyle = 'rgba(80,60,40,0.85)'
-        ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(
-            WALL_DECOR_LABELS[d.type],
-            cx(dx) + normalX * labelOffset,
-            cy(dz) + normalZ * labelOffset
-        )
-        ctx.restore()
-    }
-    // ── Preview rectangle while drawing ───────────────────────────────────────
-    if (drawRect && Math.abs(drawRect.w) > 0.1 && Math.abs(drawRect.d) > 0.1) {
-        const rx = cx(Math.min(drawRect.x, drawRect.x + drawRect.w))
-        const rz = cy(Math.min(drawRect.z, drawRect.z + drawRect.d))
-        const rw = Math.abs(drawRect.w) * scale
-        const rd = Math.abs(drawRect.d) * scale
-        ctx.save()
-        ctx.strokeStyle = 'rgba(99,102,241,0.8)'
-        ctx.lineWidth = 2
-        ctx.setLineDash([6, 3])
-        ctx.fillStyle = 'rgba(99,102,241,0.08)'
-        ctx.fillRect(rx, rz, rw, rd)
-        ctx.strokeRect(rx, rz, rw, rd)
-        ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(165,168,255,0.9)'
-        ctx.font = `${11 * zoom}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.fillText(`${Math.abs(drawRect.w).toFixed(1)}m × ${Math.abs(drawRect.d).toFixed(1)}m`, rx + rw / 2, rz + rd / 2)
-        ctx.restore()
-    }
-    // ── Pencil stroke preview ─────────────────────────────────────────────────
-    if (pencilPoints.length > 1) {
-        ctx.save()
-        ctx.strokeStyle = 'rgba(99,102,241,0.7)'
-        ctx.lineWidth = 2
-        ctx.lineJoin = 'round'
-        ctx.lineCap = 'round'
-        ctx.beginPath()
-        ctx.moveTo(cx(pencilPoints[0]!.x), cy(pencilPoints[0]!.z))
-        for (let i = 1; i < pencilPoints.length; i++) ctx.lineTo(cx(pencilPoints[i]!.x), cy(pencilPoints[i]!.z))
-        ctx.stroke()
-
-        const xs = pencilPoints.map(p => p.x), zs = pencilPoints.map(p => p.z)
-        const minX = Math.min(...xs), maxX = Math.max(...xs)
-        const minZ = Math.min(...zs), maxZ = Math.max(...zs)
-        const bw = maxX - minX, bd = maxZ - minZ
-
-        if (bw >= MIN_ROOM && bd >= MIN_ROOM) {
-            const brx = cx(minX), brz = cy(minZ)
-            const brw = bw * scale, brd = bd * scale
-            ctx.strokeStyle = 'rgba(165,168,255,0.4)'
-            ctx.lineWidth = 1.5
-            ctx.setLineDash([5, 4])
-            ctx.strokeRect(brx, brz, brw, brd)
-            ctx.setLineDash([])
-            ctx.fillStyle = 'rgba(165,168,255,0.75)'
-            ctx.font = `${Math.max(9, 11 * zoom)}px system-ui`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(`${bw.toFixed(1)}m × ${bd.toFixed(1)}m`, brx + brw / 2, brz + brd / 2)
-        }
-        ctx.restore()
-    }
-    // ── Line segments ──────────────────────────────────────────────────────────
-    for (const seg of fp.lineSegments ?? []) {
-        const nodes = seg.nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
-        if (nodes.length < 2) continue
-
-        const isSel = selectedId === seg.id
-        const isHov = hoveredId === seg.id
-
-        ctx.save()
-        ctx.strokeStyle = isSel
-            ? 'rgba(99,102,241,0.95)'
-            : isHov
-                ? 'rgba(165,168,255,0.85)'
-                : 'rgba(148,163,184,0.75)'
-        ctx.lineWidth = Math.max(3, (seg.thickness ?? 0.15) * scale)
-        ctx.lineCap = 'round'
-        ctx.lineJoin = 'round'
-        ctx.beginPath()
-        ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
-        for (let i = 1; i < nodes.length; i++) ctx.lineTo(cx(nodes[i]!.x), cy(nodes[i]!.z))
-        if (seg.closed) ctx.closePath()
-        ctx.stroke()
-
-        // Segment length labels
-        for (let i = 0; i < nodes.length - 1; i++) {
-            const a = nodes[i]!, b = nodes[i + 1]!
-            const lenM = Math.hypot(b.x - a.x, b.z - a.z).toFixed(2)
-            const midX = cx((a.x + b.x) / 2), midZ = cy((a.z + b.z) / 2)
-            const angle = Math.atan2(cy(b.z) - cy(a.z), cx(b.x) - cx(a.x))
-            ctx.save()
-            ctx.translate(midX, midZ)
-            const displayAngle = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle
-            ctx.rotate(displayAngle)
-            ctx.fillStyle = 'rgba(165,168,255,0.85)'
-            ctx.font = `${Math.max(9, 10 * zoom)}px system-ui`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'bottom'
-            ctx.fillText(`${lenM}m`, 0, -4)
-            ctx.restore()
-        }
-        ctx.restore()
-
-        // Draw openings on line segments
-        for (const op of fp.openings.filter(o => o.roomId === seg.id && o.segmentNodeIds)) {
-            const pos = getSegmentOpeningWorldPos(op, fp.lineNodes)
-            if (!pos) continue
-            const hw = (op.width / 2) * scale
-            const nx = Math.sin(pos.angle)
-            const nz = -Math.cos(pos.angle)
-
-            ctx.save()
-            ctx.translate(cx(pos.wx), cy(pos.wz))
-            ctx.rotate(pos.angle)
-
-            // Clear gap in wall
-            ctx.clearRect(-hw, -wallT / 2, hw * 2, wallT)
-
-            if (op.type === 'door') {
-                ctx.strokeStyle = '#818CF8'
-                ctx.lineWidth = 1.5
-                ctx.beginPath()
-                ctx.arc(-hw, 0, op.width * scale, 0, Math.PI / 2)
-                ctx.stroke()
-                ctx.beginPath()
-                ctx.moveTo(-hw, 0)
-                ctx.lineTo(hw, 0)
-                ctx.stroke()
-            } else if (op.type === 'opening') {
-                if (op.variant === 'opening-archway') {
-                    // Archway on line segment — curved arch
-                    ctx.strokeStyle = 'rgba(200,180,140,0.85)'
-                    ctx.lineWidth = 1.8
-                    const archPad = wallT * 0.8
-                    ctx.beginPath()
-                    ctx.moveTo(-hw, wallT / 2)
-                    ctx.lineTo(-hw, -archPad)
-                    ctx.quadraticCurveTo(-hw, -wallT / 2, 0, -wallT / 2)
-                    ctx.quadraticCurveTo(hw, -wallT / 2, hw, -archPad)
-                    ctx.lineTo(hw, wallT / 2)
-                    ctx.stroke()
-                } else {
-                    // Open passage on line segment — dashed rectangle
-                    ctx.strokeStyle = 'rgba(180,170,150,0.6)'
-                    ctx.lineWidth = 1
-                    ctx.setLineDash([3, 3])
-                    ctx.strokeRect(-hw, -wallT / 2, hw * 2, wallT)
-                    ctx.setLineDash([])
-                }
-            } else {
-                ctx.fillStyle = 'rgba(147,197,253,0.5)'
-                ctx.strokeStyle = '#60A5FA'
-                ctx.lineWidth = 1.5
-                ctx.fillRect(-hw, -wallT / 2, hw * 2, wallT)
-                ctx.strokeRect(-hw, -wallT / 2, hw * 2, wallT)
-            }
-            ctx.restore()
-        }
-    }
-    // ── Closed shapes ──────────────────────────────────────────────────────────
-    for (const nodeIds of deriveClosedPolygons(fp.lineNodes, fp.lineSegments)) {
-        const nodes = nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
-        if (nodes.length < 3) continue
-        const shapeMatch = fp.closedShapes?.find(s => s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIds.includes(id)))
-        const isSel = shapeMatch && selectedId === shapeMatch.id
-        const isHov = shapeMatch && hoveredId === shapeMatch.id
-        ctx.save(); ctx.beginPath(); ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
-        for (let i = 1; i < nodes.length; i++) ctx.lineTo(cx(nodes[i]!.x), cy(nodes[i]!.z))
-        ctx.closePath()
-        ctx.fillStyle = isSel ? 'rgba(99,102,241,0.15)' : 'rgba(139,123,107,0.12)'
-        ctx.fill()
-        ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.85)' : isHov ? 'rgba(165,168,255,0.6)' : 'rgba(139,123,107,0.5)'
-        ctx.lineWidth = isSel ? 2 : 1
-        ctx.setLineDash(isSel ? [] : [4, 3])
-        ctx.stroke()
-        ctx.save(); ctx.beginPath(); ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
-        for (let i = 1; i < nodes.length; i++) ctx.lineTo(cx(nodes[i]!.x), cy(nodes[i]!.z))
-        ctx.closePath()
-        ctx.fillStyle = 'rgba(139,123,107,0.12)'; ctx.fill()
-        ctx.strokeStyle = 'rgba(139,123,107,0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.stroke()
-        const cx_ = nodes.reduce((s, n) => s + n.x, 0) / nodes.length
-        const cz_ = nodes.reduce((s, n) => s + n.z, 0) / nodes.length
-        ctx.setLineDash([]); ctx.fillStyle = 'rgba(165,168,255,0.7)'; ctx.font = `${Math.max(9, 11 * zoom)}px system-ui`
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText('Area', cx(cx_), cy(cz_)); ctx.restore()
-    }
-    // ── Line nodes ─────────────────────────────────────────────────────────────
-    for (const node of fp.lineNodes ?? []) {
-        const isActive = activeLineNodeId === node.id
-        const isSel = selectedId === node.id
-        const isHov = hoveredId === node.id
-        ctx.save()
-        ctx.beginPath()
-        ctx.arc(cx(node.x), cy(node.z), isSel || isActive ? 8 : isHov ? 7 : 5, 0, Math.PI * 2)
-        ctx.fillStyle = isActive
-            ? 'rgba(99,102,241,0.95)'
-            : isSel
-                ? 'rgba(165,168,255,0.95)'
-                : isHov
-                    ? 'rgba(148,163,184,0.85)'
-                    : 'rgba(100,116,139,0.7)'
-        ctx.strokeStyle = 'rgba(226,232,240,0.5)'
-        ctx.lineWidth = 1.5
-        ctx.fill()
-        ctx.stroke()
-
-        // Show selection ring on selected node
-        if (isSel) {
-            ctx.beginPath()
-            ctx.arc(cx(node.x), cy(node.z), 12, 0, Math.PI * 2)
-            ctx.strokeStyle = 'rgba(99,102,241,0.4)'
-            ctx.lineWidth = 2
-            ctx.setLineDash([3, 3])
-            ctx.stroke()
-            ctx.setLineDash([])
-        }
-        ctx.restore()
-    }
-    // ── Furniture overlays (2D top-down icons) ────────────────────────────────
-    for (const f of fp.furniture ?? []) {
-        const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
-        const fw = fp2.w * scale
-        const fd = fp2.d * scale
-        const fx = toCanvas(f.x, pan.x, zoom)
-        const fz = toCanvas(f.z, pan.y, zoom)
-        const isSel = selectedId === f.id
-        const isHov = hoveredId === f.id
-
-        ctx.save()
-        ctx.translate(fx, fz)
-        ctx.rotate(f.rotation)
-
-        // Drop shadow
-        ctx.beginPath()
-        ctx.rect(-fw / 2 + 2, -fd / 2 + 2, fw, fd)
-        ctx.fillStyle = 'rgba(0,0,0,0.2)'
-        ctx.fill()
-
-        // Body fill
-        ctx.beginPath()
-        ctx.rect(-fw / 2, -fd / 2, fw, fd)
-        ctx.fillStyle = isSel
-            ? 'rgba(99,102,241,0.55)'
-            : isHov
-                ? (FURNITURE_COLORS[f.type] ?? 'rgba(180,160,130,0.9)').replace('0.88', '1.0')
-                : FURNITURE_COLORS[f.type] ?? 'rgba(180,160,130,0.88)'
-        ctx.fill()
-
-        // Border
-        ctx.strokeStyle = isSel ? 'rgba(165,168,255,0.9)' : 'rgba(255,255,255,0.35)'
-        ctx.lineWidth = isSel ? 1.5 : 1
-        ctx.stroke()
-
-        // Direction indicator (small notch on "front" edge)
-        ctx.beginPath()
-        ctx.moveTo(-fw * 0.2, -fd / 2)
-        ctx.lineTo(0, -fd / 2 - 5)
-        ctx.lineTo(fw * 0.2, -fd / 2)
-        ctx.fillStyle = 'rgba(255,255,255,0.5)'
-        ctx.fill()
-
-        // Label
-        const fs = Math.max(8, Math.min(11, (fw / 4)))
-        ctx.font = `600 ${fs}px system-ui`
-        ctx.fillStyle = 'rgba(255,255,255,0.95)'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(FURNITURE_LABELS[f.type] ?? f.type, 0, 0)
-
-        // Selection rotation handles
-        if (isSel) {
-            ctx.beginPath()
-            ctx.arc(-fw / 2 - 10, -fd / 2 - 10, 5, 0, Math.PI * 2)
-            ctx.fillStyle = 'rgba(99,102,241,0.9)'
-            ctx.fill()
-            ctx.beginPath()
-            ctx.arc(fw / 2 + 10, -fd / 2 - 10, 5, 0, Math.PI * 2)
-            ctx.fillStyle = 'rgba(99,102,241,0.9)'
-            ctx.fill()
-        }
-
-        ctx.restore()
-    }
-    // ── Stairs / Elevator overlays ─────────────────────────────────────────
-    for (const s of fp.stairs ?? []) {
-        const sw = s.width * scale, sd = s.depth * scale
-        const sx = toCanvas(s.x + s.width / 2, pan.x, zoom)
-        const sz = toCanvas(s.z + s.depth / 2, pan.y, zoom)
-        const isSel = selectedId === s.id
-        const isHov = hoveredId === s.id
-
-        ctx.save()
-        ctx.translate(sx, sz)
-        ctx.rotate(s.rotation)
-
-        ctx.fillStyle = isSel ? 'rgba(99,102,241,0.35)' : isHov ? 'rgba(148,163,184,0.28)' : 'rgba(100,90,75,0.4)'
-        ctx.strokeStyle = isSel ? 'rgba(165,168,255,0.9)' : 'rgba(200,190,175,0.6)'
-        ctx.lineWidth = isSel ? 1.5 : 1
-        ctx.beginPath()
-        ctx.rect(-sw / 2, -sd / 2, sw, sd)
-        ctx.fill(); ctx.stroke()
-
-        if (s.type === 'elevator') {
-            ctx.strokeStyle = 'rgba(200,190,175,0.7)'
-            ctx.beginPath(); ctx.moveTo(-sw / 2, 0); ctx.lineTo(sw / 2, 0); ctx.stroke()
-            ctx.beginPath(); ctx.moveTo(0, -sd / 2); ctx.lineTo(0, sd / 2); ctx.stroke()
-        } else if (s.type === 'stairs-spiral') {
-            ctx.beginPath(); ctx.arc(0, 0, Math.min(sw, sd) / 2 - 3, 0, Math.PI * 1.7); ctx.stroke()
-        } else {
-            // Tread lines across the run
-            const steps = 8
-            for (let i = 1; i < steps; i++) {
-                const yy = -sd / 2 + (sd / steps) * i
-                ctx.beginPath(); ctx.moveTo(-sw / 2, yy); ctx.lineTo(sw / 2, yy); ctx.stroke()
-            }
-        }
-
-        ctx.fillStyle = 'rgba(226,232,240,0.75)'
-        ctx.font = `600 ${Math.max(8, 9 * zoom)}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(STAIRS_LABELS[s.type], 0, sd / 2 + 12)
-
-        ctx.restore()
-    }
-    // ── Annotations ──────────────────────────────────────────────────────────
-    for (const ann of fp.annotations ?? []) {
-        if (!ann.text) continue
-        const ax = cx(ann.x), az = cy(ann.z)
-        const fontSize = Math.max(10, (ann.fontSize ?? 13) * zoom)
-        ctx.save()
-        ctx.font = `600 ${fontSize}px system-ui`
-        const tw = ctx.measureText(ann.text).width
-        // Background pill
-        ctx.fillStyle = 'rgba(99,102,241,0.18)'
-        ctx.beginPath()
-        ctx.roundRect(ax - tw / 2 - 8, az - fontSize / 2 - 5, tw + 16, fontSize + 10, 6)
-        ctx.fill()
-        ctx.strokeStyle = 'rgba(99,102,241,0.4)'
-        ctx.lineWidth = 1
-        ctx.stroke()
-        // Text
-        ctx.fillStyle = 'rgba(226,232,240,0.9)'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(ann.text, ax, az)
-        ctx.restore()
-    }
-    // ── Live measurement rubber band ──────────────────────────────────────────
-    if ((tool === 'line' || tool === 'bend') && activeLineNodeId && preview) {
-        const fromNode = fp.lineNodes.find(n => n.id === activeLineNodeId)
-        if (fromNode) {
-            const fx = cx(fromNode.x), fz = cy(fromNode.z)
-            const tx = cx(preview.x), tz = cy(preview.z)
-            const lenM = Math.hypot(preview.x - fromNode.x, preview.z - fromNode.z)
-
-            ctx.save()
-            ctx.strokeStyle = 'rgba(99,102,241,0.7)'
-            ctx.lineWidth = 2
-            ctx.setLineDash([6, 4])
-            ctx.beginPath(); ctx.moveTo(fx, fz); ctx.lineTo(tx, tz); ctx.stroke()
-            ctx.setLineDash([])
-
-            if (lenM > 0.05) {
-                const midX = (fx + tx) / 2, midZ = (fz + tz) / 2
-                const angle = Math.atan2(tz - fz, tx - fx)
-                const display = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle
-                const label = `${lenM.toFixed(2)}m`
-                ctx.font = `bold ${Math.max(10, 11 * zoom)}px system-ui`
-                const tw = ctx.measureText(label).width
-                ctx.translate(midX, midZ)
-                ctx.rotate(display)
-                ctx.fillStyle = 'rgba(99,102,241,0.85)'
-                ctx.beginPath()
-                ctx.roundRect(-(tw / 2) - 6, -22, tw + 12, 18, 4)
-                ctx.fill()
-                ctx.fillStyle = 'white'
-                ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillText(label, 0, -13)
-            }
-            ctx.restore()
-
-            // Snap indicator
-            ctx.save()
-            const nearNode = fp.lineNodes.find(n =>
-                n.id !== activeLineNodeId && Math.hypot(preview.x - n.x, preview.z - n.z) < 0.4 / zoom
-            )
-            ctx.beginPath()
-            ctx.arc(tx, tz, nearNode ? 9 : 5, 0, Math.PI * 2)
-            ctx.fillStyle = nearNode ? 'rgba(34,197,94,0.9)' : 'rgba(99,102,241,0.8)'
-            ctx.fill()
-            if (nearNode) { ctx.strokeStyle = 'rgba(34,197,94,0.4)'; ctx.lineWidth = 3; ctx.stroke() }
-            ctx.restore()
-        }
-    }
-}
-
-
-
-function PropsPanel({ fp, selectedId, onChange, onDelete }: {
-    fp: FloorPlanState
-    selectedId: string | null
-    onChange: (fp: FloorPlanState) => void
-    onDelete: () => void
-}) {
-    const wallSel = selectedId?.includes('::wall::')
-        ? { roomId: selectedId.split('::wall::')[0], wall: selectedId.split('::wall::')[1] as 'north' | 'south' | 'east' | 'west' }
-        : null
-    const wallRoom = wallSel ? fp.rooms.find(r => r.id === wallSel.roomId) : null
-
-    const shape = fp.closedShapes?.find(s => s.id === selectedId)
-    const room = fp.rooms.find(r => r.id === selectedId)
-    const opening = fp.openings.find(o => o.id === selectedId)
-    const node = fp.lineNodes.find(n => n.id === selectedId)
-    const seg = fp.lineSegments.find(s => s.id === selectedId)
-    const furniture = (fp.furniture ?? []).find(f => f.id === selectedId)
-    const stairs = (fp.stairs ?? []).find(s => s.id === selectedId)
-    const wallDecor = (fp.wallDecor ?? []).find(d => d.id === selectedId)
-
-    if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape && !wallDecor) return (
-        <div style={{ padding: 16, fontSize: 11, color: 'rgba(100,116,139,0.5)', textAlign: 'center' }}>
-            Select a room, wall, node or opening to edit properties
-        </div>
-    )
-    const patchRoom = (patch: Partial<EditorRoom>) =>
-        onChange({ ...fp, rooms: fp.rooms.map(r => r.id === room?.id ? { ...r, ...patch } : r) })
-
-    const patchOpening = (patch: Partial<EditorOpening>) =>
-        onChange({ ...fp, openings: fp.openings.map(o => o.id === opening?.id ? { ...o, ...patch } : o) })
-
-    const patchNode = (patch: Partial<LineNode>) =>
-        onChange({ ...fp, lineNodes: fp.lineNodes.map(n => n.id === node?.id ? { ...n, ...patch } : n) })
-
-    return (
-        <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
-                {room ? 'ROOM' : opening ? opening.type.toUpperCase() : node ? 'WALL NODE' : furniture ? 'FURNITURE' : stairs ? 'STAIRS / ELEVATOR' : 'WALL SEGMENT'}
-            </div>
-
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
-                {wallRoom ? 'WALL' : room ? 'ROOM' : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type).toUpperCase() : node ? 'WALL NODE' : furniture ? 'FURNITURE' : stairs ? 'STAIRS / ELEVATOR' : wallDecor ? WALL_DECOR_LABELS[wallDecor.type].toUpperCase() : 'WALL SEGMENT'}
-            </div>
-
-            {wallRoom && wallSel && <>
-                <PropField label="Room"><span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>{wallRoom.label}</span></PropField>
-                <PropField label="Side"><span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600, textTransform: 'capitalize' }}>{wallSel.wall}</span></PropField>
-                <PropField label="Openings">
-                    <span style={{ fontSize: 11, color: 'rgba(148,163,184,0.8)' }}>
-                        {fp.openings.filter(o => o.roomId === wallRoom.id && o.wall === wallSel.wall).length} on this wall
-                    </span>
-                </PropField>
-                <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.5)' }}>Rooms don't yet store per-wall data (color/material) — this selection is currently informational.</div>
-            </>}
-            {shape && <>
-                <PropField label="Label">
-                    <input value={shape.label ?? ''} onChange={e => onChange({
-                        ...fp,
-                        closedShapes: (fp.closedShapes ?? []).map(s => s.id === shape.id ? { ...s, label: e.target.value } : s)
-                    })} style={inputStyle} />
-                </PropField>
-            </>}
-            {room && <>
-                <PropField label="Label"><input value={room.label} onChange={e => patchRoom({ label: e.target.value })} style={inputStyle} /></PropField>
-                <PropField label="Width (m)"><NumInput value={room.width} min={1} max={30} step={0.5} onChange={v => patchRoom({ width: v })} /></PropField>
-                <PropField label="Depth (m)"><NumInput value={room.depth} min={1} max={30} step={0.5} onChange={v => patchRoom({ depth: v })} /></PropField>
-                <PropField label="X pos (m)"><NumInput value={room.x} min={-50} max={50} step={0.5} onChange={v => patchRoom({ x: v })} /></PropField>
-                <PropField label="Z pos (m)"><NumInput value={room.z} min={-50} max={50} step={0.5} onChange={v => patchRoom({ z: v })} /></PropField>
-            </>}
-
-            {node && <>
-                <PropField label="X pos (m)"><NumInput value={node.x} min={-50} max={50} step={0.5} onChange={v => patchNode({ x: snapM(v) })} /></PropField>
-                <PropField label="Z pos (m)"><NumInput value={node.z} min={-50} max={50} step={0.5} onChange={v => patchNode({ z: snapM(v) })} /></PropField>
-            </>}
-
-            {seg && <div style={{ fontSize: 11, color: 'rgba(100,116,139,0.6)' }}>
-                Wall segment with {seg.nodeIds.length} nodes. Select individual nodes to reposition.
-            </div>}
-
-            {opening && <>
-                <PropField label="Width (m)"><NumInput value={opening.width} min={0.5} max={4} step={0.1} onChange={v => patchOpening({ width: v })} /></PropField>
-                {opening.type === 'window' && <>
-                    <PropField label="Height (m)"><NumInput value={opening.height} min={0.3} max={2.5} step={0.1} onChange={v => patchOpening({ height: v })} /></PropField>
-                    <PropField label="Sill (m)"><NumInput value={opening.sillHeight} min={0} max={2} step={0.1} onChange={v => patchOpening({ sillHeight: v })} /></PropField>
-                </>}
-                <PropField label="Position (m)"><NumInput value={opening.position} min={0.3} max={20} step={0.1} onChange={v => patchOpening({ position: v })} /></PropField>
-                {opening.type === 'door' && (
-                    <PropField label="Swing">
-                        <button
-                            onClick={() => patchOpening({ swingDirection: opening.swingDirection === 'inward' ? 'outward' : 'inward' })}
-                            style={{ height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600 }}
-                        >
-                            {opening.swingDirection === 'inward' ? '← Inward' : '→ Outward'}
-                        </button>
-                    </PropField>
-                )}
-            </>}
-
-            {furniture && <>
-                <PropField label="Type">
-                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
-                        {FURNITURE_LABELS[furniture.type] ?? furniture.type}
-                    </span>
-                </PropField>
-                <PropField label="X pos (m)">
-                    <NumInput value={furniture.x} min={-50} max={50} step={0.5}
-                        onChange={v => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, x: snapFurniture(v) } : f) })} />
-                </PropField>
-                <PropField label="Z pos (m)">
-                    <NumInput value={furniture.z} min={-50} max={50} step={0.5}
-                        onChange={v => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, z: snapFurniture(v) } : f) })} />
-                </PropField>
-                <PropField label="Rotation">
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <input type="range" min={0} max={360} step={15}
-                            value={Math.round((furniture.rotation * 180) / Math.PI)}
-                            onChange={e => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, rotation: (parseFloat(e.target.value) * Math.PI) / 180 } : f) })}
-                            style={{ flex: 1, accentColor: '#6366F1' }} />
-                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 30, flexShrink: 0 }}>
-                            {Math.round((furniture.rotation * 180) / Math.PI)}°
-                        </span>
-                    </div>
-                </PropField>
-                <PropField label="Scale">
-                    <input type="range" min={50} max={150} step={5}
-                        value={Math.round((furniture.scale ?? 1) * 100)}
-                        onChange={e => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, scale: parseFloat(e.target.value) / 100 } : f) })}
-                        style={{ flex: 1, accentColor: '#6366F1' }} />
-                    <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', marginLeft: 4 }}>
-                        {Math.round((furniture.scale ?? 1) * 100)}%
-                    </span>
-                </PropField>
-                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                    <button
-                        onClick={() => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, rotation: f.rotation - Math.PI / 2 } : f) })}
-                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
-                        ↺ −90°
-                    </button>
-                    <button
-                        onClick={() => onChange({ ...fp, furniture: (fp.furniture ?? []).map(f => f.id === furniture.id ? { ...f, rotation: f.rotation + Math.PI / 2 } : f) })}
-                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
-                        ↻ +90°
-                    </button>
-                </div>
-            </>}
-
-            {stairs && <>
-                <PropField label="Type">
-                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
-                        {STAIRS_LABELS[stairs.type] ?? stairs.type}
-                    </span>
-                </PropField>
-                <PropField label="X pos (m)">
-                    <NumInput value={stairs.x + stairs.width / 2} min={-50} max={50} step={0.5}
-                        onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, x: snapM(v) - s.width / 2 } : s) })} />
-                </PropField>
-                <PropField label="Z pos (m)">
-                    <NumInput value={stairs.z + stairs.depth / 2} min={-50} max={50} step={0.5}
-                        onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, z: snapM(v) - s.depth / 2 } : s) })} />
-                </PropField>
-                <PropField label="Rotation">
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <input type="range" min={0} max={360} step={15}
-                            value={Math.round((stairs.rotation * 180) / Math.PI)}
-                            onChange={e => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: (parseFloat(e.target.value) * Math.PI) / 180 } : s) })}
-                            style={{ flex: 1, accentColor: '#6366F1' }} />
-                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 30, flexShrink: 0 }}>
-                            {Math.round((stairs.rotation * 180) / Math.PI)}°
-                        </span>
-                    </div>
-                </PropField>
-                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                    <button
-                        onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: s.rotation - Math.PI / 2 } : s) })}
-                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
-                        ↺ −90°
-                    </button>
-                    <button
-                        onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: s.rotation + Math.PI / 2 } : s) })}
-                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
-                        ↻ +90°
-                    </button>
-                </div>
-            </>}
-            {wallDecor && <>
-                <PropField label="Type">
-                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
-                        {WALL_DECOR_LABELS[wallDecor.type]}
-                    </span>
-                </PropField>
-                <PropField label="Position (m)">
-                    <NumInput value={wallDecor.position} min={0} max={20} step={0.1}
-                        onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, position: v } : d) })} />
-                </PropField>
-                <PropField label="Height (m)">
-                    <NumInput value={wallDecor.heightOffset} min={0} max={fp.roomHeight} step={0.1}
-                        onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, heightOffset: v } : d) })} />
-                </PropField>
-                <PropField label="Width (m)">
-                    <NumInput value={wallDecor.width} min={0.2} max={4} step={0.1}
-                        onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, width: v } : d) })} />
-                </PropField>
-            </>}
-            <button onClick={onDelete} style={{ marginTop: 4, height: 28, borderRadius: 6, border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: 'rgba(248,113,113,0.8)', fontSize: 11, cursor: 'pointer' }}>
-                Delete {room ? 'room' : opening ? 'opening' : node ? 'node' : furniture ? 'furniture' : stairs ? 'stairs' : wallDecor ? 'decor item' : shape ? 'area' : 'segment'}
-            </button>
-        </div>
-    )
-}
-
-function PropField({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 76, fontSize: 11, color: 'rgba(100,116,139,0.7)', flexShrink: 0 }}>{label}</span>
-            {children}
-        </div>
-    )
-}
-
-function NumInput({ value, min, max, step, onChange }: { value: number; min: number; max: number; step: number; onChange: (v: number) => void }) {
-    return (
-        <input type="number" min={min} max={max} step={step} value={value.toFixed(2)}
-            onChange={e => onChange(Math.max(min, Math.min(max, parseFloat(e.target.value) || min)))}
-            style={{ ...inputStyle, width: 72 }} />
-    )
-}
-
-const inputStyle: React.CSSProperties = {
-    height: 26, borderRadius: 5, width: '100%',
-    border: `1px solid ${THEME.borderStrong}`,
-    background: '#FAFAFA',
-    color: THEME.text, fontSize: 12,
-    padding: '0 8px', outline: 'none',
 }
 
 type Props = {
@@ -1046,6 +148,23 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     const shapeResizeRef = useRef<{ shapeId: string; handle: string; startNodes: Map<string, { x: number; z: number }>; bbox: { minX: number; maxX: number; minZ: number; maxZ: number } } | null>(null)
     const resizeHandleRef = useRef<{ handle: string; room: EditorRoom; startWx: number; startWz: number } | null>(null)
     fpRef.current = fp
+
+    const [interactiveMode, setInteractiveMode] = useState(false)
+    const justToggledRef = useRef(false)
+
+    const handleToggleInteractive = () => {
+        justToggledRef.current = true
+        setInteractiveMode(m => !m)
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => { justToggledRef.current = false })
+        })
+    }
+
+    const handleSceneSelect = (id: string | null) => {
+        if (justToggledRef.current) return
+        setSelectedId(id)
+        if (id) setRightTab('materials')
+    }
     const pushHistory = useCallback(() => {
         const current = fpRef.current
         // Truncate redo stack
@@ -1088,7 +207,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
         return () => ro.disconnect()
     }, [scheduleRedraw])
 
-    // ── Keyboard shortcuts ────────────────────────────────────────────────────
     useEffect(() => {
         const h = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -1282,67 +400,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
         }
         return null
     }, [])
-
-
-    function tryConvertClosedLineShape(fp: FloorPlanState, newSegId: string): FloorPlanState {
-        const adj = new Map<string, string[]>()
-        for (const seg of fp.lineSegments) {
-            for (let i = 0; i < seg.nodeIds.length - 1; i++) {
-                const a = seg.nodeIds[i]!, b = seg.nodeIds[i + 1]!
-                if (!adj.has(a)) adj.set(a, [])
-                if (!adj.has(b)) adj.set(b, [])
-                adj.get(a)!.push(b)
-                adj.get(b)!.push(a)
-            }
-        }
-
-        const newSeg = fp.lineSegments.find(s => s.id === newSegId)
-        if (!newSeg || newSeg.nodeIds.length < 2) return fp
-
-        const startId = newSeg.nodeIds[0]!
-        const endId = newSeg.nodeIds[newSeg.nodeIds.length - 1]!
-
-        function findPath(from: string, to: string, visited: Set<string>): string[] | null {
-            if (from === to) return [from]
-            visited.add(from)
-            for (const next of adj.get(from) ?? []) {
-                if (visited.has(next)) continue
-                if (from === endId && next === startId) continue
-                if (from === startId && next === endId) continue
-                const path = findPath(next, to, visited)
-                if (path) return [from, ...path]
-            }
-            return null
-        }
-
-        const path = findPath(endId, startId, new Set())
-        if (!path || path.length < 3) return fp
-
-        // Deduplicate — old code put startId at index 0 AND at end of path, causing 4-node triangles
-        const cycleNodeIds = [...new Set([startId, ...path])]
-        if (cycleNodeIds.length < 3) return fp
-
-        const cycleNodes = cycleNodeIds
-            .map(id => fp.lineNodes.find(n => n.id === id))
-            .filter(Boolean) as LineNode[]
-        if (cycleNodes.length < 3) return fp
-
-        // Only deduplicate against existing closedShapes, never create a room
-        const cycleSet = new Set(cycleNodeIds)
-        const alreadyExists = (fp.closedShapes ?? []).some(s =>
-            s.nodeIds.length === cycleNodeIds.length &&
-            s.nodeIds.every(id => cycleSet.has(id))
-        )
-        if (alreadyExists) return fp
-
-        return {
-            ...fp,
-            closedShapes: [
-                ...(fp.closedShapes ?? []),
-                { id: uid(), nodeIds: cycleNodeIds, label: `Area ${(fp.closedShapes ?? []).length + 1}`, color: '#FFFFFF' }
-            ],
-        }
-    }
 
     // ── Mouse handlers ────────────────────────────────────────────────────────
     const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -2303,6 +1360,13 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
         window.addEventListener('keyup', onKeyUp)
         return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp) }
     }, [])
+    // Open sheet on interactive mode
+    useEffect(() => {
+        if (interactiveMode && selectedId) {
+            setRightTab('properties')
+            setSheetOpen(true)
+        }
+    }, [selectedId, interactiveMode])
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
 
@@ -2312,41 +1376,21 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', background: THEME.bg, fontFamily: 'system-ui, sans-serif', color: THEME.text, overflow: 'hidden', maxHeight: '100vh', maxWidth: '100vw' }}
         >
             {/* ── Top bar ────────────────────────────────────────────────────── */}
-            <div style={{ height: 52, flexShrink: 0, background: THEME.bgPanel, borderBottom: `1px solid ${THEME.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, boxShadow: THEME.shadow }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: THEME.text, letterSpacing: '0.02em' }}>Ground Floor</span>
-                <div style={{ flex: 1 }} />
-                <label style={{ fontSize: 11, color: THEME.textMuted }}>Ceiling height</label>
-                <input type="number" min={2} max={6} step={0.1} value={fp.roomHeight}
-                    onChange={e => setFp(p => ({ ...p, roomHeight: parseFloat(e.target.value) || 2.7 }))}
-                    style={{ width: 56, height: 30, borderRadius: 6, border: `1px solid ${THEME.borderStrong}`, background: '#FAFAFA', color: THEME.text, fontSize: 12, textAlign: 'center', outline: 'none' }} />
-                <span style={{ fontSize: 11, color: THEME.textFaint }}>m</span>
-                <div style={{ width: 1, height: 24, background: THEME.border }} />
-                <span style={{ fontSize: 11, color: THEME.textMuted }}>{Math.round(zoom * 100)}%</span>
-                <Btn onClick={() => setZoom(1)}>Reset zoom</Btn>
-                <Btn onClick={() => { setFp(DEFAULT_FP); setSelectedId(null) }}>Clear</Btn>
-                <div style={{ width: 1, height: 24, background: THEME.border }} />
-                <button onClick={() => void toggleFullscreen()} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: `1px solid ${THEME.borderStrong}`, background: '#FAFAFA', color: THEME.textMuted, fontSize: 11, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    {isFullscreen
-                        ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3" /></svg>
-                        : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>}
-                    {isFullscreen ? 'Exit' : 'Fullscreen'}
-                </button>
-                {onClose && <Btn onClick={onClose} danger>✕ Close</Btn>}
-                {onSave &&
-                    <button
-                        onClick={() => onSave(fp, sceneConfig)}
-                        style={{
-                            height: 32,
-                            padding: '0 16px', borderRadius: 8, border: 'none',
-                            background: isSaving ? '#A5A6F5' : isSaved ? '#10B981' : THEME.accent,
-                            color: 'white', fontSize: 12, fontWeight: 700, cursor: isSaving ? 'not-allowed' : 'pointer', transition: 'background 200ms',
-                            boxShadow: '0 2px 6px rgba(99,102,241,0.25)',
-                        }}
-                        disabled={isSaving}>
-                        {isSaving ? 'Saving…' : isSaved ? '✓ Saved' : 'Save Floor Plan'}
-                    </button>}
-            </div>
-
+            <WorkspaceNav
+                fp={fp}
+                isFullscreen={isFullscreen}
+                sceneConfig={sceneConfig}
+                setFp={setFp}
+                setSelectedId={setSelectedId}
+                setZoom={setZoom}
+                toggleFullscreen={toggleFullscreen}
+                zoom={zoom}
+                isSaved={isSaved}
+                isSaving={isSaving}
+                key={1}
+                onClose={onClose}
+                onSave={onSave}
+            />
             {/* ── Body ─────────────────────────────────────────────────────────── */}
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
@@ -2459,22 +1503,17 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                         </div>
                     )}
                     {/* Tool hint */}
-                    <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '6px 14px', fontSize: 11, color: THEME.textMuted, pointerEvents: 'none', whiteSpace: 'nowrap', boxShadow: THEME.shadow }}>
-                        {tool === 'select' && 'Click to select · Drag room/node · Click segment to drag whole wall'}
-                        {tool === 'pan' && 'Click and drag to pan the canvas'}
-                        {tool === 'room' && (drawStart ? 'Drag to set room size · Release to place' : 'Click and drag to draw a room')}
-                        {tool === 'line' && (lineActiveNodeRef.current ? 'Click to continue wall · Click existing node to close' : 'Click to start a wall segment')}
-                        {tool === 'bend' && (lineActiveNodeRef.current ? 'Click to place curved wall point · Click existing node to close' : 'Click to start a curved wall')}
-                        {isDoorTool && 'Click on a room wall or line wall to place a door'}
-                        {isWindowTool && 'Click on a room wall or line wall to place a window'}
-                        {isOpeningTool && 'Click on a room wall or line wall to place an opening'}
-                        {isStairsTool && 'Click and drag to place stairs · Drag to set orientation'}
-                        {tool === 'delete' && 'Click on a room, wall or node to delete it'}
-                        {tool === 'pencil' && 'Draw freehand — release to create room from bounding box'}
-                        {tool === 'annotate' && 'Click anywhere to add a label · Click existing label to edit · Delete tool removes labels'}
-                        {tool === 'furniture' && `Placing: ${FURNITURE_LABELS[selectedFurnitureType]} · Click canvas to place · Drag to move · Delete tool removes`}
-                        {isWallDecorTool && 'Click on a wall to place wall decor · Drag along wall to reposition'}
-                    </div>
+                    <ToolHintBar
+                        tool={tool}
+                        drawStart={drawStart}
+                        lineActiveNodeRef={lineActiveNodeRef}
+                        isDoorTool={isDoorTool}
+                        isWindowTool={isWindowTool}
+                        isOpeningTool={isOpeningTool}
+                        isStairsTool={isStairsTool}
+                        isWallDecorTool={isWallDecorTool}
+                        selectedFurnitureType={selectedFurnitureType}
+                    />
 
                     {/* Shortcut legend */}
                     <div style={{ position: 'absolute', top: 12, right: 12, background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 10, color: THEME.textMuted, lineHeight: 1.9, boxShadow: THEME.shadow }}>
@@ -2532,7 +1571,6 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 <div style={{ width: 1, background: THEME.border, flexShrink: 0 }} />
 
                 {/* ── Right: 3D preview + collapsible dock ─────────────────────── */}
-                {/* ── Right: 3D preview + collapsible dock ─────────────────────── */}
                 <div style={{ width: rightPanelOpen ? '46%' : 30, flexShrink: 0, display: 'flex', transition: 'width 200ms ease', overflow: 'hidden' }}>
 
                     <button
@@ -2556,6 +1594,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                     <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: THEME.textMuted }}>3D PREVIEW</span>
                                     <button
                                         onClick={() => setWalkMode(w => !w)}
+                                        disabled={interactiveMode}
                                         style={{
                                             height: 26, padding: '0 10px', borderRadius: 6,
                                             border: walkMode ? '1px solid rgba(16,185,129,0.5)' : `1px solid ${THEME.borderStrong}`,
@@ -2571,6 +1610,23 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                             <circle cx="12" cy="7" r="4" />
                                         </svg>
                                         {walkMode ? 'Exit Walk' : 'Walk Mode'}
+                                    </button>
+                                    <button
+                                        onClick={handleToggleInteractive}
+                                        style={{
+                                            height: 26, padding: '0 10px', borderRadius: 6,
+                                            border: interactiveMode ? '1px solid rgba(99,102,241,0.5)' : `1px solid ${THEME.borderStrong}`,
+                                            background: interactiveMode ? 'rgba(99,102,241,0.12)' : THEME.bgPanel,
+                                            color: interactiveMode ? THEME.accent : THEME.textMuted,
+                                            fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                                            display: 'flex', alignItems: 'center', gap: 4, transition: 'all 150ms',
+                                            boxShadow: THEME.shadow,
+                                        }}
+                                    >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                                        </svg>
+                                        {interactiveMode ? 'Interactive: On' : 'Interactive: Off'}
                                     </button>
                                 </div>
 
@@ -2606,7 +1662,9 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                             fp={fp}
                                             sceneConfig={sceneConfig}
                                             walkMode={walkMode}
-                                            onSelectRoom={(roomId) => { setSelectedId(roomId); setRightTab('materials') }}
+                                            interactiveMode={interactiveMode}
+                                            selectedId={selectedId}
+                                            onSelect={handleSceneSelect}
                                         />
                                     </Canvas>
                                 </SceneErrorBoundary>
@@ -2690,6 +1748,8 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                     })
                                     setSelectedId(null)
                                 }}
+                                sceneConfig={sceneConfig}
+                                onChangeSceneConfig={setSceneConfig}
                             />
                         </>
                     )}
@@ -2697,7 +1757,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                         <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} embedded />
                     )}
                     {rightTab === 'materials' && (
-                        <MaterialsPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} />
+                        <MaterialsPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} />
                     )}
                 </div>
             </Dock>
@@ -2705,10 +1765,4 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     )
 }
 
-function Btn({ children, onClick, danger }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {
-    return (
-        <button onClick={onClick} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: `1px solid ${danger ? 'rgba(239,68,68,0.25)' : 'rgba(148,163,184,0.15)'}`, background: 'transparent', color: danger ? 'rgba(248,113,113,0.8)' : 'rgba(148,163,184,0.7)', fontSize: 11, cursor: 'pointer' }}>
-            {children}
-        </button>
-    )
-}
+

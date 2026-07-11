@@ -43,11 +43,6 @@ export function LineWalls3D({
         },
     })
 
-    // Precompute per-segment wall material: a segment "belongs" to a closed shape if
-    // that shape's node-loop matches the segment's own node chain (same pattern the
-    // floor loop below already uses via matchedShape/matchedSeg). This lets a shape's
-    // wallMaterial override (set in MaterialsPanel's "Area Overrides") apply to the
-    // walls that trace it, instead of only ever using the flat global wallMaterial prop.
     const segWallMaterial = new Map<string, WallMaterial>()
     for (const seg of fp.lineSegments ?? []) {
         const nodeIdSet = new Set(seg.nodeIds)
@@ -68,6 +63,9 @@ export function LineWalls3D({
 
                 const isRoomSelected = interactive && selectedId === seg.id
                 const panels: React.ReactNode[] = []
+                //             const segMat = matchedShape?.wallOverrides?.[`${seg.id}_${i}`]?.material
+                // ?? segWallMaterial.get(seg.id)
+                // ?? wallMaterial
                 const segMat = segWallMaterial.get(seg.id) ?? wallMaterial
 
                 for (let i = 0; i < nodes.length - 1; i++) {
@@ -266,24 +264,18 @@ export function LineWalls3D({
                     s.nodeIds.every(id => nodeIdSet.has(id))
                 )
                 const floorRoomId = matchedSeg?.id ?? matchedShape?.id ?? null
-
-                const shape = new THREE.Shape()
-                shape.moveTo(nodes[0]!.x, -nodes[0]!.z)
-                for (let i = 1; i < nodes.length; i++) {
-                    shape.lineTo(nodes[i]!.x, -nodes[i]!.z)
-                }
-                shape.closePath()
-
-                const geometry = new THREE.ShapeGeometry(shape)
                 const isFloorSelected = interactive && !!floorRoomId && selectedId === floorRoomId
 
                 return (
-                    <FloorPiece
+                    <DerivedFloorShape
                         key={`floor_derived_${idx}`}
-                        geometry={geometry}
-                        shapeMat={shapeMat as FloorMaterial}
+                        nodeIds={nodeIds}
+                        nodes={nodes}
+                        minX={minX}
+                        minZ={minZ}
                         worldW={worldW}
                         worldD={worldD}
+                        shapeMat={shapeMat as FloorMaterial}
                         interactive={interactive}
                         roomId={floorRoomId}
                         selected={isFloorSelected}
@@ -384,5 +376,61 @@ function FloorPiece({
                 </mesh>
             )}
         </group>
+    )
+}
+
+
+// New component — place above FloorPiece, below LineWalls3D
+function DerivedFloorShape({
+    nodeIds, nodes, minX, minZ, worldW, worldD,
+    shapeMat, interactive, roomId, selected, onSelect,
+}: {
+    nodeIds: string[]
+    nodes: LineNode[]
+    minX: number; minZ: number; worldW: number; worldD: number
+    shapeMat: FloorMaterial
+    interactive: boolean
+    roomId: string | null
+    selected: boolean
+    onSelect?: (id: string) => void
+}) {
+    const geometry = React.useMemo(() => {
+        const shape = new THREE.Shape()
+        shape.moveTo(nodes[0]!.x, -nodes[0]!.z)
+        for (let i = 1; i < nodes.length; i++) {
+            shape.lineTo(nodes[i]!.x, -nodes[i]!.z)
+        }
+        shape.closePath()
+
+        const geo = new THREE.ShapeGeometry(shape)
+
+        const posAttr = geo.attributes.position
+        const uvArr = new Float32Array(posAttr.count * 2)
+        for (let i = 0; i < posAttr.count; i++) {
+            const px = posAttr.getX(i)
+            const py = posAttr.getY(i)
+            uvArr[i * 2] = (px - minX) / (worldW || 1)
+            uvArr[i * 2 + 1] = (-py - minZ) / (worldD || 1)
+        }
+        geo.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2))
+
+        return geo
+        // Only rebuild when the actual shape geometry changes — node id set (order/
+        // membership) and each node's real x/z. Hover/selection changes elsewhere in
+        // the tree no longer trigger this expensive rebuild.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [nodeIds.join(','), ...nodes.flatMap(n => [n.x, n.z]), minX, minZ, worldW, worldD])
+
+    return (
+        <FloorPiece
+            geometry={geometry}
+            shapeMat={shapeMat}
+            worldW={worldW}
+            worldD={worldD}
+            interactive={interactive}
+            roomId={roomId}
+            selected={selected}
+            onSelect={onSelect}
+        />
     )
 }

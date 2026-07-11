@@ -8,7 +8,7 @@ import { EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial
 
 function Room3D({
     room,
-    openings = [], // Guard against undefined/null openings array on initial loads
+    openings = [],
     roomHeight,
     wallColor = '#FFFFFF',
     wallRoughness = 0.95,
@@ -74,6 +74,7 @@ function Room3D({
             </mesh>
 
             {walls.map(wall => {
+
                 const wallOpenings = openings.filter(o => o.wall === wall.name && !o.segmentNodeIds)
                 const wallLen = wall.axis === 'x' ? W : D
                 const wPos = wallWorldPos(wall.name)

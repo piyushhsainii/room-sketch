@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { THEME } from '../workspace/FloorPlanEditor';
 import { DEFAULT_FP } from '../workspace/Tools/constants';
+import { ShareDialog } from './ExportShareable';
 
 interface WorkspaceNavProps {
     fp: { roomHeight: number;[key: string]: any };
@@ -15,6 +16,7 @@ interface WorkspaceNavProps {
     isSaved?: boolean;
     onClose?: () => void;
     onSave?: (fp: any, sceneConfig: any) => void;
+    projectId?: string
 }
 
 const WorkspaceNav = ({
@@ -29,8 +31,13 @@ const WorkspaceNav = ({
     isSaving = false,
     isSaved = false,
     onClose,
-    onSave
+    onSave,
+    projectId,
 }: WorkspaceNavProps) => {
+
+    const [shareDialogOpen, setShareDialogOpen] = useState(false)
+
+
     return (
         <div style={{ height: 52, flexShrink: 0, background: THEME.bgPanel, borderBottom: `1px solid ${THEME.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, boxShadow: THEME.shadow }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: THEME.text, letterSpacing: '0.02em' }}>Ground Floor</span>
@@ -52,6 +59,23 @@ const WorkspaceNav = ({
                 {isFullscreen ? 'Exit' : 'Fullscreen'}
             </button>
             {onClose && <Btn onClick={onClose} danger>✕ Close</Btn>}
+            {projectId && (
+                <button
+                    onClick={() => setShareDialogOpen(true)}
+                    style={{
+                        height: 30, padding: '0 12px', borderRadius: 7,
+                        border: `1px solid ${THEME.borderStrong}`, background: '#FAFAFA',
+                        color: THEME.textMuted, fontSize: 11, cursor: 'pointer',
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                    }}
+                >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+                        <line x1="8.6" y1="10.6" x2="15.4" y2="6.4" /><line x1="8.6" y1="13.4" x2="15.4" y2="17.6" />
+                    </svg>
+                    Share
+                </button>
+            )}
             {onSave &&
                 <button
                     onClick={() => onSave(fp, sceneConfig)}
@@ -64,7 +88,13 @@ const WorkspaceNav = ({
                     }}
                     disabled={isSaving}>
                     {isSaving ? 'Saving…' : isSaved ? '✓ Saved' : 'Save Floor Plan'}
-                </button>}
+                </button>
+
+            }
+            {shareDialogOpen && projectId && (
+                <ShareDialog projectId={projectId} onClose={() => setShareDialogOpen(false)} />
+            )}
+
         </div>
     )
 }

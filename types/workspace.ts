@@ -1,3 +1,9 @@
+import {
+  DoorStyle,
+  FloorMaterial,
+  WallMaterial,
+} from "@/components/workspace/Tools/constants";
+
 export interface WallPoint {
   x: number;
   z: number;
@@ -22,18 +28,35 @@ export interface SceneRoom {
   name: string;
   shape: WallPoint[]; // polygon points in meters, clockwise
   height: number; // ceiling height in meters, default 2.7
-  floor_material: "hardwood" | "tile" | "carpet" | "concrete" | "marble";
+  floor_material: FloorMaterial;
+  wall_material: WallMaterial; // NEW — required, mirrors floor_material's pattern
   wall_color: string; // hex color string
   doors: RoomDoor[];
   windows: RoomWindow[];
 }
 
-export interface SceneJSON {
+export type SceneJSON = {
   rooms: SceneRoom[];
-  furniture: []; // empty in Phase 1
+  furniture: unknown[];
+  door_style?: DoorStyle;
+  global_wall_material?: WallMaterial;
+  global_floor_material?: FloorMaterial;
+  closed_shapes?: {
+    id: string;
+    label?: string;
+    node_ids: string[]; // references into a saved node list, see below
+    floor_material?: FloorMaterial;
+    wall_material?: WallMaterial;
+    wall_overrides?: Record<
+      string,
+      { color?: string; material?: WallMaterial }
+    >;
+  }[];
+  line_nodes?: { id: string; x: number; z: number }[]; // NEW — needed so closed_shapes.node_ids resolve to something real on reload
+  line_segments?: { id: string; node_ids: string[]; thickness?: number }[]; // NEW — replaces the flattened-box approach for round-tripping
   extracted_at: string;
   floorplan_url: string;
-}
+};
 
 export type CameraMode = "orbit" | "walk" | "topdown";
 
@@ -43,15 +66,6 @@ export type WorkspaceStatus =
   | "building"
   | "ready"
   | "error";
-
-// ── Workspace config ──────────────────────────────────────────────────────────
-
-export type FloorMaterial =
-  | "hardwood"
-  | "marble"
-  | "tile"
-  | "carpet"
-  | "concrete";
 
 export interface RoomConfig {
   roomId: string;
@@ -68,14 +82,14 @@ export interface WorkspaceConfig {
   fogEnabled: boolean;
 }
 
-export type DoorStyle =
-  | "wood_oak"
-  | "wood_dark"
-  | "wood_white"
-  | "glass_frosted"
-  | "glass_clear"
-  | "metal_steel"
-  | "panel_white";
+// export type DoorStyle =
+//   | "wood_oak"
+//   | "wood_dark"
+//   | "wood_white"
+//   | "glass_frosted"
+//   | "glass_clear"
+//   | "metal_steel"
+//   | "panel_white";
 
 export interface WorkspaceConfig {
   rooms: RoomConfig[];
@@ -94,5 +108,5 @@ export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {
   showFurniture: true,
   showLabels: true,
   fogEnabled: true,
-  doorStyle: "wood_oak", // ← add this
+  doorStyle: "white", // ← add this
 };

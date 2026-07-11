@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { useMemo } from 'react'
-import { WallMaterial, WALL_MAT_DEFS } from '../Tools/constants'
+import { WallMaterial, WALL_MAT_DEFS, MaterialDef } from '../Tools/constants'
+import { useLoader } from '@react-three/fiber'
 
 interface WallMatProps {
     color?: string
@@ -11,6 +12,8 @@ interface WallMatProps {
     height?: number
     depth?: number
 }
+
+type WallTexInfo = { map: string; normalMap?: string; roughnessMap?: string }
 
 function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null {
     if (mat === 'paint' || mat === 'pvc-panel-groove') return null
@@ -89,12 +92,44 @@ function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null 
     return tex
 }
 
+export function RealTextureWallMat({ width, height, depth, def }: { width: number; height: number; depth: number; def: MaterialDef }) {
+    const urls = [def.textureUrl!, def.normalMapUrl, def.roughnessMapUrl].filter(Boolean) as string[]
+    const loaded = useLoader(THREE.TextureLoader, urls)
+    const [colorMap, normalMap, roughnessMap] = loaded
+
+    const maps = useMemo(() => {
+        const prep = (t: THREE.Texture) => {
+            const c = t.clone()
+            c.wrapS = c.wrapT = THREE.RepeatWrapping
+            c.repeat.set(width * def.repeatScale, height * def.repeatScale)
+            c.needsUpdate = true
+            return c
+        }
+        const result: any = { map: prep(colorMap) }
+        if (def.normalMapUrl) result.normalMap = prep(normalMap)
+        if (def.roughnessMapUrl) result.roughnessMap = prep(roughnessMap)
+        return result
+    }, [colorMap, normalMap, roughnessMap, width, height, def])
+
+    return (
+        <meshStandardMaterial
+            attach="material"
+            color="#FFFFFF"
+            roughness={def.roughnessMapUrl ? 1 : def.roughness}
+            metalness={def.metalness}
+            {...maps}
+        />
+    )
+}
+
 
 export function WallMat({ color, roughness, textured = false, mat = 'paint', width = 1, height = 2.7, depth = 0.15 }: WallMatProps) {
     const def = WALL_MAT_DEFS[mat] || WALL_MAT_DEFS['paint']
     const finalColor = color && color !== '#FFFFFF' ? color : def.color
     const finalRoughness = roughness ?? def.roughness
-
+    if (def.textureUrl) {
+        return <RealTextureWallMat width={width} height={height} depth={depth} def={def} />
+    }
     const texture = useMemo(() => {
         const tex = createProceduralTexture(mat)
         if (tex) {

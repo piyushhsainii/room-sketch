@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Toolbar } from './Tools/ToolBar'
 import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
@@ -22,6 +22,8 @@ export type RoomSceneConfig = {
     wallColor?: string
     wallMaterial?: WallMaterial
     floorMaterial?: FloorMaterial
+    wallOverrides?: Partial<Record<'north' | 'south' | 'east' | 'west', { color?: string; material?: WallMaterial }>>
+
 }
 
 export type SceneConfig = {
@@ -1645,28 +1647,31 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                     </div>
                                 )}
                                 <SceneErrorBoundary fallback={null}>
-                                    <Canvas
-                                        shadows
-                                        camera={{
-                                            position: [
-                                                (fp?.roomHeight ?? 2.8) * 3,
-                                                (fp?.roomHeight ?? 2.8) * 4,
-                                                (fp?.roomHeight ?? 2.8) * 4
-                                            ],
-                                            fov: 45, near: 0.1, far: 500
-                                        }}
-                                        style={{ width: '100%', height: '100%', background: '#EFEFEC' }}
-                                        onWheel={e => e.stopPropagation()}
-                                    >
-                                        <Scene3D
-                                            fp={fp}
-                                            sceneConfig={sceneConfig}
-                                            walkMode={walkMode}
-                                            interactiveMode={interactiveMode}
-                                            selectedId={selectedId}
-                                            onSelect={handleSceneSelect}
-                                        />
-                                    </Canvas>
+                                    <Suspense fallback={null}>
+                                        <Canvas
+                                            shadows
+                                            camera={{
+                                                position: [
+                                                    (fp?.roomHeight ?? 2.8) * 3,
+                                                    (fp?.roomHeight ?? 2.8) * 4,
+                                                    (fp?.roomHeight ?? 2.8) * 4
+                                                ],
+                                                fov: 45, near: 0.1, far: 500
+                                            }}
+                                            style={{ width: '100%', height: '100%', background: '#EFEFEC' }}
+                                            onWheel={e => e.stopPropagation()}
+                                        >
+                                            <Scene3D
+                                                fp={fp}
+                                                sceneConfig={sceneConfig}
+                                                walkMode={walkMode}
+                                                interactiveMode={interactiveMode}
+                                                selectedId={selectedId}
+                                                onSelect={handleSceneSelect}
+                                            />
+                                        </Canvas>
+                                    </Suspense>
+
                                 </SceneErrorBoundary>
                             </div>
                         </div>

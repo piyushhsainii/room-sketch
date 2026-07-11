@@ -90,6 +90,8 @@ export type ClosedShape = {
     color?: string
     floorMaterial?: FloorMaterial
     wallMaterial?: WallMaterial
+    wallOverrides?: Record<string, { color?: string; material?: WallMaterial }>
+
 }
 
 export type Annotation = { id: string; x: number; z: number; text: string; fontSize: number }
@@ -659,20 +661,20 @@ const BRICK_WHITE_TEX = '/textures/floor/brick-white.jpg'
 
 // Global Definitions
 export const FLOOR_MAT_DEFS: Record<FloorMaterial, MaterialDef> = {
-    plain: { color: '#C8A878', roughness: 0.7, metalness: 0, repeatScale: 1, preview: '/textures/Wood049_1K-JPG_Color.jpg' },
-    wood: { color: '#C8A878', roughness: 0.6, metalness: 0, repeatScale: 2, preview: '/textures/Wood049_1K-JPG_Color.jpg', textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
-    'wood-oak': { color: '#D4B592', roughness: 0.5, metalness: 0, repeatScale: 2, preview: '/textures/Wood049_1K-JPG_Color.jpg', textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
-    'wood-walnut': { color: '#5C4033', roughness: 0.4, metalness: 0, repeatScale: 2, preview: '/textures/Wood049_1K-JPG_Color.jpg', textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
+    plain: { color: '#C8A878', roughness: 0.7, metalness: 0, repeatScale: 1, preview: '🪵' },
+    wood: { color: '#C8A878', roughness: 0.6, metalness: 0, repeatScale: 6, preview: '/textures/Wood049_1K-JPG_Color.jpg', textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
+    'wood-oak': { color: '#D4B592', roughness: 0.5, metalness: 0, repeatScale: 6, preview: '/textures/Wood049_1K-JPG_Color.jpg', textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
+    'wood-walnut': { color: '#5C4033', roughness: 0.4, metalness: 0, repeatScale: 6, preview: '/textures/Wood049_1K-JPG_Color.jpg', textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
     marble: { color: '#EAE6E0', roughness: 0.12, metalness: 0.1, repeatScale: 3, preview: '/textures/Marble022_1K-JPG_Color.jpg', textureUrl: '/textures/Marble022_1K-JPG_Color.jpg', normalMapUrl: '/textures/Marble022_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Marble022_1K-JPG_Roughness.jpg' },
-    'marble-white': { color: '#F9F9F9', roughness: 0.05, metalness: 0.1, repeatScale: 4, preview: '/textures/Marble022_1K-JPG_Color.jpg', textureUrl: '/textures/Marble022_1K-JPG_Color.jpg', normalMapUrl: '/textures/Marble022_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Marble022_1K-JPG_Roughness.jpg' },
-    'marble-black': { color: '#1A1A1A', roughness: 0.05, metalness: 0.2, repeatScale: 4, preview: '/textures/Marble022_1K-JPG_Color.jpg' }, // no black marble pack — keep procedural
-    concrete: { color: '#A8A8A8', roughness: 0.92, metalness: 0, repeatScale: 4, preview: '/textures/Concrete025_1K-JPG_Color.jpg', textureUrl: '/textures/Concrete025_1K-JPG_Color.jpg', normalMapUrl: '/textures/Concrete025_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Concrete025_1K-JPG_Roughness.jpg' },
-    tiles: { color: '#D4D0C8', roughness: 0.3, metalness: 0, repeatScale: 1, preview: '/textures/Tiles101_1K-JPG_Color.jpg', textureUrl: '/textures/Tiles101_1K-JPG_Color.jpg', normalMapUrl: '/textures/Tiles101_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Tiles101_Roughness.jpg' },
-    'tile-ceramic': { color: '#F0F0F0', roughness: 0.1, metalness: 0, repeatScale: 1, preview: '/textures/Tiles101_1K-JPG_Color.jpg', textureUrl: '/textures/Tiles101_1K-JPG_Color.jpg', normalMapUrl: '/textures/Tiles101_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Tiles101_Roughness.jpg' },
-    fabric: { color: '#B8A898', roughness: 0.98, metalness: 0, repeatScale: 5, preview: '/textures/Fabric049_1K-JPG_Color.jpg', textureUrl: '/textures/Fabric049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Fabric049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Fabric049_1K-JPG_Roughness.jpg' },
-    plaster: { color: '#D8D0C8', roughness: 0.88, metalness: 0, repeatScale: 2, preview: '/textures/Plaster001_1K-JPG_Color.jpg', textureUrl: '/textures/Plaster001_1K-JPG_Color.jpg', normalMapUrl: '/textures/Plaster001_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Plaster001_1K-JPG_Roughness.jpg' },
-    'brick-red': { color: '#A85C42', roughness: 0.85, metalness: 0, repeatScale: 3, preview: '🧱' }, // no textureUrl — procedural fallback until a real pack is added
-    'brick-white': { color: '#D8D2C4', roughness: 0.82, metalness: 0, repeatScale: 3, preview: '🧱' },
+    'marble-white': { color: '#F9F9F9', roughness: 0.05, metalness: 0.1, repeatScale: 3 },
+    'marble-black': { color: '#1A1A1A', roughness: 0.05, metalness: 0.2, repeatScale: 3 },
+    concrete: { color: '#A8A8A8', roughness: 0.92, metalness: 0, repeatScale: 14, preview: '/textures/Concrete025_1K-JPG_Color.jpg', textureUrl: '/textures/Concrete025_1K-JPG_Color.jpg', normalMapUrl: '/textures/Concrete025_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Concrete025_1K-JPG_Roughness.jpg' },
+    tiles: { color: '#D4D0C8', roughness: 0.3, metalness: 0, repeatScale: 20, preview: '/textures/Tiles101_1K-JPG_Color.jpg', textureUrl: '/textures/Tiles101_1K-JPG_Color.jpg', normalMapUrl: '/textures/Tiles101_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Tiles101_Roughness.jpg' },
+    'tile-ceramic': { color: '#F0F0F0', roughness: 0.1, metalness: 0, repeatScale: 20 },
+    fabric: { color: '#B8A898', roughness: 0.98, metalness: 0, repeatScale: 10, preview: '/textures/Fabric049_1K-JPG_Color.jpg', textureUrl: '/textures/Fabric049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Fabric049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Fabric049_1K-JPG_Roughness.jpg' },
+    plaster: { color: '#D8D0C8', roughness: 0.88, metalness: 0, repeatScale: 8, preview: '/textures/Plaster001_1K-JPG_Color.jpg', textureUrl: '/textures/Plaster001_1K-JPG_Color.jpg', normalMapUrl: '/textures/Plaster001_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Plaster001_1K-JPG_Roughness.jpg' },
+    'brick-red': { color: '#A85C42', roughness: 0.85, metalness: 0, repeatScale: 16 },
+    'brick-white': { color: '#D8D2C4', roughness: 0.82, metalness: 0, repeatScale: 16 },
     'solid-white': { color: '#F5F5F0', roughness: 0.6, metalness: 0, repeatScale: 1, preview: '⬜' },
     'solid-gray': { color: '#8A8A85', roughness: 0.6, metalness: 0, repeatScale: 1, preview: '⬜' },
     'solid-black': { color: '#1A1A1A', roughness: 0.5, metalness: 0, repeatScale: 1, preview: '⬛' },
@@ -687,8 +689,20 @@ export const WALL_MAT_DEFS: Record<WallMaterial, MaterialDef> = {
     'wallpaper-textured': { color: '#EDEAE4', roughness: 0.9, metalness: 0, repeatScale: 0.4, preview: '⬜' },
     'pvc-panel-groove': { color: '#E4DDCF', roughness: 0.55, metalness: 0, repeatScale: 1, preview: '⬜' },
     'pvc-panel-brick': { color: '#C9B8A8', roughness: 0.75, metalness: 0, repeatScale: 0.5, preview: '🧱' },
-    'brick-red': { color: '#9C4A34', roughness: 0.92, metalness: 0, repeatScale: 0.35, preview: '🧱' },
-    'brick-white': { color: '#D8D2C4', roughness: 0.88, metalness: 0, repeatScale: 0.35, preview: '🧱' },
+    'brick-red': {
+        color: '#A85C42', roughness: 0.85, metalness: 0, repeatScale: 1,
+        preview: '/textures/Bricks104_1K-JPG_Color.jpg',
+        textureUrl: '/textures/Bricks104_1K-JPG_Color.jpg',
+        normalMapUrl: '/textures/Bricks104_1K-JPG_NormalGL.jpg',
+        roughnessMapUrl: '/textures/Bricks104_1K-JPG_Roughness.jpg',
+    },
+    'brick-white': {
+        color: '#D8D2C4', roughness: 0.82, metalness: 0, repeatScale: 1,
+        preview: '🧱',
+        textureUrl: '/textures/Bricks019_1K-JPG_Color.jpg',
+        normalMapUrl: '/textures/Bricks019_1K-JPG_NormalGL.jpg',
+        roughnessMapUrl: '/textures/Bricks019_1K-JPG_Roughness.jpg',
+    },
     'tile-ceramic': { color: '#F2F1EC', roughness: 0.25, metalness: 0.05, repeatScale: 0.5, preview: '/textures/Tiles101_1K-JPG_Color.jpg', textureUrl: '/textures/Tiles101_1K-JPG_Color.jpg', normalMapUrl: '/textures/Tiles101_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Tiles101_Roughness.jpg' },
     'exposed-brick': { color: '#8B5A44', roughness: 0.95, metalness: 0, repeatScale: 0.35, preview: '🧱' },
     'concrete-raw': { color: '#A8A6A0', roughness: 0.95, metalness: 0, repeatScale: 0.15, preview: '/textures/Concrete025_1K-JPG_Color.jpg', textureUrl: '/textures/Concrete025_1K-JPG_Color.jpg', normalMapUrl: '/textures/Concrete025_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Concrete025_1K-JPG_Roughness.jpg' },

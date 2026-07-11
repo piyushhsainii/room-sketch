@@ -2,8 +2,9 @@
 
 import { useCallback, useRef, useState } from 'react'
 
-import type { FloorMaterial, RoomConfig, SceneRoom, WorkspaceConfig } from '@/types/workspace'
+import type { RoomConfig, SceneRoom, WorkspaceConfig } from '@/types/workspace'
 import { DEFAULT_WORKSPACE_CONFIG } from '@/types/workspace'
+import { DOOR_STYLES, DoorStyle, FloorMaterial } from './Tools/constants'
 
 type Props = {
     projectId: string
@@ -13,11 +14,26 @@ type Props = {
 }
 
 const FLOOR_MATERIALS: { value: FloorMaterial; label: string; color: string }[] = [
-    { value: 'hardwood', label: 'Hardwood', color: '#C8A97A' },
     { value: 'marble', label: 'Marble', color: '#EDE9E4' },
-    { value: 'tile', label: 'Tile', color: '#D4D0CC' },
-    { value: 'carpet', label: 'Carpet', color: '#B0A8C0' },
     { value: 'concrete', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'brick-red', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'brick-white', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'concrete', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'fabric', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'marble', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'marble-black', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'marble-white', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'plain', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'plaster', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'solid-beige', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'solid-black', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'solid-gray', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'solid-white', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'tile-ceramic', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'tiles', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'wood', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'wood-oak', label: 'Concrete', color: '#9C9C9C' },
+    { value: 'wood-walnut', label: 'Concrete', color: '#9C9C9C' },
 ]
 
 const WALL_PRESETS = [
@@ -35,17 +51,6 @@ const WALL_PRESETS = [
     { label: 'Charcoal', color: '#2C2C2C' },
 ]
 
-import type { DoorStyle } from '@/types/workspace'
-
-const DOOR_STYLES: { value: DoorStyle; label: string; color: string; transparent?: boolean }[] = [
-    { value: 'wood_oak', label: 'Oak Wood', color: '#C8A878' },
-    { value: 'wood_dark', label: 'Dark Walnut', color: '#4A3220' },
-    { value: 'wood_white', label: 'White Painted', color: '#F0EDE8' },
-    { value: 'glass_frosted', label: 'Frosted Glass', color: '#C8D8E4', transparent: true },
-    { value: 'glass_clear', label: 'Clear Glass', color: '#B8D0E0', transparent: true },
-    { value: 'metal_steel', label: 'Steel', color: '#9AABB8' },
-    { value: 'panel_white', label: 'Panel White', color: '#F5F2EE' },
-]
 
 function getRoomConfig(config: WorkspaceConfig, roomId: string, room: SceneRoom): RoomConfig {
     return config.rooms.find(r => r.roomId === roomId) ?? {
@@ -664,7 +669,7 @@ export default function WorkspaceConfigPanel({ projectId, rooms, config, onConfi
                                                         background: d.color,
                                                         border: '1px solid rgba(255,255,255,0.12)',
                                                         flexShrink: 0,
-                                                        ...(d.transparent ? { opacity: 0.5 } : {}),
+                                                        ...(d.color ? { opacity: 0.5 } : {}),
                                                     }} />
                                                     <span style={{
                                                         fontSize: 11,

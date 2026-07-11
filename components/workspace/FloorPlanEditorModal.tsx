@@ -1,22 +1,10 @@
 'use client'
-
-/**
- * components/workspace/FloorPlanEditorModal.tsx
- *
- * Modal wrapper that opens the floor plan editor fullscreen,
- * converts the result to SceneJSON on save, and passes it to
- * WorkspaceCanvas — keeping the existing extraction logic intact.
- */
-
 import dynamic from 'next/dynamic'
 import { useCallback, useState } from 'react'
-import type { SceneJSON } from '@/types/workspace'
 import type { SceneConfig } from '@/components/workspace/FloorPlanEditor'
-import { createSupabaseAdmin } from '@/lib/supabase/admin'
 import { floorPlanStateToSceneJSON } from '@/lib/workspace/floorPlanConvertor'
 import { FloorPlanState } from './Tools/constants'
 
-// Lazy-load the editor (Three.js is heavy)
 const FloorPlanEditor = dynamic(
     () => import('@/components/workspace/FloorPlanEditor'),
     {
@@ -47,7 +35,7 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
         setSaving(true)
         setError(null)
         try {
-            const sceneJSON = floorPlanStateToSceneJSON(fp)
+            const sceneJSON = floorPlanStateToSceneJSON(fp, sceneConfig!)
 
             const res = await fetch('/api/workspace/save-manual', {
                 method: 'POST',
@@ -59,15 +47,19 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
                 const body = await res.json() as { error?: string }
                 throw new Error(body.error ?? 'Failed to save')
             }
-
-            await fetch('/api/workspace/config', {
+            const stateRes = await fetch('/api/workspace/floorplan-editor-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     project_id: projectId,
-                    config: { floorPlanState: fp, sceneConfig },
+                    state: { floorPlanState: fp, sceneConfig },
                 }),
             })
+
+            if (!stateRes.ok) {
+                const body = await stateRes.json() as { error?: string }
+                throw new Error(body.error ?? 'Failed to save editor state')
+            }
 
             onSaved(sceneJSON)
             setSaved(true)

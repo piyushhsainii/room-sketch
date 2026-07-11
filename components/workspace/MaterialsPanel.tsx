@@ -3,6 +3,7 @@ import React, { useMemo } from 'react'
 import { FloorPlanState, FLOOR_MAT_DEFS, WALL_MAT_DEFS, FloorMaterial, WallMaterial, DOOR_STYLES, ClosedShape } from './Tools/constants'
 import { SceneConfig, RoomSceneConfig } from './FloorPlanEditor'
 import { deriveClosedPolygons } from '@/lib/helpers'
+import { ScrollableList } from '../ui/ScrollableList'
 
 const THEME = { border: '#E5E7EB', text: '#111827', textMuted: '#6B7280', bg: '#FFFFFF', bgHover: '#F3F4F6', accent: '#2563EB' }
 
@@ -74,98 +75,102 @@ export function MaterialsPanel({ fp, config, onChange, onChangeFp }: Props) {
     }
 
     return (
-        <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div>
-                <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Global Default Materials</h4>
-                <div style={{ marginBottom: 12 }}>
-                    <span style={{ fontSize: 12, color: THEME.textMuted }}>Wall Material</span>
-                    {renderSwatches('wall', config.globalWallMaterial || 'paint', (v) => onChange({ ...config, globalWallMaterial: v as WallMaterial }))}
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                    <span style={{ fontSize: 12, color: THEME.textMuted }}>Floor Material</span>
-                    {renderSwatches('floor', config.globalFloorMaterial || 'plain', (v) => onChange({ ...config, globalFloorMaterial: v as FloorMaterial }))}
-                </div>
+        <ScrollableList maxHeight={520}>
+
+            <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
-                    <span style={{ fontSize: 12, color: THEME.textMuted }}>Door Style</span>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                        {DOOR_STYLES.map(d => (
-                            <button
-                                key={d.value}
-                                onClick={() => onChange({ ...config, doorStyle: d.value })}
-                                title={d.label}
-                                style={{
-                                    width: 28, height: 28, borderRadius: 4, cursor: 'pointer',
-                                    backgroundColor: d.color,
-                                    border: config.doorStyle === d.value ? `2px solid ${THEME.accent}` : `1px solid ${THEME.border}`,
-                                    boxShadow: config.doorStyle === d.value ? '0 0 0 2px rgba(37,99,235,0.2)' : 'none'
-                                }}
-                            />
-                        ))}
+                    <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Global Default Materials</h4>
+                    <div style={{ marginBottom: 12 }}>
+                        <span style={{ fontSize: 12, color: THEME.textMuted }}>Wall Material</span>
+                        {renderSwatches('wall', config.globalWallMaterial || 'paint', (v) => onChange({ ...config, globalWallMaterial: v as WallMaterial }))}
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                        <span style={{ fontSize: 12, color: THEME.textMuted }}>Floor Material</span>
+                        {renderSwatches('floor', config.globalFloorMaterial || 'plain', (v) => onChange({ ...config, globalFloorMaterial: v as FloorMaterial }))}
+                    </div>
+                    <div>
+                        <span style={{ fontSize: 12, color: THEME.textMuted }}>Door Style</span>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                            {DOOR_STYLES.map(d => (
+                                <button
+                                    key={d.value}
+                                    onClick={() => onChange({ ...config, doorStyle: d.value })}
+                                    title={d.label}
+                                    style={{
+                                        width: 28, height: 28, borderRadius: 4, cursor: 'pointer',
+                                        backgroundColor: d.color,
+                                        border: config.doorStyle === d.value ? `2px solid ${THEME.accent}` : `1px solid ${THEME.border}`,
+                                        boxShadow: config.doorStyle === d.value ? '0 0 0 2px rgba(37,99,235,0.2)' : 'none'
+                                    }}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div style={{ height: 1, background: THEME.border }} />
+                <div style={{ height: 1, background: THEME.border }} />
 
-            <div>
-                <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Room Overrides</h4>
-                {fp.rooms.length === 0 && (
-                    <div style={{ fontSize: 11, color: THEME.textMuted, padding: '8px 0' }}>No rooms yet.</div>
-                )}
-                {fp.rooms.map(room => {
-                    const roomOverride = config.rooms.find(r => r.roomId === room.id)
-                    const activeWall = roomOverride?.wallMaterial || config.globalWallMaterial || 'paint'
-                    const activeFloor = roomOverride?.floorMaterial || config.globalFloorMaterial || 'plain'
+                <div>
+                    <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Room Overrides</h4>
+                    {fp.rooms.length === 0 && (
+                        <div style={{ fontSize: 11, color: THEME.textMuted, padding: '8px 0' }}>No rooms yet.</div>
+                    )}
+                    {fp.rooms.map(room => {
+                        const roomOverride = config.rooms.find(r => r.roomId === room.id)
+                        const activeWall = roomOverride?.wallMaterial || config.globalWallMaterial || 'paint'
+                        const activeFloor = roomOverride?.floorMaterial || config.globalFloorMaterial || 'plain'
 
-                    return (
-                        <div key={room.id} style={{ padding: '8px 0', borderBottom: `1px dashed ${THEME.border}` }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 8 }}>{room.label || 'Unnamed Room'}</div>
-                            <div style={{ marginBottom: 8 }}>
-                                <span style={{ fontSize: 11, color: THEME.textMuted }}>Wall</span>
-                                {renderSwatches('wall', activeWall, (v) => updateRoom(room.id, { wallMaterial: v as WallMaterial }))}
+                        return (
+                            <div key={room.id} style={{ padding: '8px 0', borderBottom: `1px dashed ${THEME.border}` }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 8 }}>{room.label || 'Unnamed Room'}</div>
+                                <div style={{ marginBottom: 8 }}>
+                                    <span style={{ fontSize: 11, color: THEME.textMuted }}>Wall</span>
+                                    {renderSwatches('wall', activeWall, (v) => updateRoom(room.id, { wallMaterial: v as WallMaterial }))}
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: 11, color: THEME.textMuted }}>Floor</span>
+                                    {renderSwatches('floor', activeFloor, (v) => updateRoom(room.id, { floorMaterial: v as FloorMaterial }))}
+                                </div>
                             </div>
-                            <div>
-                                <span style={{ fontSize: 11, color: THEME.textMuted }}>Floor</span>
-                                {renderSwatches('floor', activeFloor, (v) => updateRoom(room.id, { floorMaterial: v as FloorMaterial }))}
-                            </div>
+                        )
+                    })}
+                </div>
+
+                <div style={{ height: 1, background: THEME.border }} />
+
+                <div>
+                    <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Area Overrides</h4>
+                    {derivedPolygons.length === 0 && (
+                        <div style={{ fontSize: 11, color: THEME.textMuted, padding: '8px 0' }}>
+                            No closed areas detected. Connect line walls to form an enclosed shape.
                         </div>
-                    )
-                })}
-            </div>
+                    )}
+                    {derivedPolygons.map((nodeIds, idx) => {
+                        const nodeIdSet = new Set(nodeIds)
+                        const matchedShape = (fp.closedShapes ?? []).find(s =>
+                            s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIdSet.has(id))
+                        )
+                        const shapeLabel = matchedShape?.label ?? `Area ${idx + 1}`
+                        const activeWall = matchedShape?.wallMaterial || config.globalWallMaterial || 'paint'
+                        const activeFloor = matchedShape?.floorMaterial || config.globalFloorMaterial || 'plain'
 
-            <div style={{ height: 1, background: THEME.border }} />
-
-            <div>
-                <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Area Overrides</h4>
-                {derivedPolygons.length === 0 && (
-                    <div style={{ fontSize: 11, color: THEME.textMuted, padding: '8px 0' }}>
-                        No closed areas detected. Connect line walls to form an enclosed shape.
-                    </div>
-                )}
-                {derivedPolygons.map((nodeIds, idx) => {
-                    const nodeIdSet = new Set(nodeIds)
-                    const matchedShape = (fp.closedShapes ?? []).find(s =>
-                        s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIdSet.has(id))
-                    )
-                    const shapeLabel = matchedShape?.label ?? `Area ${idx + 1}`
-                    const activeWall = matchedShape?.wallMaterial || config.globalWallMaterial || 'paint'
-                    const activeFloor = matchedShape?.floorMaterial || config.globalFloorMaterial || 'plain'
-
-                    return (
-                        <div key={idx} style={{ padding: '8px 0', borderBottom: `1px dashed ${THEME.border}` }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 8 }}>{shapeLabel}</div>
-                            <div style={{ marginBottom: 8 }}>
-                                <span style={{ fontSize: 11, color: THEME.textMuted }}>Wall</span>
-                                {renderSwatches('wall', activeWall, (v) => updateShape(nodeIds, matchedShape, shapeLabel, { wallMaterial: v as WallMaterial }))}
+                        return (
+                            <div key={idx} style={{ padding: '8px 0', borderBottom: `1px dashed ${THEME.border}` }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: THEME.text, marginBottom: 8 }}>{shapeLabel}</div>
+                                <div style={{ marginBottom: 8 }}>
+                                    <span style={{ fontSize: 11, color: THEME.textMuted }}>Wall</span>
+                                    {renderSwatches('wall', activeWall, (v) => updateShape(nodeIds, matchedShape, shapeLabel, { wallMaterial: v as WallMaterial }))}
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: 11, color: THEME.textMuted }}>Floor</span>
+                                    {renderSwatches('floor', activeFloor, (v) => updateShape(nodeIds, matchedShape, shapeLabel, { floorMaterial: v as FloorMaterial }))}
+                                </div>
                             </div>
-                            <div>
-                                <span style={{ fontSize: 11, color: THEME.textMuted }}>Floor</span>
-                                {renderSwatches('floor', activeFloor, (v) => updateShape(nodeIds, matchedShape, shapeLabel, { floorMaterial: v as FloorMaterial }))}
-                            </div>
-                        </div>
-                    )
-                })}
+                        )
+                    })}
+                </div>
             </div>
-        </div>
+        </ScrollableList>
+
     )
 }

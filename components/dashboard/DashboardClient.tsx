@@ -53,6 +53,11 @@ export default function DashboardClient() {
   const [stepIndex, setStepIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [floorplanEditorState, setFloorplanEditorState] = useState<{
+    floorPlanState: any;
+    sceneConfig: any;
+  } | null>(null);
+  const [floorplanEditorStateLoading, setFloorplanEditorStateLoading] = useState(false);
   const [activeFeature, setActiveFeature] = useState<ActiveFeature>("3d_viewer");
   const timersRef = useRef<number[]>([]);
   const intervalRef = useRef<number | null>(null);
@@ -91,6 +96,35 @@ export default function DashboardClient() {
     if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject?.id]);
+
+  useEffect(() => {
+    if (!editorOpen || !activeProject?.id) {
+      setFloorplanEditorState(null);
+      return;
+    }
+    let cancelled = false;
+    setFloorplanEditorStateLoading(true);
+    setFloorplanEditorState(null);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/workspace/floorplan-editor-state?project_id=${encodeURIComponent(activeProject.id)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) { if (!cancelled) setFloorplanEditorState(null); return; }
+        const body = (await res.json()) as {
+          floorplan_editor_state: { floorPlanState: any; sceneConfig: any } | null;
+        };
+        if (!cancelled) setFloorplanEditorState(body.floorplan_editor_state ?? null);
+      } catch {
+        if (!cancelled) setFloorplanEditorState(null);
+      } finally {
+        if (!cancelled) setFloorplanEditorStateLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [editorOpen, activeProject?.id]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -768,14 +802,20 @@ export default function DashboardClient() {
 
       <AuthDialog open={authDialogOpen} onClose={() => { setAuthDialogOpen(false); void refreshMe(); }} />
 
-      {editorOpen && activeProject?.id && (
+      {editorOpen && activeProject?.id && floorplanEditorStateLoading && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 100, display: "grid", placeItems: "center",
+          background: "#0F0E0C", color: "rgba(148,163,184,0.6)", fontSize: 13,
+        }}>
+          Loading editor…
+        </div>
+      )}
+      {editorOpen && activeProject?.id && !floorplanEditorStateLoading && (
         <FloorPlanEditorModal
           projectId={activeProject.id}
-          initialFloorPlanState={
-            (activeProject as any).workspace_config?.floorPlanState ?? null
-          }
+          initialFloorPlanState={floorplanEditorState?.floorPlanState ?? null}
+          initialSceneConfig={floorplanEditorState?.sceneConfig ?? null}
           onSaved={(sceneJSON) => {
-            // setEditorOpen(false);
             void refreshProjects(activeProject.id);
           }}
           onClose={() => setEditorOpen(false)}

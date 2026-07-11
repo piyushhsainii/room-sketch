@@ -2,7 +2,6 @@
 
 import { Canvas } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
 import { WORKSPACE } from '@/constants/content'
 import {
   getInitialCameraPosition,
@@ -11,7 +10,6 @@ import {
   getWalkStartPosition,
 } from '@/lib/workspace/sceneBuilder'
 import type { CameraMode, SceneJSON, WorkspaceConfig } from '@/types/workspace'
-
 import CameraController from '@/components/workspace/three/CameraController'
 import RoomCeiling from '@/components/workspace/three/RoomCeiling'
 import RoomFloor from '@/components/workspace/three/RoomFloor'

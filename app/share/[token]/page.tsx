@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, use } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Suspense } from 'react'
 import SceneErrorBoundary from '@/components/workspace/objects/error-boundary'
@@ -9,21 +9,23 @@ import { sceneJSONToFloorPlanState } from '@/lib/workspace/floorPlanConvertor'
 import Scene3D from '@/components/workspace/3DScene'
 import { PublicFloorPlan2D } from '@/components/dashboard/PublicFloorPlan2d'
 
-export default function SharePage({ params }: { params: { token: string } }) {
+export default function SharePage({ params }: { params: Promise<{ token: string }> }) {
+    const { token } = use(params)   // unwrap the Promise once, at the top
+
     const [data, setData] = useState<{ project_name: string; scene_json: SceneJSON } | null>(null)
     const [notFound, setNotFound] = useState(false)
     const [view, setView] = useState<'2d' | '3d'>('3d')
     const [walkMode, setWalkMode] = useState(false)
 
     useEffect(() => {
-        fetch(`/api/workspace/share/${params.token}`)
+        fetch(`/api/workspace/share/${token}`)
             .then(res => {
                 if (!res.ok) throw new Error('not found')
                 return res.json()
             })
             .then(setData)
             .catch(() => setNotFound(true))
-    }, [params.token])
+    }, [token])
 
     if (notFound) {
         return (

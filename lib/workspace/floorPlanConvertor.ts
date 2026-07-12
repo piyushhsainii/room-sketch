@@ -88,7 +88,14 @@ export function floorPlanStateToSceneJSON(
 
   return {
     rooms: [...rooms, ...lineRooms],
-    furniture: [],
+    furniture: (fp.furniture ?? []).map((f) => ({
+      id: f.id,
+      type: f.type,
+      x: f.x,
+      z: f.z,
+      rotation: f.rotation,
+      scale: f.scale,
+    })),
     door_style: cfg.doorStyle ?? ("natural" as DoorStyle),
     global_wall_material: cfg.globalWallMaterial ?? "paint",
     global_floor_material: cfg.globalFloorMaterial ?? "plain",

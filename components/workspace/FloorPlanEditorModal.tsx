@@ -2,7 +2,6 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useState } from 'react'
 import type { SceneConfig } from '@/components/workspace/FloorPlanEditor'
-import { floorPlanStateToSceneJSON } from '@/lib/workspace/floorPlanConvertor'
 import { FloorPlanState } from './Tools/constants'
 
 const FloorPlanEditor = dynamic(
@@ -35,19 +34,7 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
         setSaving(true)
         setError(null)
         try {
-            const sceneJSON = floorPlanStateToSceneJSON(fp, sceneConfig!)
-
-            const res = await fetch('/api/workspace/save-manual', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ project_id: projectId, scene_json: sceneJSON }),
-            })
-
-            if (!res.ok) {
-                const body = await res.json() as { error?: string }
-                throw new Error(body.error ?? 'Failed to save')
-            }
-            const stateRes = await fetch('/api/workspace/floorplan-editor-state', {
+            const res = await fetch('/api/workspace/floorplan-editor-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -56,12 +43,13 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
                 }),
             })
 
-            if (!stateRes.ok) {
-                const body = await stateRes.json() as { error?: string }
-                throw new Error(body.error ?? 'Failed to save editor state')
+            if (!res.ok) {
+                const body = await res.json() as { error?: string }
+                throw new Error(body.error ?? 'Failed to save')
             }
 
-            onSaved(sceneJSON)
+            const body = await res.json() as { scene_json?: any }
+            onSaved(body.scene_json)
             setSaved(true)
             setTimeout(() => setSaved(false), 2000)
         } catch (e) {
@@ -71,16 +59,10 @@ export default function FloorPlanEditorModal({ projectId, initialFloorPlanState,
         }
     }, [projectId, onSaved])
 
-
     return (
-        <div style={{
-            position: 'fixed', inset: 0, zIndex: 100,
-        }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
             {saving && (
-                <div style={{
-                    position: 'absolute', inset: 0, zIndex: 200,
-                    background: 'rgba(10,9,7,0.7)', display: 'grid', placeItems: 'center',
-                }}>
+                <div style={{ position: 'absolute', inset: 0, zIndex: 200, background: 'rgba(10,9,7,0.7)', display: 'grid', placeItems: 'center' }}>
                     <div style={{ fontSize: 14, color: 'rgba(165,168,255,0.9)' }}>Saving floor plan…</div>
                 </div>
             )}

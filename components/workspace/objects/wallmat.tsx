@@ -103,6 +103,15 @@ export function RealTextureWallMat({ width, height, depth, def }: { width: numbe
             c.wrapS = c.wrapT = THREE.RepeatWrapping
             c.repeat.set(width * def.repeatScale, height * def.repeatScale)
             c.needsUpdate = true
+
+            // Fix moire/aliasing on tiled textures viewed at oblique angles —
+            // mipmaps + anisotropic filtering smooth out high-frequency repeat
+            // patterns instead of aliasing into the shimmering interference look.
+            c.generateMipmaps = true
+            c.minFilter = THREE.LinearMipmapLinearFilter
+            c.magFilter = THREE.LinearFilter
+            c.anisotropy = 8 // most GPUs support at least this; renderer.capabilities.getMaxAnisotropy() if you have gl access
+
             return c
         }
         const result: any = { map: prep(colorMap) }

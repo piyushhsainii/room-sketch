@@ -3,7 +3,36 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { randomBytes } from "crypto";
 
+// app/api/workspace/share/[token]/route.ts
+
 export const runtime = "nodejs";
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ token: string }> },
+) {
+  const { token } = await params; // Next.js 15 — params is async here too
+
+  const admin = createSupabaseAdmin();
+
+  const { data: project, error } = await admin
+    .from("projects")
+    .select("id, name, scene_json, share_enabled")
+    .eq("share_token", token)
+    .single();
+
+  // Same generic 404 whether the token is invalid OR sharing is disabled —
+  // don't leak "this project exists but sharing is off" to an unauthenticated caller.
+  if (error || !project || !project.share_enabled) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    project_name: project.name,
+    scene_json: project.scene_json,
+  });
+}
 
 export async function POST(request: Request) {
   try {

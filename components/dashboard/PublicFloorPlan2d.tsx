@@ -1,11 +1,29 @@
 // components/workspace/PublicFloorPlan2D.tsx
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FloorPlanState } from '../workspace/Tools/constants'
 import { draw2D } from '../workspace/2dDraw'
 
 export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
+    const [zoom, setZoom] = useState(1)
+    const [pan, setPan] = useState({ x: 40, y: 40 })
+    const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
+
+    const handleWheel = (e: React.WheelEvent) => {
+        e.preventDefault()
+        const factor = e.deltaY < 0 ? 1.1 : 0.9
+        setZoom(z => Math.max(0.2, Math.min(5, z * factor)))
+    }
+    const handleMouseDown = (e: React.MouseEvent) => {
+        dragRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }
+    }
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!dragRef.current) return
+        const d = dragRef.current
+        setPan({ x: d.px + e.clientX - d.sx, y: d.py + e.clientY - d.sy })
+    }
+    const handleMouseUp = () => { dragRef.current = null }
 
     useEffect(() => {
         const canvas = canvasRef.current
@@ -64,7 +82,13 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
 
     return (
         <div ref={containerRef} style={{ width: '100%', height: '100%', background: '#FAFAF8' }}>
-            <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+            <canvas
+                ref={canvasRef}
+                onMouseDown={handleMouseDown}
+                onMouseUp={handleMouseUp}
+                onWheel={handleWheel}
+                onMouseMove={handleMouseMove}
+                style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
     )
 }

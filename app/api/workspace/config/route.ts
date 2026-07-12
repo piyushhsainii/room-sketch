@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import { readSessionFromCookies } from "@/lib/auth/session";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-// import type { Json } from "@/supabase/types";
 import type { WorkspaceConfig } from "@/types/workspace";
 
 export const runtime = "nodejs";

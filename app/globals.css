@@ -29,8 +29,7 @@
   --shadow-soft: 0 20px 60px rgba(15, 23, 42, 0.12);
   --fp-text: #1a1a1a;
   --fp-text-muted: rgba(26, 26, 26, 0.6);
-  --fp-text-faint: rgba(26, 26, 26, 0.4);
-  --fp-border: rgba(15, 15, 15, 0.1);
+  --fp-text-faint: rgba(26, 26, 26, 0.4) --fp-border: rgba(15, 15, 15, 0.1);
   --fp-border-strong: rgba(15, 15, 15, 0.18);
   --fp-bg: #ffffff;
   --fp-bg-subtle: #f7f7f5;
@@ -38,7 +37,6 @@
   --fp-bg-canvas: #fafaf8;
   --fp-accent: #6366f1;
   --fp-accent-bg: rgba(99, 102, 241, 0.1);
-  --fp-accent-bg-strong: rgba(99, 102, 241, 0.14);
   --fp-accent-border: rgba(99, 102, 241, 0.5);
   --fp-danger: #dc2626;
   --fp-danger-bg: rgba(220, 38, 38, 0.06);
@@ -46,8 +44,10 @@
   --fp-success: #059669;
   --fp-success-bg: rgba(16, 185, 129, 0.12);
   --fp-success-border: rgba(16, 185, 129, 0.5);
-  --fp-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --fp-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --fp-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.04) --fp-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 /* ── Secondary color palette ───────────────────────────────────────────── */

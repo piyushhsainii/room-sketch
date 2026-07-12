@@ -2,6 +2,36 @@ import { NextRequest, NextResponse } from "next/server";
 import { readSessionFromCookies } from "@/lib/auth/session";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const session = await readSessionFromCookies();
+  if (!session || !session.userId)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await context.params;
+
+  if (!id || id === "undefined") {
+    return NextResponse.json(
+      { error: "Project ID is required" },
+      { status: 400 },
+    );
+  }
+
+  const supabase = createSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error || !data)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  console.log(data);
+  return NextResponse.json({ project: data });
+}
+
 export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ id: string }> },

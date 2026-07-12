@@ -34,6 +34,7 @@ type Props = {
   hasSceneJson: boolean;
   // New: which tab is active
   activeFeature: ActiveFeature;
+  onProjectSaved?: () => void;
 };
 
 const OUTPUT_OPTIONS: { id: GenerateOptionType; label: string; icon: React.ReactNode }[] = [
@@ -72,7 +73,7 @@ export default function GeneratePanel({
   selectedOutput, onSelectOutput, canGenerate, onGenerate,
   videoChoiceOpen, canUseSelectedRender, onUseSelectedRender,
   onGenerateRenderAndVideo, onCancelVideoChoice,
-  genError, hasSceneJson, activeFeature,
+  genError, hasSceneJson, activeFeature, onProjectSaved
 }: Props) {
   const fileNamePreview = useMemo(() => {
     const fromName = project.name?.trim();
@@ -337,6 +338,7 @@ export default function GeneratePanel({
             (project as any).workspace_config?.sceneConfig ?? null
           }
           onSaved={(sceneJSON) => {
+            onProjectSaved?.();
           }}
           onClose={() => setEditorOpen(false)}
         />

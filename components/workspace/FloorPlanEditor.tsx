@@ -23,7 +23,6 @@ export type RoomSceneConfig = {
     wallMaterial?: WallMaterial
     floorMaterial?: FloorMaterial
     wallOverrides?: Partial<Record<'north' | 'south' | 'east' | 'west', { color?: string; material?: WallMaterial }>>
-
 }
 
 export type SceneConfig = {

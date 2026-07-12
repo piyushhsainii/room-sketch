@@ -8,10 +8,12 @@ export function Toolbar({
     tool,
     setTool,
     orientation = 'vertical',
+    registerAnchor, // NEW
 }: {
     tool: EditorTool
     setTool: (t: EditorTool) => void
     orientation?: 'vertical' | 'horizontal'
+    registerAnchor?: (groupId: string, el: HTMLDivElement | null) => void // NEW
 }) {
     const [lastUsed, setLastUsed] = useState<Record<string, EditorTool>>({})
 
@@ -33,6 +35,7 @@ export function Toolbar({
                     activeTool={tool}
                     lastUsed={lastUsed}
                     onSelect={(leafId) => handleSelect(group.id, leafId)}
+                    registerAnchor={registerAnchor}
                 />
             ))}
         </div>

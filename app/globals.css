@@ -2409,6 +2409,6 @@ button:hover .ra-sparkIcon {
   border-radius: 999px;
   flex-shrink: 0;
 }
-.hide-native-scrollbar::-webkit-scrollbar {
+/* .hide-native-scrollbar::-webkit-scrollbar {
   display: none;
-}
+} */

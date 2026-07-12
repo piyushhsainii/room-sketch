@@ -97,8 +97,27 @@ export type ClosedShape = {
 export type Annotation = { id: string; x: number; z: number; text: string; fontSize: number }
 
 export type FurnitureType =
-    | 'sofa' | 'bed' | 'dining_table' | 'desk' | 'wardrobe' | 'bathtub' | 'toilet' | 'plant' | 'chair' | 'coffee_table'
-    | 'single_sofa' | 'lamp' | 'mirror' | 'kitchen_stove' | 'chimney' | 'commode' | 'shower' | 'shoe_rack' | 'led_strip' | 'wall_panel_pvc' | 'painting'
+    | 'sofa'
+    | 'bed'
+    | 'dining_table'
+    | 'desk'
+    | 'wardrobe'
+    | 'bathtub'
+    | 'toilet'
+    | 'plant'
+    | 'chair'
+    | 'coffee_table'
+    | 'single_sofa'
+    | 'lamp'
+    | 'mirror'
+    | 'kitchen_stove'
+    | 'chimney'
+    | 'commode'
+    | 'shower'
+    | 'shoe_rack'
+    | 'led_strip'
+    | 'wall_panel_pvc'
+    | 'painting'
 
 export type PlacedFurniture = {
     id: string
@@ -581,7 +600,111 @@ export const OPENING_VARIANT_LABELS: Record<string, string> = {
     'opening-passage': 'Open Passage',
 }
 
-export type FurnitureCategory = 'seating' | 'bedroom' | 'tables' | 'storage' | 'kitchen' | 'bathroom' | 'decor'
+export type FurnitureCategory =
+    | 'seating'
+    | 'tables'
+    | 'bedroom'
+    | 'kitchen'
+    | 'bathroom'
+    | 'storage'
+    | 'decor'
+    | 'lighting'
+    | 'wall'
+
+export interface FurnitureCatalogEntry {
+    type: FurnitureType
+    label: string
+    icon: string // lucide-react icon name, e.g. 'Sofa', 'Lamp', 'Armchair'
+    category: FurnitureCategory
+    isNew?: boolean
+    newSince?: string // ISO date, e.g. '2026-07-01'
+}
+
+export const FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
+    { type: 'sofa', label: 'Sofa', icon: 'Sofa', category: 'seating' },
+    { type: 'single_sofa', label: 'Armchair', icon: 'Armchair', category: 'seating' },
+    { type: 'chair', label: 'Chair', icon: 'Armchair', category: 'seating' },
+    { type: 'dining_table', label: 'Dining Table', icon: 'UtensilsCrossed', category: 'tables' },
+    { type: 'desk', label: 'Desk', icon: 'Table2', category: 'tables' },
+    { type: 'coffee_table', label: 'Coffee Table', icon: 'Table', category: 'tables' },
+    { type: 'bed', label: 'Bed', icon: 'BedDouble', category: 'bedroom' },
+    { type: 'wardrobe', label: 'Wardrobe', icon: 'DoorClosed', category: 'storage' },
+    { type: 'shoe_rack', label: 'Shoe Rack', icon: 'AlignJustify', category: 'storage' },
+    { type: 'commode', label: 'Commode', icon: 'Archive', category: 'storage' },
+    { type: 'kitchen_stove', label: 'Stove', icon: 'Flame', category: 'kitchen' },
+    { type: 'chimney', label: 'Chimney', icon: 'Wind', category: 'kitchen' },
+    { type: 'bathtub', label: 'Bathtub', icon: 'Bath', category: 'bathroom' },
+    { type: 'toilet', label: 'Toilet', icon: 'Toilet', category: 'bathroom' },
+    { type: 'shower', label: 'Shower', icon: 'ShowerHead', category: 'bathroom' },
+    { type: 'plant', label: 'Plant', icon: 'Flower2', category: 'decor' },
+    { type: 'mirror', label: 'Mirror', icon: 'RectangleVertical', category: 'decor' },
+    { type: 'painting', label: 'Painting', icon: 'Image', category: 'decor' },
+    { type: 'lamp', label: 'Lamp', icon: 'Lamp', category: 'lighting' },
+    { type: 'led_strip', label: 'LED Strip', icon: 'Sparkles', category: 'lighting', isNew: true, newSince: '2026-07-10' },
+    { type: 'wall_panel_pvc', label: 'PVC Wall Panel', icon: 'PanelTop', category: 'wall', isNew: true, newSince: '2026-07-10' },
+]
+
+
+export function getFurnitureByCategory(): Record<FurnitureCategory, FurnitureCatalogEntry[]> {
+    return FURNITURE_CATALOG.reduce((acc, item) => {
+        acc[item.category] = acc[item.category] || []
+        acc[item.category].push(item)
+        return acc
+    }, {} as Record<FurnitureCategory, FurnitureCatalogEntry[]>)
+}
+
+// Auto-expiring "new" check — treat an item as new for N days after
+// `newSince`, falling back to the static `isNew` flag if no date is set.
+export function isFurnitureNew(entry: FurnitureCatalogEntry, windowDays = 30): boolean {
+    if (entry.newSince) {
+        const since = new Date(entry.newSince).getTime()
+        const ageDays = (Date.now() - since) / (1000 * 60 * 60 * 24)
+        return ageDays <= windowDays
+    }
+    return !!entry.isNew
+}
+
+// ---------------------------------------------------------------------------
+// Materials catalog — same "isNew" pattern for fabrics/textures/finishes,
+// so a materials picker in the toolbar can badge freshly-added PBR sets.
+// ---------------------------------------------------------------------------
+export interface MaterialCatalogEntry {
+    id: string
+    label: string
+    thumbnail: string // e.g. '/textures/fabric049/Fabric049_1K-JPG_Color.jpg'
+    basePath: string  // folder prefix, e.g. '/textures/fabric049/Fabric049_1K-JPG'
+    category: 'fabric' | 'wood' | 'stone' | 'metal' | 'concrete' | 'other'
+    isNew?: boolean
+    newSince?: string
+}
+
+export const MATERIAL_CATALOG: MaterialCatalogEntry[] = [
+    {
+        id: 'fabric049',
+        label: 'Woven Fabric',
+        thumbnail: '/textures/fabric049/Fabric049_1K-JPG_Color.jpg',
+        basePath: '/textures/fabric049/Fabric049_1K-JPG',
+        category: 'fabric',
+        isNew: true,
+        newSince: '2026-07-10',
+    },
+    {
+        id: 'concrete025',
+        label: 'Concrete',
+        thumbnail: '/textures/concrete025/Concrete025.png',
+        basePath: '/textures/concrete025/Concrete025',
+        category: 'concrete',
+    },
+]
+
+export function isMaterialNew(entry: MaterialCatalogEntry, windowDays = 30): boolean {
+    if (entry.newSince) {
+        const since = new Date(entry.newSince).getTime()
+        const ageDays = (Date.now() - since) / (1000 * 60 * 60 * 24)
+        return ageDays <= windowDays
+    }
+    return !!entry.isNew
+}
 
 export const FURNITURE_CATEGORIES: { id: FurnitureCategory; label: string; items: FurnitureType[] }[] = [
     { id: 'seating', label: 'Seating', items: ['sofa', 'single_sofa', 'chair'] },

@@ -80,23 +80,29 @@ export function GroupButton({
     activeTool,
     lastUsed,
     onSelect,
+    registerAnchor, // NEW
 }: {
     group: ToolGroup
     activeTool: EditorTool
     lastUsed: Record<string, EditorTool>
     onSelect: (tool: EditorTool) => void
+    registerAnchor?: (groupId: string, el: HTMLDivElement | null) => void // NEW
 }) {
     const [hover, setHover] = useState(false)
     const [pressed, setPressed] = useState(false)
     const [flyoutOpen, setFlyoutOpen] = useState(false)
     const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
     const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const wrapRef = useRef<HTMLDivElement>(null)
-    const { rect } = useAnchorRect(flyoutOpen)
-    // reuse wrapRef for the rect since useAnchorRect creates its own ref —
-    // point useAnchorRect's ref at the same node instead:
     const anchorRef = useRef<HTMLDivElement>(null)
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
+
+    // NEW — merges the existing anchorRef with reporting the node up to
+    // whoever's rendering <Toolbar>, so external panels (like the furniture
+    // flyout) can portal-anchor to this exact button too.
+    const setAnchorNode = (el: HTMLDivElement | null) => {
+        ; (anchorRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+        registerAnchor?.(group.id, el)
+    }
 
     useEffect(() => {
         if (flyoutOpen && anchorRef.current) {
@@ -136,7 +142,7 @@ export function GroupButton({
 
     return (
         <div
-            ref={anchorRef}
+            ref={setAnchorNode}
             style={{ position: 'relative' }}
             onMouseEnter={scheduleOpen}
             onMouseLeave={() => { setHover(false); setPressed(false); scheduleClose() }}
@@ -229,7 +235,8 @@ export function GroupButton({
                                     onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
                                 >
                                     {leaf.icon}
-                                    <span style={{ fontSize: 8, fontWeight: 500, textAlign: 'center', lineHeight: 1.15, opacity: 0.75, color: 'inherit' }}>                                        {leaf.label}
+                                    <span style={{ fontSize: 8, fontWeight: 500, textAlign: 'center', lineHeight: 1.15, opacity: 0.75, color: 'inherit' }}>
+                                        {leaf.label}
                                     </span>
                                 </button>
                             )

@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Toolbar } from './Tools/ToolBar'
-import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
+import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
 import { deriveClosedPolygons, getSegmentOpeningWorldPos, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import { SceneConfigPanel } from './SceneConfigPanel'
 import { Dock } from '../ui/Dock'
@@ -16,6 +16,7 @@ import { PropsPanel } from './PropsPanel'
 import { draw2D } from './2dDraw'
 import WorkspaceNav from '../ui/WorkspaceNav'
 import ToolHintBar from '../ui/ToolHint'
+import { createPortal } from 'react-dom'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -178,6 +179,27 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     const rafIdRef = useRef(0)
     const hoveredIdRef = useRef<string | null>(null)
     const lastCanvasSizeRef = useRef({ w: 0, h: 0 })
+    const chevronRef = useRef<HTMLButtonElement | null>(null)
+    const groupAnchorsRef = useRef<Record<string, HTMLDivElement | null>>({})
+    const [furnitureAnchorRect, setFurnitureAnchorRect] = useState<DOMRect | null>(null)
+
+    // Re-measure whenever the furniture tool becomes active (mirrors the
+    // pattern GroupButton already uses for its own flyouts).
+    useEffect(() => {
+        if (tool !== 'furniture') {
+            setFurnitureAnchorRect(null)
+            return
+        }
+        const el = groupAnchorsRef.current['furniture'] // match your TOOL_GROUPS id
+        if (el) setFurnitureAnchorRect(el.getBoundingClientRect())
+
+        const onResize = () => {
+            const node = groupAnchorsRef.current['furniture']
+            if (node) setFurnitureAnchorRect(node.getBoundingClientRect())
+        }
+        window.addEventListener('resize', onResize)
+        return () => window.removeEventListener('resize', onResize)
+    }, [tool])
 
     const scheduleRedraw = useCallback(() => {
         cancelAnimationFrame(rafIdRef.current)
@@ -1396,15 +1418,21 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
                 {/* ── Left tool panel ────────────────────────────────── */}
-                <div style={{
-                    width: 68, flexShrink: 0,
-                    background: THEME.bgPanel,
-                    borderRight: `1px solid ${THEME.border}`,
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', padding: '10px 0', gap: 4,
-                    overflowY: 'auto',
-                }}>
-                    <Toolbar tool={tool} setTool={setTool} />
+                <div
+                    style={{
+                        width: 68, flexShrink: 0,
+                        background: THEME.bgPanel,
+                        borderRight: `1px solid ${THEME.border}`,
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', padding: '10px 0', gap: 4,
+                        overflowY: 'auto',
+                    }}
+                >
+                    <Toolbar
+                        tool={tool}
+                        setTool={setTool}
+                        registerAnchor={(groupId, el) => { groupAnchorsRef.current[groupId] = el }}
+                    />
 
                     <div style={{ flex: 1 }} />
                     <div style={{ fontSize: 9, color: THEME.textFaint, textAlign: 'center', lineHeight: 1.7, paddingBottom: 4 }}>
@@ -1413,42 +1441,30 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                         <div>{fp.openings.length}O</div>
                         <div>{(fp.stairs ?? []).length}S</div>
                     </div>
-                </div>
 
-                {/* 2D canvas */}
-                <div ref={canvasDivRef} style={{ cursor: canvasCursor, flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden', alignSelf: 'stretch', background: THEME.bgCanvas }}>
-                    <canvas
-                        ref={canvasRef}
-                        style={{
-                            width: '100%', height: '100%', display: 'block', maxHeight
-                                : "800px"
-                        }}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={() => {
-                            isMouseDownRef.current = false;
-                            furnitureDragRef.current = null;
-                            wallDecorDragRef.current = null
-                            setMidPan(null);
-                            dragRoomRef.current = null;
-                            segDragRef.current = null;
-                            setHoverTooltip(null)
-                            shapeResizeRef.current = null
-                            wallDragRef.current = null   // ← add this too
-                        }}
-                        onContextMenu={handleContextMenu}
-                    />
-                    {tool === 'furniture' && (
+                    {tool === 'furniture' && furnitureAnchorRect && typeof document !== 'undefined' && createPortal(
                         <div
                             style={{
-                                position: 'absolute', bottom: 52, left: '50%', transform: 'translateX(-50%)',
-                                background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 12,
-                                width: 260, display: 'flex', flexDirection: 'column',
-                                boxShadow: THEME.shadowLg, overflow: 'hidden',
+                                position: 'fixed',
+                                top: furnitureAnchorRect.top,
+                                left: furnitureAnchorRect.right + 10,
+                                background: THEME.bgPanel,
+                                border: `1px solid ${THEME.border}`,
+                                borderRadius: 12,
+                                width: 260,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                boxShadow: THEME.shadowLg,
+                                overflow: 'hidden',
+                                zIndex: 9999,
                             }}
                         >
-                            <div style={{ padding: '10px 12px', borderBottom: `1px solid ${THEME.border}`, fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: THEME.textMuted }}>
+                            <div style={{
+                                padding: '10px 12px',
+                                borderBottom: `1px solid ${THEME.border}`,
+                                fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+                                color: THEME.textMuted,
+                            }}>
                                 FURNITURE
                             </div>
                             <div style={{ padding: '6px 8px' }}>
@@ -1478,22 +1494,35 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                                 </button>
                                                 {isOpen && (
                                                     <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: 22 }}>
-                                                        {cat.items.map(id => (
-                                                            <button
-                                                                key={id}
-                                                                onClick={() => setSelectedFurnitureType(id)}
-                                                                style={{
-                                                                    display: 'flex', alignItems: 'center', gap: 8,
-                                                                    padding: '7px 8px', borderRadius: 6, border: 'none',
-                                                                    background: selectedFurnitureType === id ? 'rgba(99,102,241,0.1)' : 'transparent',
-                                                                    color: selectedFurnitureType === id ? THEME.accent : THEME.text,
-                                                                    fontSize: 12, fontWeight: selectedFurnitureType === id ? 600 : 400,
-                                                                    cursor: 'pointer', textAlign: 'left', width: '100%',
-                                                                }}
-                                                            >
-                                                                {FURNITURE_LABELS[id]}
-                                                            </button>
-                                                        ))}
+                                                        {cat.items.map(id => {
+                                                            const catalogEntry = FURNITURE_CATALOG.find(c => c.type === id)
+                                                            const isNew = catalogEntry ? isFurnitureNew(catalogEntry) : false
+                                                            return (
+                                                                <button
+                                                                    key={id}
+                                                                    onClick={() => setSelectedFurnitureType(id)}
+                                                                    style={{
+                                                                        display: 'flex', alignItems: 'center', gap: 8,
+                                                                        padding: '7px 8px', borderRadius: 6, border: 'none',
+                                                                        background: selectedFurnitureType === id ? 'rgba(99,102,241,0.1)' : 'transparent',
+                                                                        color: selectedFurnitureType === id ? THEME.accent : THEME.text,
+                                                                        fontSize: 12, fontWeight: selectedFurnitureType === id ? 600 : 400,
+                                                                        cursor: 'pointer', textAlign: 'left', width: '100%',
+                                                                    }}
+                                                                >
+                                                                    <span style={{ flex: 1 }}>{FURNITURE_LABELS[id]}</span>
+                                                                    {isNew && (
+                                                                        <span style={{
+                                                                            fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
+                                                                            color: '#fff', background: THEME.accent,
+                                                                            borderRadius: 4, padding: '2px 5px', flexShrink: 0,
+                                                                        }}>
+                                                                            NEW
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            )
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
@@ -1501,8 +1530,36 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                     })}
                                 </ScrollableList>
                             </div>
-                        </div>
+                        </div>,
+                        document.body
                     )}
+                </div>
+
+                {/* 2D canvas */}
+                <div ref={canvasDivRef} style={{ cursor: canvasCursor, flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden', alignSelf: 'stretch', background: THEME.bgCanvas }}>
+                    <canvas
+                        ref={canvasRef}
+                        style={{
+                            width: '100%', height: '100%', display: 'block', maxHeight
+                                : "800px"
+                        }}
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={() => {
+                            isMouseDownRef.current = false;
+                            furnitureDragRef.current = null;
+                            wallDecorDragRef.current = null
+                            setMidPan(null);
+                            dragRoomRef.current = null;
+                            segDragRef.current = null;
+                            setHoverTooltip(null)
+                            shapeResizeRef.current = null
+                            wallDragRef.current = null   // ← add this too
+                        }}
+                        onContextMenu={handleContextMenu}
+                    />
+
                     {/* Tool hint */}
                     <ToolHintBar
                         tool={tool}
@@ -1575,6 +1632,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 <div style={{ width: rightPanelOpen ? '46%' : 30, flexShrink: 0, display: 'flex', transition: 'width 200ms ease', overflow: 'hidden' }}>
 
                     <button
+                        ref={chevronRef}
                         onClick={() => setRightPanelOpen(o => !o)}
                         style={{
                             width: 30, flexShrink: 0, border: 'none', borderLeft: `1px solid ${THEME.border}`,
@@ -1688,15 +1746,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                         )
                     },
                     {
-                        id: 'scene', label: 'Scene Config', onClick: () => setRightTab('scene'), icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <circle cx="12" cy="12" r="3" />
-                                <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41" />
-                            </svg>
-                        )
-                    },
-                    {
-                        id: 'materials', label: 'Materials', onClick: () => setRightTab('materials'), icon: (
+                        id: 'scene', label: 'Scene', onClick: () => setRightTab('scene'), icon: (
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M4 4h16v16H4zM4 12h16M12 4v16" />
                             </svg>
@@ -1706,16 +1756,17 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                 activeId={rightTab}
                 expanded={sheetOpen}
                 onExpandedChange={setSheetOpen}
+
             >
                 <div style={{ display: 'flex', gap: 2, padding: 10, borderBottom: `1px solid ${THEME.border}`, flexShrink: 0 }}>
-                    {(['properties', 'scene', 'materials'] as const).map(t => (
+                    {(['properties', 'scene'] as const).map(t => (
                         <button key={t} onClick={() => setRightTab(t)} style={{
                             height: 26, padding: '0 10px', borderRadius: 5, border: 'none', flex: 1,
                             background: rightTab === t ? THEME.accent : 'transparent',
                             color: rightTab === t ? 'white' : THEME.textMuted,
                             fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 150ms',
                         }}>
-                            {t === 'properties' ? 'PROPERTIES' : t === "scene" ? "SCENE" : "MATERIALS"}
+                            {t === 'properties' ? 'PROPERTIES' : "SCENE"}
                         </button>
                     ))}
                 </div>
@@ -1757,10 +1808,10 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                             />
                         </>
                     )}
-                    {rightTab === 'scene' && (
+                    {/* {rightTab === 'scene' && (
                         <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} embedded />
-                    )}
-                    {rightTab === 'materials' && (
+                    )} */}
+                    {rightTab === 'scene' && (
                         <MaterialsPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} />
                     )}
                 </div>

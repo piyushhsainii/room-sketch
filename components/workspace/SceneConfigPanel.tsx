@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
 import { DEFAULT_SCENE_CONFIG, DOOR_STYLES, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, WALL_COLORS } from "./Tools/constants"
 import { deriveClosedPolygons } from "@/lib/helpers"
+import { MaterialCategory, toMaterialItems } from "./MaterialPicker"
 
 export function SceneConfigPanel({
     fp, config, onChange, onChangeFp, embedded
@@ -19,6 +20,16 @@ export function SceneConfigPanel({
     const roomCfg = selectedRoomId ? getRoomSceneCfg(config, selectedRoomId) : null
 
     const derivedPolygons = useMemo(() => deriveClosedPolygons(fp.lineNodes, fp.lineSegments), [fp.lineNodes, fp.lineSegments])
+
+    // Shared material items — same underlying picker component (56x56
+    // preview, checkmark on select, horizontal scroll row) used by
+    // MaterialsPanel, so "Floor Material" and "Door Style" look and behave
+    // identically no matter which tab/panel you're picking them from.
+    const floorItems = useMemo(() => toMaterialItems(FLOOR_MATERIALS), [])
+    const doorItems = useMemo(
+        () => DOOR_STYLES.map(d => ({ key: d.value, label: d.label, color: d.color })),
+        []
+    )
 
     function patchRoom(patch: Partial<RoomSceneConfig>) {
         const targetIds = applyAll ? fp.rooms.map(r => r.id) : [selectedRoomId]
@@ -45,7 +56,7 @@ export function SceneConfigPanel({
             border: embedded ? 'none' : '1px solid var(--fp-border)',
             background: embedded ? 'transparent' : 'var(--fp-bg)',
             boxShadow: embedded ? 'none' : '0 12px 32px rgba(0,0,0,0.12)',
-            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0,
             fontFamily: 'system-ui, sans-serif',
         }}>
             {/* Header + tabs */}
@@ -66,7 +77,7 @@ export function SceneConfigPanel({
             </div>
 
             {/* Body */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px', display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
 
                 {/* ── ROOMS TAB ────────────────────────────────────────── */}
                 {tab === 'rooms' && <>
@@ -105,39 +116,20 @@ export function SceneConfigPanel({
 
                             <div style={{ height: 1, background: 'var(--fp-border)' }} />
 
-                            <div>
-                                <CfgLabel>Floor Material</CfgLabel>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
-                                    {FLOOR_MATERIALS.map(m => (
-                                        <button key={m.id} onClick={() => patchRoom({ floorMaterial: m.id })} style={{ height: 46, borderRadius: 7, border: roomCfg.floorMaterial === m.id ? '1.5px solid var(--fp-accent-border)' : '1px solid var(--fp-border)', background: roomCfg.floorMaterial === m.id ? 'var(--fp-accent-bg-strong)' : 'var(--fp-bg-subtle)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transition: 'all 130ms' }}>
-                                            <div style={{ width: 20, height: 14, borderRadius: 3, background: m.color, border: '1px solid var(--fp-border-strong)' }} />
-                                            <span style={{ fontSize: 9, fontWeight: roomCfg.floorMaterial === m.id ? 700 : 400, color: roomCfg.floorMaterial === m.id ? 'var(--fp-accent)' : 'var(--fp-text-muted)' }}>{m.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
+                            <MaterialCategory
+                                icon="🪵" title="Floor Material"
+                                items={floorItems} currentVal={roomCfg.floorMaterial ?? 'plain'}
+                                onSelect={v => patchRoom({ floorMaterial: v as FloorMaterial })}
+                            />
                         </>}
 
                         <div style={{ height: 1, background: 'var(--fp-border)' }} />
 
-                        <div>
-                            <h4 style={{ margin: '0 0 8px', fontSize: 13, color: THEME.text }}>Door Style</h4>
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                {DOOR_STYLES.map(d => (
-                                    <button
-                                        key={d.value}
-                                        onClick={() => onChange({ ...config, doorStyle: d.value })}
-                                        title={d.label}
-                                        style={{
-                                            width: 28, height: 28, borderRadius: 4, cursor: 'pointer',
-                                            backgroundColor: d.color,
-                                            border: config.doorStyle === d.value ? `2px solid ${THEME.accent}` : `1px solid ${THEME.border}`,
-                                            boxShadow: config.doorStyle === d.value ? '0 0 0 2px rgba(37,99,235,0.2)' : 'none'
-                                        }}
-                                    />
-                                ))}
-                            </div>
-                        </div>
+                        <MaterialCategory
+                            icon="🚪" title="Door Style"
+                            items={doorItems} currentVal={config.doorStyle}
+                            onSelect={v => onChange({ ...config, doorStyle: v as typeof config.doorStyle })}
+                        />
                     </>}
                 </>}
 
@@ -157,33 +149,21 @@ export function SceneConfigPanel({
 
                             return (
                                 <div key={idx}>
-                                    <CfgLabel>{shapeLabel} · Floor Material</CfgLabel>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-                                        {FLOOR_MATERIALS.map(m => (
-                                            <button key={m.id} onClick={() => {
-                                                if (!onChangeFp) return
-                                                let shapes = [...(fp.closedShapes ?? [])]
-                                                if (matchedShape) {
-                                                    shapes = shapes.map(s => s.id === matchedShape.id ? { ...s, floorMaterial: m.id } : s)
-                                                } else {
-                                                    shapes.push({ id: uid(), nodeIds: [...nodeIds], label: shapeLabel, color: '#8B7B6B', floorMaterial: m.id })
-                                                }
-                                                onChangeFp({ ...fp, closedShapes: shapes })
-                                            }}
-                                                style={{
-                                                    height: 36, borderRadius: 6,
-                                                    border: currentMat === m.id ? '1.5px solid var(--fp-accent-border)' : '1px solid var(--fp-border)',
-                                                    background: currentMat === m.id ? 'var(--fp-accent-bg-strong)' : 'var(--fp-bg-subtle)',
-                                                    cursor: 'pointer', display: 'flex', flexDirection: 'column',
-                                                    alignItems: 'center', justifyContent: 'center', gap: 2,
-                                                    transition: 'all 130ms',
-                                                }}>
-                                                <div style={{ width: 16, height: 10, borderRadius: 2, background: m.color, border: '1px solid var(--fp-border-strong)' }} />
-                                                <span style={{ fontSize: 8, fontWeight: currentMat === m.id ? 700 : 400, color: currentMat === m.id ? 'var(--fp-accent)' : 'var(--fp-text-muted)' }}>{m.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    {idx < derivedPolygons.length - 1 && <div style={{ height: 1, background: 'var(--fp-border)', marginTop: 10 }} />}
+                                    <MaterialCategory
+                                        icon="🪵" title={`${shapeLabel} · Floor Material`}
+                                        items={floorItems} currentVal={currentMat}
+                                        onSelect={v => {
+                                            if (!onChangeFp) return
+                                            let shapes = [...(fp.closedShapes ?? [])]
+                                            if (matchedShape) {
+                                                shapes = shapes.map(s => s.id === matchedShape.id ? { ...s, floorMaterial: v as FloorMaterial } : s)
+                                            } else {
+                                                shapes.push({ id: uid(), nodeIds: [...nodeIds], label: shapeLabel, color: '#8B7B6B', floorMaterial: v as FloorMaterial })
+                                            }
+                                            onChangeFp({ ...fp, closedShapes: shapes })
+                                        }}
+                                    />
+                                    {idx < derivedPolygons.length - 1 && <div style={{ height: 1, background: 'var(--fp-border)', marginTop: 4 }} />}
                                 </div>
                             )
                         })
@@ -201,23 +181,17 @@ export function SceneConfigPanel({
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--fp-text-faint)', marginTop: 2 }}><span>dim</span><span>bright</span></div>
                     </div>
 
-                    <div>
-                        <CfgLabel>Floor Material (all shapes)</CfgLabel>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
-                            {FLOOR_MATERIALS.map(m => (
-                                <button key={m.id} onClick={() => patchScene({ globalFloorMaterial: m.id })}
-                                    style={{ height: 46, borderRadius: 7, border: config.globalFloorMaterial === m.id ? '1.5px solid var(--fp-accent-border)' : '1px solid var(--fp-border)', background: config.globalFloorMaterial === m.id ? 'var(--fp-accent-bg-strong)' : 'var(--fp-bg-subtle)', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, transition: 'all 130ms' }}>
-                                    <div style={{ width: 20, height: 14, borderRadius: 3, background: m.color, border: '1px solid var(--fp-border-strong)' }} />
-                                    <span style={{ fontSize: 9, fontWeight: config.globalFloorMaterial === m.id ? 700 : 400, color: config.globalFloorMaterial === m.id ? 'var(--fp-accent)' : 'var(--fp-text-muted)' }}>{m.label}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                    <MaterialCategory
+                        icon="🪵" title="Floor Material (all shapes)"
+                        items={floorItems} currentVal={config.globalFloorMaterial ?? 'plain'}
+                        onSelect={v => patchScene({ globalFloorMaterial: v as FloorMaterial })}
+                    />
 
                     <div style={{ height: 1, background: 'var(--fp-border)' }} />
                     <CfgToggle label="Show Furniture" value={config.showFurniture} onChange={v => patchScene({ showFurniture: v })} />
                     <CfgToggle label="Show Room Labels" value={config.showLabels} onChange={v => patchScene({ showLabels: v })} />
                     <CfgToggle label="Atmospheric Fog" value={config.fogEnabled} onChange={v => patchScene({ fogEnabled: v })} />
+                    <CfgToggle label="Textured Walls" value={config.wallTextured} onChange={v => patchScene({ wallTextured: v })} />
 
                     <div style={{ height: 1, background: 'var(--fp-border)' }} />
 
@@ -226,10 +200,6 @@ export function SceneConfigPanel({
                         onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--fp-border-strong)'}>
                         Reset scene to defaults
                     </button>
-                    <CfgToggle label="Show Furniture" value={config.showFurniture} onChange={v => patchScene({ showFurniture: v })} />
-                    <CfgToggle label="Show Room Labels" value={config.showLabels} onChange={v => patchScene({ showLabels: v })} />
-                    <CfgToggle label="Atmospheric Fog" value={config.fogEnabled} onChange={v => patchScene({ fogEnabled: v })} />
-                    <CfgToggle label="Textured Walls" value={config.wallTextured} onChange={v => patchScene({ wallTextured: v })} />
                 </>}
 
             </div>

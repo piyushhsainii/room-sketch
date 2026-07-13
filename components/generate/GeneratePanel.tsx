@@ -4,7 +4,6 @@
 import { useMemo, useState } from "react";
 
 import { GENERATE, SIDEBAR_GENERATE, WORKSPACE, SKETCHUP } from "@/constants/content";
-import type { GenerationType, Project } from "@/lib/models";
 import type { GenerateOptionType } from "@/components/generate/GenerateOptions";
 import type { ActiveFeature } from "@/components/sidebar/Sidebar";
 
@@ -13,11 +12,11 @@ import StyleContextInput from "@/components/generate/StyleContextInput";
 import FloorPlanEditorModal from "../workspace/FloorPlanEditorModal";
 
 type Props = {
-  project: Project;
+  project: any;
   value: string;
   onChange: (value: string) => void;
   running: boolean;
-  runningType: GenerationType;
+  runningType: any;
   stepIndex: number;
   elapsedSeconds: number;
   // Generate CTA

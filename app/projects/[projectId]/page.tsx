@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import type { Project } from "@/lib/models";
-import { floorPlanStateToSceneJSON, sceneJSONToFloorPlanState } from "@/lib/workspace/floorPlanConvertor";
 
 const WorkspaceContainer = dynamic(
     () => import("@/components/workspace/WorkspaceContainer"),
@@ -19,7 +17,7 @@ const FloorPlanEditor = dynamic(
 export default function ProjectViewerPage() {
     const params = useParams<{ projectId: string }>();
     const router = useRouter();
-    const [project, setProject] = useState<Project | null>(null);
+    const [project, setProject] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 

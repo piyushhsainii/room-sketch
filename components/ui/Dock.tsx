@@ -55,6 +55,15 @@ export function Dock({
             <div
                 style={{
                     width: 320,
+                    // FIX: `maxHeight` alone doesn't give a column-flex container a
+                    // definite size to compute `flex: 1` children against — so the
+                    // inner `overflowY: 'auto'` content div never actually received a
+                    // bounded box to scroll within, and this outer `overflow: hidden`
+                    // just silently hard-clipped everything past 80vh with no
+                    // scrollbar. `height` (not just `maxHeight`) establishes that
+                    // definite size so the inner flex child can size correctly and
+                    // its own scrollbar/scrolling works.
+                    height: '80vh',
                     maxHeight: '80vh',
                     display: 'flex',
                     flexDirection: 'column',

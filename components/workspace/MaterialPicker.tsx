@@ -96,7 +96,18 @@ export function HScrollRow({ children }: { children: React.ReactNode }) {
                     paddingBottom: 2, marginBottom: -2, minWidth: 0,
                 }}
             >
-                <style>{`.fp-hscroll::-webkit-scrollbar{display:none}.fp-hscroll{scrollbar-width:none;-ms-overflow-style:none}`}</style>
+                {/* Visible-but-thin scrollbar — an earlier version hid this
+                    entirely per the original "hide the scrollbar" spec, but
+                    that made it genuinely ambiguous whether a row was
+                    scrollable at all. A slim, low-contrast scrollbar removes
+                    that ambiguity while staying visually quiet. */}
+                <style>{`
+                    .fp-hscroll::-webkit-scrollbar{height:6px}
+                    .fp-hscroll::-webkit-scrollbar-track{background:transparent}
+                    .fp-hscroll::-webkit-scrollbar-thumb{background:${T.borderStrong};border-radius:99px}
+                    .fp-hscroll::-webkit-scrollbar-thumb:hover{background:${T.textFaint}}
+                    .fp-hscroll{scrollbar-width:thin;scrollbar-color:${T.borderStrong} transparent}
+                `}</style>
                 {children}
             </div>
             {showFade && (

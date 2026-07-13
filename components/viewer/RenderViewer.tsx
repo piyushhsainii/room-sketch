@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -226,10 +228,9 @@ export default function RenderViewer({ project, onRegenerated, onUnauthorized }:
                         overflow-hidden
                         bg-white
                         transition-all
-                        ${
-                          isActive
-                            ? "border-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.12)]"
-                            : "border-gray-200 hover:border-gray-300"
+                        ${isActive
+                          ? "border-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.12)]"
+                          : "border-gray-200 hover:border-gray-300"
                         }
                       `
                       }

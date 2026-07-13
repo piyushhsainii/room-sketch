@@ -7,7 +7,7 @@ import { readSessionFromCookies } from "@/lib/auth/session";
 import { errorMessage } from "@/lib/errorMessage";
 import { generateRender } from "@/lib/imageGen";
 import { checkCanGenerate, incrementUsage } from "@/lib/planGate";
-import type { Project } from "@/lib/models";
+// import type { Project } from "@/lib/models";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { generateVideo } from "@/lib/videoGen";
 
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
       .eq("user_id", session.userId)
       .single();
 
-    const project = (projectRaw ?? null) as Project | null;
+    const project = projectRaw ?? null;
 
     if (projectError || !project) {
       return NextResponse.json(

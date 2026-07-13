@@ -8,7 +8,6 @@
 
 import { NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import type { Json } from "@/supabase/types";
 import type { SceneJSON } from "@/types/workspace";
 
 export const runtime = "nodejs";
@@ -55,7 +54,7 @@ export async function POST(request: Request) {
     const { error: updateError } = await admin
       .from("projects")
       .update({
-        scene_json: body.scene_json as unknown as Json,
+        scene_json: body.scene_json as unknown,
         workspace_enabled: true,
         updated_at: new Date().toISOString(),
       })

@@ -6,7 +6,6 @@ import { ERRORS } from "@/constants/content";
 import { readSessionFromCookies } from "@/lib/auth/session";
 import { errorMessage } from "@/lib/errorMessage";
 import { editRender } from "@/lib/imageGen";
-import type { Project, ProjectGeneration } from "@/lib/models";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -25,7 +24,9 @@ function extForContentType(type: string | null): string {
   return "png";
 }
 
-function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; contentType: string | null } | null {
+function decodeDataUrl(
+  dataUrl: string,
+): { bytes: Uint8Array; contentType: string | null } | null {
   if (!dataUrl.startsWith("data:")) return null;
   const comma = dataUrl.indexOf(",");
   if (comma < 0) return null;
@@ -38,7 +39,9 @@ function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; contentType: strin
   return { bytes: new Uint8Array(buf), contentType };
 }
 
-async function downloadBytes(url: string): Promise<{ bytes: Uint8Array; contentType: string | null }> {
+async function downloadBytes(
+  url: string,
+): Promise<{ bytes: Uint8Array; contentType: string | null }> {
   const decoded = decodeDataUrl(url);
   if (decoded) return decoded;
 
@@ -66,7 +69,10 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as Partial<Body>;
     if (!body.project_id || !body.source_generation_id || !body.edit_prompt) {
-      return NextResponse.json({ error: ERRORS.generateFailed }, { status: 400 });
+      return NextResponse.json(
+        { error: ERRORS.generateFailed },
+        { status: 400 },
+      );
     }
 
     projectId = body.project_id;
@@ -78,11 +84,11 @@ export async function POST(request: Request) {
       .eq("user_id", session.userId)
       .single();
 
-    const project = (projectRaw ?? null) as Project | null;
+    const project = projectRaw ?? null;
     if (projectError || !project) {
       return NextResponse.json(
         { error: projectError?.message ?? ERRORS.projectNotFound },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -94,14 +100,20 @@ export async function POST(request: Request) {
       .eq("user_id", session.userId)
       .single();
 
-    const source = (srcRaw ?? null) as ProjectGeneration | null;
+    const source = srcRaw ?? null;
     if (srcError || !source?.render_url) {
-      return NextResponse.json({ error: ERRORS.projectNotFound }, { status: 404 });
+      return NextResponse.json(
+        { error: ERRORS.projectNotFound },
+        { status: 404 },
+      );
     }
 
     const editPrompt = body.edit_prompt.trim().slice(0, 500);
     if (!editPrompt) {
-      return NextResponse.json({ error: ERRORS.generateFailed }, { status: 400 });
+      return NextResponse.json(
+        { error: ERRORS.generateFailed },
+        { status: 400 },
+      );
     }
 
     await admin
@@ -110,7 +122,11 @@ export async function POST(request: Request) {
       .eq("id", project.id)
       .eq("user_id", session.userId);
 
-    const editedSourceUrl = await editRender(source.render_url, editPrompt, project.style_context ?? undefined);
+    const editedSourceUrl = await editRender(
+      source.render_url,
+      editPrompt,
+      project.style_context ?? undefined,
+    );
     const { bytes, contentType } = await downloadBytes(editedSourceUrl);
     const renderExt = extForContentType(contentType);
 
@@ -124,7 +140,9 @@ export async function POST(request: Request) {
 
     if (renderUploadError) throw new Error(renderUploadError.message);
 
-    const { data: renderUrlData } = admin.storage.from("renders").getPublicUrl(renderPath);
+    const { data: renderUrlData } = admin.storage
+      .from("renders")
+      .getPublicUrl(renderPath);
     const renderUrl = renderUrlData.publicUrl;
 
     const { data: genRow, error: genError } = await admin
@@ -150,12 +168,19 @@ export async function POST(request: Request) {
       .eq("id", project.id)
       .eq("user_id", session.userId);
 
-    return NextResponse.json({ render_url: renderUrl, generation_id: genRow?.id ?? null, status: "completed" });
+    return NextResponse.json({
+      render_url: renderUrl,
+      generation_id: genRow?.id ?? null,
+      status: "completed",
+    });
   } catch (e) {
     const message = errorMessage(e);
     if (projectId) {
       try {
-        await admin.from("projects").update({ status: "failed", error_message: message }).eq("id", projectId);
+        await admin
+          .from("projects")
+          .update({ status: "failed", error_message: message })
+          .eq("id", projectId);
       } catch {
         // ignore
       }
@@ -163,7 +188,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       { error: message || ERRORS.generateFailed },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

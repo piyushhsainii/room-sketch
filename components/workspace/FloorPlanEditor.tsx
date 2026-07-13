@@ -4,8 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Toolbar } from './Tools/ToolBar'
 import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
-import { deriveClosedPolygons, getSegmentOpeningWorldPos, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
-import { SceneConfigPanel } from './SceneConfigPanel'
+import { getSegmentOpeningWorldPos, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import { Dock } from '../ui/Dock'
 import { SceneGraphPanel } from './objects/scene-graph'
 import { ScrollableList } from '../ui/ScrollableList'
@@ -17,6 +16,9 @@ import { draw2D } from './2dDraw'
 import WorkspaceNav from '../ui/WorkspaceNav'
 import ToolHintBar from '../ui/ToolHint'
 import { createPortal } from 'react-dom'
+import { GizmoHelper, GizmoViewport } from '@react-three/drei'
+import { CameraOrientationReporter, NavigationGizmo, useGizmoApiRef } from './three/NavigationGizmo'
+import * as THREE from "three"
 
 export type RoomSceneConfig = {
     roomId: string
@@ -150,9 +152,10 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
     const shapeResizeRef = useRef<{ shapeId: string; handle: string; startNodes: Map<string, { x: number; z: number }>; bbox: { minX: number; maxX: number; minZ: number; maxZ: number } } | null>(null)
     const resizeHandleRef = useRef<{ handle: string; room: EditorRoom; startWx: number; startWz: number } | null>(null)
     fpRef.current = fp
-
+    const mainCameraRef = useRef<THREE.Camera | null>(null)
     const [interactiveMode, setInteractiveMode] = useState(false)
     const justToggledRef = useRef(false)
+    const gizmoApiRef = useGizmoApiRef()
 
     const handleToggleInteractive = () => {
         justToggledRef.current = true
@@ -1271,7 +1274,14 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
             setHoveredId(newHoverId)
             scheduleRedraw()
         }
-        setHoverTooltip(newHoverId ? { text: labelForHover(newHoverId, fpRef.current), x: e.clientX, y: e.clientY } : null)
+        setHoverTooltip(prev => {
+            if (!newHoverId) return prev === null ? prev : null
+            const next = { text: labelForHover(newHoverId, fpRef.current), x: e.clientX, y: e.clientY }
+            if (prev && prev.text === next.text && Math.abs(prev.x - next.x) < 2 && Math.abs(prev.y - next.y) < 2) {
+                return prev // same reference — React skips the re-render entirely
+            }
+            return next
+        })
     }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, scheduleRedraw])
 
     const handleMouseUp = useCallback(() => {
@@ -1703,33 +1713,43 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                         <div><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>ESC</kbd> Unlock cursor</div>
                                     </div>
                                 )}
-                                <SceneErrorBoundary fallback={null}>
-                                    <Suspense fallback={null}>
-                                        <Canvas
-                                            shadows
-                                            camera={{
-                                                position: [
-                                                    (fp?.roomHeight ?? 2.8) * 3,
-                                                    (fp?.roomHeight ?? 2.8) * 4,
-                                                    (fp?.roomHeight ?? 2.8) * 4
-                                                ],
-                                                fov: 45, near: 0.1, far: 500
-                                            }}
-                                            style={{ width: '100%', height: '100%', background: '#EFEFEC' }}
-                                            onWheel={e => e.stopPropagation()}
-                                        >
-                                            <Scene3D
-                                                fp={fp}
-                                                sceneConfig={sceneConfig}
-                                                walkMode={walkMode}
-                                                interactiveMode={interactiveMode}
-                                                selectedId={selectedId}
-                                                onSelect={handleSceneSelect}
-                                            />
-                                        </Canvas>
-                                    </Suspense>
+                                {/* <SceneErrorBoundary fallback={null} > */}
+                                {/* <Suspense fallback={null} > */}
+                                <Canvas
+                                    onCreated={({ gl }) => {
+                                        gl.domElement.addEventListener('webglcontextlost', (e) => {
+                                            e.preventDefault()
+                                            console.warn('WebGL context lost — will attempt restore')
+                                        })
+                                        gl.domElement.addEventListener('webglcontextrestored', () => {
+                                            console.log('WebGL context restored')
+                                        })
+                                    }}
+                                    shadows
+                                    camera={{
+                                        position: [
+                                            (fp?.roomHeight ?? 2.8) * 3,
+                                            (fp?.roomHeight ?? 2.8) * 4,
+                                            (fp?.roomHeight ?? 2.8) * 4
+                                        ],
+                                        fov: 45, near: 0.1, far: 500
+                                    }}
+                                    style={{ width: '100%', height: '100%', background: '#EFEFEC', display: 'block' }}
+                                    onWheel={e => e.stopPropagation()}
+                                    resize={{ scroll: false, debounce: { scroll: 50, resize: 0 } }}
+                                >
+                                    <Scene3D
+                                        fp={fp}
+                                        sceneConfig={sceneConfig}
+                                        walkMode={walkMode}
+                                        interactiveMode={interactiveMode}
+                                        selectedId={selectedId}
+                                        onSelect={handleSceneSelect}
+                                    />
+                                    {/* <CameraOrientationReporter gizmoApiRef={gizmoApiRef} /> */}
+                                </Canvas>
 
-                                </SceneErrorBoundary>
+                                {/* <NavigationGizmo gizmoApiRef={gizmoApiRef} /> */}
                             </div>
                         </div>
                     )}

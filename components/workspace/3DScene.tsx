@@ -1,4 +1,4 @@
-import { OrbitControls, PointerLockControls } from "@react-three/drei"
+import { GizmoHelper, GizmoViewport, OrbitControls, PointerLockControls } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./Tools/constants"
 import { Room3D } from "./3dRoom"
 import { LineWalls3D } from "./objects/line-walls-3d"
@@ -6,6 +6,7 @@ import { StairsMesh } from "./furniture/stairsMesh"
 import { WalkModeControls } from "./WalkModeControls"
 import { FurnitureMesh } from "./furniture/furnitureMesh"
 import { SceneConfig } from "./FloorPlanEditor"
+import { NavigationGizmo } from "./three/NavigationGizmo"
 
 function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect }: {
     fp: FloorPlanState
@@ -70,12 +71,11 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                 selectedId={selectedId}
                 onSelect={onSelect}
             />
-
             {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
                 <group
                     key={f.id}
                     onClick={interactiveMode ? (e) => { e.stopPropagation(); onSelect?.(f.id) } : undefined}
-                    onPointerOver={interactiveMode ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
+                    onPointerOver={interactiveMode ? () => { document.body.style.cursor = 'pointer' } : undefined}
                     onPointerOut={interactiveMode ? () => { document.body.style.cursor = 'auto' } : undefined}
                 >
                     <FurnitureMesh f={f} selected={interactiveMode && selectedId === f.id} />
@@ -86,7 +86,7 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                 <group
                     key={s.id}
                     onClick={interactiveMode ? (e) => { e.stopPropagation(); onSelect?.(s.id) } : undefined}
-                    onPointerOver={interactiveMode ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
+                    onPointerOver={interactiveMode ? () => { document.body.style.cursor = 'pointer' } : undefined}
                     onPointerOut={interactiveMode ? () => { document.body.style.cursor = 'auto' } : undefined}
                 >
                     <StairsMesh s={s} roomHeight={fp.roomHeight} />
@@ -96,9 +96,17 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
             {walkMode ? (
                 <WalkModeControls />
             ) : (
-                <OrbitControls makeDefault enableDamping dampingFactor={0.05} enabled={!interactiveMode || true} />
+                <OrbitControls
+                    makeDefault
+                    enableDamping
+                    dampingFactor={0.05}
+                    minPolarAngle={0.05}                 // prevents flipping straight through the top
+                    maxPolarAngle={Math.PI / 2 - 0.02}   // prevents orbiting below the floor
+                    minDistance={1}
+                    maxDistance={100}
+                    screenSpacePanning={false}
+                />
             )}
-            <gridHelper args={[50, 50, '#1C1A17', '#1C1A17']} position={[0, -0.01, 0]} />
         </>
     )
 }

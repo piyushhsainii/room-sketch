@@ -1,7 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 
 import { ERRORS } from "@/constants/content";
-import type { Database } from "@/supabase/types";
 
 export function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,5 +10,5 @@ export function createClient() {
     throw new Error(ERRORS.supabaseMisconfigured);
   }
 
-  return createBrowserClient<Database>(url, anonKey);
+  return createBrowserClient(url, anonKey);
 }

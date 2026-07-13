@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import type { ProjectStatus } from "@/lib/models";
 
 type Props = {

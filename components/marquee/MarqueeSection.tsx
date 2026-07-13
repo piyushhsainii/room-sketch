@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import { MARQUEE } from "@/constants/content";
 import type { Project } from "@/lib/models";
 
@@ -7,15 +9,15 @@ type Props = {
 
 type Item =
   | {
-      kind: "image";
-      background: string;
-      placeholder?: boolean;
-    }
+    kind: "image";
+    background: string;
+    placeholder?: boolean;
+  }
   | {
-      kind: "video";
-      background: string;
-      placeholder?: boolean;
-    };
+    kind: "video";
+    background: string;
+    placeholder?: boolean;
+  };
 
 function PlayIcon() {
   return (

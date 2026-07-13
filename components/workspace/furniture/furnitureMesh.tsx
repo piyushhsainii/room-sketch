@@ -10,10 +10,10 @@ import * as THREE from 'three'
 // with flat color instead of crashing the whole scene.
 // ---------------------------------------------------------------------------
 const FABRIC_TEX_URLS = {
-    map: '/textures/fabric049/Fabric049_1K-JPG_Color.jpg',
-    normalMap: '/textures/fabric049/Fabric049_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/fabric049/Fabric049_1K-JPG_Roughness.jpg',
-    aoMap: '/textures/fabric049/Fabric049_1K-JPG_AmbientOcclusion.jpg',
+    map: '/textures/Fabric049_1K-JPG_Color.jpg',
+    normalMap: '/textures/Fabric049_1K-JPG_NormalGL.jpg',
+    roughnessMap: '/textures/Fabric049_1K-JPG_Roughness.jpg',
+    aoMap: '/textures/Fabric049_1K-JPG_AmbientOcclusion.jpg',
 }
 
 // Multiple upholstery colorways so repeated furniture doesn't look identical.
@@ -73,24 +73,39 @@ function loadTextureSafe(url: string): THREE.Texture | null {
 function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
     const [, forceTick] = React.useState(0)
 
+    // Reading from the cache is a pure computation — fine in useMemo.
     const textures = React.useMemo(() => {
         const out: Record<string, THREE.Texture | undefined> = {}
-        let pending = false
         for (const [key, url] of Object.entries(FABRIC_TEX_URLS)) {
-            if (_failed.has(url)) continue // give up on this one, use flat color
             const cached = _texCache.get(url)
-            if (cached) {
-                out[key] = cached
-            } else {
-                pending = true
-                loadTextureSafe(url)
-            }
-        }
-        if (pending) {
-            // re-render shortly after kicking off loads so late-arriving textures apply
-            setTimeout(() => forceTick((n) => n + 1), 150)
+            if (cached) out[key] = cached
         }
         return out
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Kicking off loads and scheduling a re-render are side effects —
+    // they belong in useEffect, not useMemo.
+    React.useEffect(() => {
+        let cancelled = false
+        let pending = false
+
+        for (const url of Object.values(FABRIC_TEX_URLS)) {
+            if (_failed.has(url)) continue
+            if (_texCache.get(url)) continue
+            pending = true
+            loadTextureSafe(url)
+        }
+
+        if (pending) {
+            const t = setTimeout(() => {
+                if (!cancelled) forceTick((n) => n + 1)
+            }, 150)
+            return () => {
+                cancelled = true
+                clearTimeout(t)
+            }
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 

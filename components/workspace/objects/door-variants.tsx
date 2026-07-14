@@ -1,29 +1,21 @@
 import { EditorOpening } from "../Tools/constants"
 import { DoorMat } from "./doormat"
 
-/**
- * Renders a door leaf (or set of leaves) for any wall orientation.
- *
- * This is intentionally NOT tied to `EditorRoom`/`wallAxis` (rectangular-room
- * concepts) — it takes a generic wall `angle` (radians, same convention as
- * `Math.atan2(dz, dx)` used for line-wall segments) and a `basePos` (world
- * position of the opening's centerline, at door mid-height). This lets both
- * `Room3D` (rect rooms) and `LineWalls3D` (freeform line walls) call the
- * exact same door-rendering code, so every door variant looks identical
- * regardless of which wall system placed it.
- *
- * Wall-panel boxes elsewhere in the codebase are authored as
- * [length, height, thickness] with length along local X, then rotated by
- * `-angle` to point along the wall direction — this component follows that
- * same convention so door leaves land exactly in the opening regardless of
- * wall angle.
- */
 export function DoorVariant3D({ op, angle, basePos, doorStyle }: {
     op: EditorOpening
     angle: number
     basePos: [number, number, number]
+    /** Scene-wide default. Renamed conceptually to "fallback" — the door's
+     *  own op.material always wins when set. */
     doorStyle: string
 }) {
+    // Single source of truth for which style this specific door renders in:
+    // the door's own override if set, otherwise the scene-wide default.
+    // Resolving this HERE (rather than trusting the caller to have already
+    // merged it) means DoorVariant3D can never silently ignore a per-door
+    // override again, no matter where it's rendered from.
+    const resolvedStyle = op.material ?? doorStyle
+
     const inward = op.swingDirection !== 'outward'
     const swingSign = inward ? 1 : -1
     const variant = op.variant ?? 'door-swing-single'
@@ -36,19 +28,19 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle }: {
         const inset = Math.min(0.06, width * 0.08)
         return (
             <group>
+                {/* Plain door slab — the texture/material shows across the
+                    full face now, no raised panel overlays covering it */}
                 <mesh castShadow receiveShadow>
                     <boxGeometry args={[width, height, T]} />
-                    <DoorMat style={doorStyle} />
+                    <DoorMat style={resolvedStyle} />
                 </mesh>
-                <mesh position={[0, height * 0.2, T / 2 + 0.003]}>
-                    <boxGeometry args={[width - inset * 2, height * 0.42, 0.006]} />
-                    <meshStandardMaterial color="#EDEDEA" roughness={0.55} />
-                </mesh>
-                <mesh position={[0, -height * 0.24, T / 2 + 0.003]}>
-                    <boxGeometry args={[width - inset * 2, height * 0.42, 0.006]} />
-                    <meshStandardMaterial color="#EDEDEA" roughness={0.55} />
-                </mesh>
+                {/* Handle — front */}
                 <mesh position={[width / 2 - inset - 0.03, 0, T / 2 + 0.02]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+                    <cylinderGeometry args={[0.012, 0.012, 0.11, 12]} />
+                    <meshStandardMaterial color="#B9B9B4" metalness={0.55} roughness={0.35} />
+                </mesh>
+                {/* Handle — back, mirrored so it's reachable from both sides */}
+                <mesh position={[width / 2 - inset - 0.03, 0, -(T / 2 + 0.02)]} rotation={[Math.PI / 2, 0, 0]} castShadow>
                     <cylinderGeometry args={[0.012, 0.012, 0.11, 12]} />
                     <meshStandardMaterial color="#B9B9B4" metalness={0.55} roughness={0.35} />
                 </mesh>
@@ -104,7 +96,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle }: {
                 <group position={pos} rotation={[0, -angle, 0]}>
                     <mesh castShadow>
                         <boxGeometry args={[visibleWidth, op.height, T]} />
-                        <DoorMat style={doorStyle} />
+                        <DoorMat style={resolvedStyle} />
                     </mesh>
                 </group>
             )
@@ -128,7 +120,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle }: {
                     <group key={`fold${i}`} position={pos} rotation={[0, -angle + angleFold, 0]}>
                         <mesh castShadow>
                             <boxGeometry args={[panelW * 0.96, op.height, T]} />
-                            <DoorMat style={doorStyle} />
+                            <DoorMat style={resolvedStyle} />
                         </mesh>
                     </group>
                 )
@@ -147,7 +139,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle }: {
                     <group key={`slat${i}`} position={pos} rotation={[0, -angle, 0]}>
                         <mesh castShadow>
                             <boxGeometry args={[op.width * 0.98, slatH * 0.85, T]} />
-                            <DoorMat style={doorStyle} />
+                            <DoorMat style={resolvedStyle} />
                         </mesh>
                     </group>
                 )

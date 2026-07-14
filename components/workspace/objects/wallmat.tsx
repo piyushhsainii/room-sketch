@@ -15,7 +15,7 @@ interface WallMatProps {
 
 type WallTexInfo = { map: string; normalMap?: string; roughnessMap?: string }
 
-function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null {
+export function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null {
     if (mat === 'paint' || mat === 'pvc-panel-groove') return null
 
     const canvas = document.createElement('canvas')

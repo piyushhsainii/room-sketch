@@ -33,6 +33,7 @@ export function floorPlanStateToSceneJSON(
         wall: o.wall,
         position: o.position,
         width: o.width,
+        material: o.material, // ← plain passthrough now that both use DoorMaterial
       }));
     const windows: RoomWindow[] = roomOpenings
       .filter((o) => o.type === "window")
@@ -96,7 +97,7 @@ export function floorPlanStateToSceneJSON(
       rotation: f.rotation,
       scale: f.scale,
     })),
-    door_style: cfg.doorStyle ?? ("natural" as DoorStyle),
+    door_style: cfg.doorStyle ?? ("glass_clear" as DoorStyle),
     global_wall_material: cfg.globalWallMaterial ?? "paint",
     global_floor_material: cfg.globalFloorMaterial ?? "plain",
     line_nodes,
@@ -215,7 +216,7 @@ export function sceneJSONToFloorPlanState(
     showFurniture: true,
     showLabels: true,
     fogEnabled: false,
-    doorStyle: (json.door_style ?? "natural") as DoorStyle,
+    doorStyle: (json.door_style ?? "glass_clear") as DoorStyle,
     globalFloorMaterial: (json.global_floor_material ??
       "plain") as FloorMaterial,
     globalWallMaterial: json.global_wall_material ?? "paint",

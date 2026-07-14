@@ -1,3 +1,4 @@
+import { FloorMaterial } from "@/components/workspace/Tools/constants";
 import type {
   RoomDoor,
   RoomWindow,
@@ -192,16 +193,28 @@ export function getWalkStartPosition(rooms: SceneRoom[]): {
 export function getMaterialColor(
   material: SceneRoom["floor_material"],
 ): string {
-  const colors: Record<SceneRoom["floor_material"], string> = {
-    hardwood: "#C4A882",
-    tile: "#D4D0CC",
-    carpet: "#B8A9C9",
-    concrete: "#9E9E9E",
+  const colors: Record<FloorMaterial, string> = {
+    plain: "#C4A882",
+    "solid-white": "#F5F3EF",
+    "solid-gray": "#9E9E9E",
+    "solid-black": "#2A2A2A",
+    "solid-beige": "#D8CBB5",
+    wood: "#C4A882",
+    "wood-oak": "#C8A878",
+    "wood-walnut": "#4A3220",
     marble: "#F0EDE8",
+    "marble-white": "#F5F2EE",
+    "marble-black": "#3A3A3A",
+    concrete: "#9E9E9E",
+    tiles: "#D4D0CC",
+    "tile-ceramic": "#E0DCD4",
+    "brick-red": "#A85C42",
+    "brick-white": "#D8C8B8",
+    fabric: "#B8A9C9",
+    plaster: "#E8E4DC",
   };
   return colors[material] ?? "#C4A882";
 }
-
 export function detectRoomType(name: string): string {
   const n = name.toLowerCase();
   if (n.includes("living") || n.includes("lounge") || n.includes("family"))

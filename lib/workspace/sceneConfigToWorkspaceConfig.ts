@@ -1,4 +1,5 @@
 import type { SceneConfig } from "@/components/workspace/FloorPlanEditor";
+import { DoorStyle } from "@/components/workspace/Tools/constants";
 import type { WorkspaceConfig, RoomConfig } from "@/types/workspace";
 
 const DEFAULT_WALL_COLOR = "#FFFFFF";
@@ -21,6 +22,6 @@ export function sceneConfigToWorkspaceConfig(
     showFurniture: cfg.showFurniture,
     showLabels: cfg.showLabels,
     fogEnabled: cfg.fogEnabled,
-    doorStyle: cfg.doorStyle,
+    doorStyle: cfg.doorStyle, // ← plain passthrough now that both use DoorMaterial
   };
 }

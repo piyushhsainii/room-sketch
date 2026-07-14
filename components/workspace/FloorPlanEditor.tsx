@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { Canvas } from '@react-three/fiber'
+import ResilientCanvas from './ResilientCanvas'
 import { Toolbar } from './Tools/ToolBar'
 import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
 import { getSegmentOpeningWorldPos, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
@@ -1715,17 +1715,10 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                 )}
                                 {/* <SceneErrorBoundary fallback={null} > */}
                                 {/* <Suspense fallback={null} > */}
-                                <Canvas
-                                    onCreated={({ gl }) => {
-                                        gl.domElement.addEventListener('webglcontextlost', (e) => {
-                                            e.preventDefault()
-                                            console.warn('WebGL context lost — will attempt restore')
-                                        })
-                                        gl.domElement.addEventListener('webglcontextrestored', () => {
-                                            console.log('WebGL context restored')
-                                        })
-                                    }}
+                                <ResilientCanvas
                                     shadows
+                                    gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', stencil: false, depth: true }}
+                                    dpr={[1, 2]}
                                     camera={{
                                         position: [
                                             (fp?.roomHeight ?? 2.8) * 3,
@@ -1747,7 +1740,7 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                         onSelect={handleSceneSelect}
                                     />
                                     {/* <CameraOrientationReporter gizmoApiRef={gizmoApiRef} /> */}
-                                </Canvas>
+                                </ResilientCanvas>
 
                                 {/* <NavigationGizmo gizmoApiRef={gizmoApiRef} /> */}
                             </div>

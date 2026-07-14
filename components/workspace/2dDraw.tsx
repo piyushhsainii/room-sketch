@@ -90,11 +90,14 @@ export function draw2D(
 
             ctx.clearRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
 
+            const isOpSel = selectedId === op.id
+            const isOpHov = hoveredId === op.id
+
             if (op.type === 'door') {
                 const doorPx = op.width * scale
                 ctx.save()
-                ctx.strokeStyle = '#818CF8'
-                ctx.lineWidth = 1.5
+                ctx.strokeStyle = isOpSel ? '#4F46E5' : isOpHov ? '#A5A9FF' : '#818CF8'
+                ctx.lineWidth = isOpSel ? 2.5 : 1.5
                 if (isHorizontal) {
                     ctx.beginPath(); ctx.arc(gx1, (gy1 + gy2) / 2, doorPx, 0, Math.PI / 2); ctx.stroke()
                     ctx.beginPath(); ctx.moveTo(gx1, (gy1 + gy2) / 2); ctx.lineTo(gx1 + doorPx, (gy1 + gy2) / 2); ctx.stroke()
@@ -102,13 +105,22 @@ export function draw2D(
                     ctx.beginPath(); ctx.arc((gx1 + gx2) / 2, gy1, doorPx, 0, Math.PI / 2); ctx.stroke()
                     ctx.beginPath(); ctx.moveTo((gx1 + gx2) / 2, gy1); ctx.lineTo((gx1 + gx2) / 2, gy1 + doorPx); ctx.stroke()
                 }
+                // Selection ring around the whole opening footprint, matching
+                // the pattern used for rooms/nodes elsewhere in this file
+                if (isOpSel) {
+                    ctx.strokeStyle = 'rgba(99,102,241,0.35)'
+                    ctx.lineWidth = 2
+                    ctx.setLineDash([3, 3])
+                    ctx.strokeRect(gx1 - 3, gy1 - 3, (gx2 - gx1) + 6, (gy2 - gy1) + 6)
+                    ctx.setLineDash([])
+                }
                 ctx.restore()
             } else if (op.type === 'opening') {
                 if (op.variant === 'opening-archway') {
                     // Archway — draw curved arch outline
                     ctx.save()
-                    ctx.strokeStyle = 'rgba(200,180,140,0.85)'
-                    ctx.lineWidth = 1.8
+                    ctx.strokeStyle = isOpSel ? '#4F46E5' : 'rgba(200,180,140,0.85)'
+                    ctx.lineWidth = isOpSel ? 2.4 : 1.8
                     const archMidX = (gx1 + gx2) / 2
                     const archTopPad = (gy2 - gy1) * 0.35
                     ctx.beginPath()
@@ -122,8 +134,8 @@ export function draw2D(
                 } else {
                     // Open passage — plain dashed gap
                     ctx.save()
-                    ctx.strokeStyle = 'rgba(180,170,150,0.6)'
-                    ctx.lineWidth = 1
+                    ctx.strokeStyle = isOpSel ? '#4F46E5' : 'rgba(180,170,150,0.6)'
+                    ctx.lineWidth = isOpSel ? 1.6 : 1
                     ctx.setLineDash([3, 3])
                     ctx.strokeRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
                     ctx.setLineDash([])
@@ -131,9 +143,9 @@ export function draw2D(
                 }
             } else {
                 ctx.save()
-                ctx.fillStyle = 'rgba(147,197,253,0.5)'
-                ctx.strokeStyle = '#60A5FA'
-                ctx.lineWidth = 1.5
+                ctx.fillStyle = isOpSel ? 'rgba(79,70,229,0.6)' : 'rgba(147,197,253,0.5)'
+                ctx.strokeStyle = isOpSel ? '#4F46E5' : '#60A5FA'
+                ctx.lineWidth = isOpSel ? 2.2 : 1.5
                 ctx.fillRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
                 ctx.strokeRect(gx1, gy1, gx2 - gx1, gy2 - gy1)
                 ctx.restore()
@@ -364,6 +376,9 @@ export function draw2D(
             const nx = Math.sin(pos.angle)
             const nz = -Math.cos(pos.angle)
 
+            const isOpSel = selectedId === op.id
+            const isOpHov = hoveredId === op.id
+
             ctx.save()
             ctx.translate(cx(pos.wx), cy(pos.wz))
             ctx.rotate(pos.angle)
@@ -372,8 +387,8 @@ export function draw2D(
             ctx.clearRect(-hw, -wallT / 2, hw * 2, wallT)
 
             if (op.type === 'door') {
-                ctx.strokeStyle = '#818CF8'
-                ctx.lineWidth = 1.5
+                ctx.strokeStyle = isOpSel ? '#4F46E5' : isOpHov ? '#A5A9FF' : '#818CF8'
+                ctx.lineWidth = isOpSel ? 2.5 : 1.5
                 ctx.beginPath()
                 ctx.arc(-hw, 0, op.width * scale, 0, Math.PI / 2)
                 ctx.stroke()
@@ -381,11 +396,18 @@ export function draw2D(
                 ctx.moveTo(-hw, 0)
                 ctx.lineTo(hw, 0)
                 ctx.stroke()
+                if (isOpSel) {
+                    ctx.strokeStyle = 'rgba(99,102,241,0.35)'
+                    ctx.lineWidth = 2
+                    ctx.setLineDash([3, 3])
+                    ctx.strokeRect(-hw - 4, -wallT / 2 - 4, hw * 2 + 8, wallT + 8)
+                    ctx.setLineDash([])
+                }
             } else if (op.type === 'opening') {
                 if (op.variant === 'opening-archway') {
                     // Archway on line segment — curved arch
-                    ctx.strokeStyle = 'rgba(200,180,140,0.85)'
-                    ctx.lineWidth = 1.8
+                    ctx.strokeStyle = isOpSel ? '#4F46E5' : 'rgba(200,180,140,0.85)'
+                    ctx.lineWidth = isOpSel ? 2.4 : 1.8
                     const archPad = wallT * 0.8
                     ctx.beginPath()
                     ctx.moveTo(-hw, wallT / 2)
@@ -396,16 +418,16 @@ export function draw2D(
                     ctx.stroke()
                 } else {
                     // Open passage on line segment — dashed rectangle
-                    ctx.strokeStyle = 'rgba(180,170,150,0.6)'
-                    ctx.lineWidth = 1
+                    ctx.strokeStyle = isOpSel ? '#4F46E5' : 'rgba(180,170,150,0.6)'
+                    ctx.lineWidth = isOpSel ? 1.6 : 1
                     ctx.setLineDash([3, 3])
                     ctx.strokeRect(-hw, -wallT / 2, hw * 2, wallT)
                     ctx.setLineDash([])
                 }
             } else {
-                ctx.fillStyle = 'rgba(147,197,253,0.5)'
-                ctx.strokeStyle = '#60A5FA'
-                ctx.lineWidth = 1.5
+                ctx.fillStyle = isOpSel ? 'rgba(79,70,229,0.6)' : 'rgba(147,197,253,0.5)'
+                ctx.strokeStyle = isOpSel ? '#4F46E5' : '#60A5FA'
+                ctx.lineWidth = isOpSel ? 2.2 : 1.5
                 ctx.fillRect(-hw, -wallT / 2, hw * 2, wallT)
                 ctx.strokeRect(-hw, -wallT / 2, hw * 2, wallT)
             }

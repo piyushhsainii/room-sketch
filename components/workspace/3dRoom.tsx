@@ -4,7 +4,7 @@ import { FloorMat } from "./objects/floormat";
 import { WallDecorMesh } from "./objects/wall-decor-mesh";
 import { WallMat } from "./objects/wallmat";
 import { WindowVariant3D } from "./objects/window-variant3d";
-import { EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial } from "./Tools/constants";
+import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial } from "./Tools/constants";
 
 function Room3D({
     room,
@@ -14,7 +14,7 @@ function Room3D({
     wallRoughness = 0.95,
     wallTextured = false,
     floorMat = 'plain',
-    doorStyle = 'natural',
+    doorStyle = 'glass_clear',
     wallDecor,
     wallMaterial = 'paint',
     onSelectRoom,
@@ -29,7 +29,7 @@ function Room3D({
     wallRoughness?: number;
     wallTextured?: boolean;
     floorMat?: FloorMaterial;
-    doorStyle?: string
+    doorStyle?: DoorStyle
     wallDecor?: PlacedWallDecor[]
     wallMaterial?: WallMaterial
     onSelectRoom?: (roomId: string) => void

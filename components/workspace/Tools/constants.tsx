@@ -1,21 +1,47 @@
 import { SceneConfig } from "../FloorPlanEditor"
 
-export type EditorOpening = {
+
+export interface EditorOpening {
     id: string
     roomId: string
     wall: 'north' | 'south' | 'east' | 'west'
-    type: 'door' | 'window' | 'opening'   // ← added 'opening' for archway/passage
+    type: 'door' | 'window' | 'opening'
+    variant: string
     position: number
     width: number
     height: number
     sillHeight: number
     swingDirection: 'inward' | 'outward'
     segmentNodeIds?: string[]
-    segmentT?: number
-    variant?: EditorTool
+    segmentT?: number          // ← restore — required for line-wall openings, see §2
+    material?: DoorStyle       // per-door/window override, undefined = use global doorStyle
 }
 
 export type StairsType = 'stairs-straight' | 'stairs-l' | 'stairs-u' | 'stairs-spiral' | 'stairs-ramp' | 'elevator'
+
+export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
+
+export type DoorStyle =
+    | 'wood_oak'
+    | 'wood_dark'
+    | 'wood_white'
+    | 'glass_frosted'
+    | 'glass_clear'
+    | 'metal_steel'
+    | 'panel_white'
+
+export const DOOR_MATERIALS: { id: DoorStyle; label: string; swatch: string; textured: boolean }[] = [
+    { id: 'wood_oak', label: 'Oak', swatch: '#C8A878', textured: true },
+    { id: 'wood_dark', label: 'Dark Wood', swatch: '#4A3220', textured: true },
+    { id: 'wood_white', label: 'White', swatch: '#F0EDE8', textured: true },
+    { id: 'glass_frosted', label: 'Frosted Glass', swatch: '#C8D8E4', textured: false },
+    { id: 'glass_clear', label: 'Clear Glass', swatch: '#B8D0E0', textured: false },
+    { id: 'metal_steel', label: 'Steel', swatch: '#9AABB8', textured: true },
+    { id: 'panel_white', label: 'Panel White', swatch: '#F5F2EE', textured: true },
+]
+
+export const DOOR_STYLES: { value: DoorStyle; label: string; color: string; textured: boolean }[] =
+    DOOR_MATERIALS.map(d => ({ value: d.id, label: d.label, color: d.swatch, textured: d.textured }))
 
 export type PlacedStairs = {
     id: string
@@ -81,7 +107,6 @@ export type LineSegment = {
     closed: boolean
 }
 
-export type DoorStyle = 'natural' | 'white' | 'dark' | 'glass'
 
 export type ClosedShape = {
     id: string
@@ -126,6 +151,7 @@ export type PlacedFurniture = {
     z: number
     rotation: number
     scale: number
+    materialId?: string;
 }
 
 
@@ -142,13 +168,6 @@ export const FLOOR_MATERIALS: { id: FloorMaterial; label: string; preview: strin
     { id: 'brick-white', label: 'White Brick', preview: '🧱', roughness: 0.82, color: '#D8D2C4' },
 ]
 
-export const DOOR_STYLES: { value: DoorStyle; label: string; color: string }[] = [
-    { value: 'natural', label: 'Natural Oak', color: '#C8A878' },
-    { value: 'white', label: 'White', color: '#F0EEEA' },
-    { value: 'dark', label: 'Dark Walnut', color: '#3A2E22' },
-    { value: 'glass', label: 'Glass', color: '#93C5FD' },
-
-]
 
 export type EditorTool =
     | 'select' | 'pan'
@@ -405,7 +424,7 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
     showFurniture: true,
     showLabels: true,
     fogEnabled: false,
-    doorStyle: 'natural',
+    doorStyle: 'glass_clear',
     globalFloorMaterial: 'plain',
     globalWallMaterial: 'paint',
     rooms: [],
@@ -502,25 +521,35 @@ export const WALL_TEXTURE_URLS = {
 }
 
 export const DOOR_TEXTURE_URLS: Record<DoorStyle, { map: string; normalMap: string; roughnessMap: string } | null> = {
-    natural: {
+    wood_oak: {
         map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`,
         normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
         roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
     },
-    dark: {
+    wood_dark: {
         map: `${TEXTURE_BASE}/Wood049_1K-JPG_Color.jpg`,
         normalMap: `${TEXTURE_BASE}/Wood049_1K-JPG_NormalGL.jpg`,
         roughnessMap: `${TEXTURE_BASE}/Wood049_1K-JPG_Roughness.jpg`,
     },
-    white: null,   // no texture — flat painted
-    glass: null,   // no texture — transparent
+    wood_white: null,      // no texture — flat painted
+    glass_frosted: null,   // no texture — transparent
+    glass_clear: null,     // no texture — transparent
+    metal_steel: {
+        map: `${TEXTURE_BASE}/Metal032_1K-JPG_Color.jpg`,
+        normalMap: `${TEXTURE_BASE}/Metal032_1K-JPG_NormalGL.jpg`,
+        roughnessMap: `${TEXTURE_BASE}/Metal032_1K-JPG_Roughness.jpg`,
+    },
+    panel_white: null,     // no texture — flat painted
 }
 
 export const DOOR_STYLE_COLORS: Record<DoorStyle, string> = {
-    natural: '#C8A878',
-    white: '#F0EEEA',
-    dark: '#3A2E22',
-    glass: '#93C5FD',
+    wood_oak: '#C8A878',
+    wood_dark: '#4A3220',
+    wood_white: '#F0EDE8',
+    glass_frosted: '#C8D8E4',
+    glass_clear: '#B8D0E0',
+    metal_steel: '#9AABB8',
+    panel_white: '#F5F2EE',
 }
 
 export const GRID_M = 0.5
@@ -643,6 +672,35 @@ export const FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
     { type: 'led_strip', label: 'LED Strip', icon: 'Sparkles', category: 'lighting', isNew: true, newSince: '2026-07-10' },
     { type: 'wall_panel_pvc', label: 'PVC Wall Panel', icon: 'PanelTop', category: 'wall', isNew: true, newSince: '2026-07-10' },
 ]
+
+export interface FurnitureMaterial {
+    id: string
+    label: string
+    swatch: string // Hex color, image url, or gradient
+}
+
+export const FURNITURE_MATERIALS: FurnitureMaterial[] = [
+    { id: 'wood_light', label: 'Light Wood', swatch: '#E6C280' },
+    { id: 'wood_dark', label: 'Dark Wood', swatch: '#5C4033' },
+    { id: 'fabric_grey', label: 'Grey Fabric', swatch: '#808080' },
+    { id: 'fabric_blue', label: 'Blue Fabric', swatch: '#2B4C7E' },
+    { id: 'leather_black', label: 'Black Leather', swatch: '#1A1A1A' },
+    { id: 'metal_chrome', label: 'Chrome', swatch: 'linear-gradient(45deg, #999, #e1e1e1, #999)' },
+]
+
+// Helper function to check if a furniture type supports textures
+export function supportsFurnitureTexture(type: string): boolean {
+    const textureSupportedTypes = [
+        'sofa',
+        'chair',
+        'desk',
+        'bed',
+        'table',
+        'dining_table',
+        'armchair'
+    ] // Customize this array with types that support textures in your app
+    return textureSupportedTypes.includes(type.toLowerCase())
+}
 
 
 export function getFurnitureByCategory(): Record<FurnitureCategory, FurnitureCatalogEntry[]> {
@@ -830,6 +888,21 @@ export const WALL_MAT_DEFS: Record<WallMaterial, MaterialDef> = {
     'exposed-brick': { color: '#8B5A44', roughness: 0.95, metalness: 0, repeatScale: 0.35, preview: '🧱' },
     'concrete-raw': { color: '#A8A6A0', roughness: 0.95, metalness: 0, repeatScale: 0.15, preview: '/textures/Concrete025_1K-JPG_Color.jpg', textureUrl: '/textures/Concrete025_1K-JPG_Color.jpg', normalMapUrl: '/textures/Concrete025_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Concrete025_1K-JPG_Roughness.jpg' },
 }
+
+export const WALL_MATERIALS = [
+    { id: 'paint', label: 'Paint', swatch: '#FFFFFF' },
+    { id: 'wallpaper-stripe', label: 'Stripe Wallpaper', swatch: '#E8E4DC' },
+    { id: 'wallpaper-floral', label: 'Floral Wallpaper', swatch: '#F0E6E4' },
+    { id: 'wallpaper-textured', label: 'Textured Wallpaper', swatch: '#EDEAE4' },
+    { id: 'pvc-panel-groove', label: 'PVC Grooved Panel', swatch: '#E4DDCF' },
+    { id: 'pvc-panel-brick', label: 'PVC Brick Panel', swatch: '#C9B8A8' },
+    { id: 'brick-red', label: 'Red Brick', swatch: '#A85C42' },
+    { id: 'brick-white', label: 'White Brick', swatch: '#D8D2C4' },
+    { id: 'tile-ceramic', label: 'Ceramic Tile', swatch: '#F2F1EC' },
+    { id: 'exposed-brick', label: 'Exposed Brick', swatch: '#8B5A44' },
+    { id: 'concrete-raw', label: 'Raw Concrete', swatch: '#A8A6A0' },
+] as const;
+
 
 // export const WALL_MAT_DEFS: Record<WallMaterial, MaterialDef> = {
 //     'paint': { color: '#FFFFFF', roughness: 0.85, metalness: 0, repeatScale: 0.1, preview: '⬜' },

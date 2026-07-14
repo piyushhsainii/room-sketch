@@ -5,8 +5,9 @@ import * as THREE from 'three'
 import { useTexture } from '@react-three/drei'
 
 import { makeWallNormalTexture } from '@/components/workspace/three/RoomFloor'
-import type { DoorStyle, RoomDoor } from '@/types/workspace'
+import type { RoomDoor } from '@/types/workspace'
 import type { WallSegment } from '@/lib/workspace/sceneBuilder'
+import { DoorStyle } from '../Tools/constants'
 
 type Props = {
   segment: WallSegment
@@ -94,17 +95,20 @@ const DOOR_MAT_CONFIGS: Record<DoorStyle, DoorMatConfig> = {
 function DoorMaterialTextured({ style }: { style: DoorStyle }) {
   const cfg = DOOR_MAT_CONFIGS[style]
 
-  // Only wood_oak uses the existing Wood049 textures
-  // wood_dark reuses same texture with dark color tint
-  // metal_steel uses Concrete025 roughness as a stand-in normal variation
-  const woodUrls = {
-    map: '/textures/Wood049_1K-JPG_Color.jpg',
-    normalMap: '/textures/Wood049_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/Wood049_1K-JPG_Roughness.jpg',
-  }
+  const woodUrls = style === 'wood_dark'
+    ? {
+      map: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_Color.jpg',
+      normalMap: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_NormalGL.jpg',
+      roughnessMap: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_Roughness.jpg',
+    }
+    : {
+      map: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_Color.jpg',
+      normalMap: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_NormalGL.jpg',
+      roughnessMap: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_Roughness.jpg',
+    }
   const metalUrls = {
-    normalMap: '/textures/Plaster001_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/Plaster001_1K-JPG_Roughness.jpg',
+    normalMap: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_NormalGL.jpg',
+    roughnessMap: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Roughness.jpg',
   }
 
   if (cfg.textureKey === 'wood_oak' || cfg.textureKey === 'wood_dark') {
@@ -113,7 +117,6 @@ function DoorMaterialTextured({ style }: { style: DoorStyle }) {
   if (cfg.textureKey === 'metal') {
     return <DoorMaterialMetal urls={metalUrls} />
   }
-  // Fallback for non-textured styles
   return (
     <meshStandardMaterial
       color={cfg.color}
@@ -190,17 +193,14 @@ function DoorFrame({
   const frameD = 0.06
   return (
     <group rotation={[0, rotY, 0]}>
-      {/* Left jamb */}
       <mesh position={[-(w / 2 + frameT / 2), h / 2, 0]}>
         <boxGeometry args={[frameT, h, frameD]} />
         <meshStandardMaterial color="#D0C8B8" roughness={0.6} metalness={0.05} />
       </mesh>
-      {/* Right jamb */}
       <mesh position={[(w / 2 + frameT / 2), h / 2, 0]}>
         <boxGeometry args={[frameT, h, frameD]} />
         <meshStandardMaterial color="#D0C8B8" roughness={0.6} metalness={0.05} />
       </mesh>
-      {/* Top header */}
       <mesh position={[0, h + frameT / 2, 0]}>
         <boxGeometry args={[w + frameT * 2, frameT, frameD]} />
         <meshStandardMaterial color="#D0C8B8" roughness={0.6} metalness={0.05} />
@@ -219,12 +219,10 @@ function DoorHandle({ style }: { style: DoorStyle }) {
 
   return (
     <group position={[0.35, 0, 0.025]}>
-      {/* Handle bar */}
       <mesh rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.018, 0.018, 0.12, 10]} />
         <meshStandardMaterial color={color} roughness={rough} metalness={metal} />
       </mesh>
-      {/* Back plate */}
       <mesh position={[0, 0, -0.015]}>
         <boxGeometry args={[0.035, 0.14, 0.012]} />
         <meshStandardMaterial color={color} roughness={rough} metalness={metal} />
@@ -233,7 +231,7 @@ function DoorHandle({ style }: { style: DoorStyle }) {
   )
 }
 
-// ── Wall material helpers (unchanged from before) ─────────────────────────────
+// ── Wall material helpers (unchanged) ─────────────────────────────────────────
 
 function classifyWallColor(hex: string): 'plaster' | 'marble' | 'tile' {
   if (!hex || hex.length < 7) return 'plaster'
@@ -372,6 +370,13 @@ export default function RoomWall({
   }
 
   function buildPanels(door: RoomDoor) {
+    // Per-door override — falls back to the wall/scene-wide default when the
+    // door itself doesn't specify a material. This is the one line that
+    // makes individual door styling actually take effect for the published
+    // workspace view (previously every door here always used the global
+    // `doorStyle` prop regardless of what was picked per-door in the editor).
+    const resolvedDoorStyle: DoorStyle = door.material ?? doorStyle
+
     const panels: React.ReactNode[] = []
     const doorWorldCenter = wallStart + door.position
     const doorWorldLeft = Math.max(wallStart, doorWorldCenter - door.width / 2)
@@ -428,13 +433,10 @@ export default function RoomWall({
       </group>
     )
 
-    // ── Door leaf: open ~85° inward ───────────────────────────────────────────
-    // Hinge at left edge of opening, leaf swings inward
     // ── Door leaf: open 90°, hinged at left edge, swings INWARD ──────────────
     const hingeAlong = doorWorldLeft
     const leafInset = THICKNESS / 2 + 0.025
 
-    // Inward = opposite of wall normal
     const inwardX = -normal.x
     const inwardZ = -normal.z
 
@@ -445,7 +447,7 @@ export default function RoomWall({
       : wallFixed + inwardX * leafInwardCenter
     const leafCz = isHorizontal
       ? wallFixed + inwardZ * leafInwardCenter
-      : hingeAlong + leafInset * Math.abs(inwardZ)   // stays near hinge Z
+      : hingeAlong + leafInset * Math.abs(inwardZ)
 
     panels.push(
       <group key="leaf" position={[leafCx, DOOR_HEIGHT / 2, leafCz]}>
@@ -453,19 +455,19 @@ export default function RoomWall({
           <boxGeometry args={[door.width, DOOR_HEIGHT, 0.045]} />
           <Suspense fallback={
             <meshStandardMaterial
-              color={DOOR_MAT_CONFIGS[doorStyle].color}
-              roughness={DOOR_MAT_CONFIGS[doorStyle].roughness}
-              metalness={DOOR_MAT_CONFIGS[doorStyle].metalness}
-              transparent={DOOR_MAT_CONFIGS[doorStyle].transparent}
-              opacity={DOOR_MAT_CONFIGS[doorStyle].opacity}
+              color={DOOR_MAT_CONFIGS[resolvedDoorStyle].color}
+              roughness={DOOR_MAT_CONFIGS[resolvedDoorStyle].roughness}
+              metalness={DOOR_MAT_CONFIGS[resolvedDoorStyle].metalness}
+              transparent={DOOR_MAT_CONFIGS[resolvedDoorStyle].transparent}
+              opacity={DOOR_MAT_CONFIGS[resolvedDoorStyle].opacity}
             />
           }>
-            <DoorMaterialTextured style={doorStyle} />
+            <DoorMaterialTextured style={resolvedDoorStyle} />
           </Suspense>
         </mesh>
         {/* Handle */}
         <group rotation={[0, rotY + Math.PI / 2, 0]}>
-          <DoorHandle style={doorStyle} />
+          <DoorHandle style={resolvedDoorStyle} />
         </group>
       </group>
     )

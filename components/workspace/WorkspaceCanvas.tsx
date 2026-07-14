@@ -1,6 +1,6 @@
 'use client'
 
-import { Canvas } from '@react-three/fiber'
+import ResilientCanvas from './ResilientCanvas'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { WORKSPACE } from '@/constants/content'
 import {
@@ -130,7 +130,7 @@ export default function WorkspaceCanvas({
         onPointerMove={() => { setShowHint(true); resetHintTimer() }}
         onWheel={() => { setShowHint(true); resetHintTimer() }}
       >
-        <Canvas
+        <ResilientCanvas
           key={`canvas_${mode}`}
           shadows="soft"
           frameloop="always"
@@ -184,7 +184,7 @@ export default function WorkspaceCanvas({
               rooms={configuredRooms}
             />
           </Suspense>
-        </Canvas>
+        </ResilientCanvas>
       </div>
 
       {/* Minimap */}

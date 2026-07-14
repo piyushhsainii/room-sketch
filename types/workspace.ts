@@ -1,4 +1,5 @@
 import {
+  DoorMaterial,
   DoorStyle,
   FloorMaterial,
   WallMaterial,
@@ -9,11 +10,12 @@ export interface WallPoint {
   z: number;
 }
 
-export interface RoomDoor {
+export type RoomDoor = {
   wall: "north" | "south" | "east" | "west";
-  position: number; // meters from left end of that wall
-  width: number; // meters
-}
+  position: number;
+  width: number;
+  material?: DoorMaterial; // ← new: per-door override, undefined = use global door_style
+};
 
 export interface RoomWindow {
   wall: "north" | "south" | "east" | "west";
@@ -108,5 +110,5 @@ export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {
   showFurniture: true,
   showLabels: true,
   fogEnabled: true,
-  doorStyle: "white", // ← add this
+  doorStyle: "glass_clear", // ← add this
 };

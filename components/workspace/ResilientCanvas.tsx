@@ -39,9 +39,6 @@ export default function ResilientCanvas({ onCreated, ...props }: CanvasProps) {
                 clearTimeout(remountTimerRef.current)
                 remountTimerRef.current = null
             }
-            if (remountCountRef.current >= MAX_REMOUNTS) return
-            remountCountRef.current += 1
-            setCanvasKey((k) => k + 1)
         }
 
         el.addEventListener('webglcontextlost', onLost)

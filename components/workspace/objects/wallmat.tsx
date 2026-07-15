@@ -1,7 +1,7 @@
 import * as THREE from 'three'
-import { useMemo } from 'react'
+import { Suspense, useMemo, useRef } from 'react'
 import { WallMaterial, WALL_MAT_DEFS, MaterialDef } from '../Tools/constants'
-import { useLoader } from '@react-three/fiber'
+import { useFrame, useLoader } from '@react-three/fiber'
 
 interface WallMatProps {
     color?: string
@@ -92,10 +92,27 @@ export function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture 
     return tex
 }
 
+function LoadingMaterial() {
+    const ref = useRef<THREE.MeshStandardMaterial>(null)
+    useFrame(({ clock }) => {
+        if (ref.current) {
+            const t = (Math.sin(clock.elapsedTime * 3) + 1) / 2
+            ref.current.color.setScalar(0.75 + t * 0.1)
+        }
+    })
+    return <meshStandardMaterial ref={ref} roughness={0.9} />
+}
+
 export function RealTextureWallMat({ width, height, depth, def }: { width: number; height: number; depth: number; def: MaterialDef }) {
     const urls = [def.textureUrl!, def.normalMapUrl, def.roughnessMapUrl].filter(Boolean) as string[]
     const loaded = useLoader(THREE.TextureLoader, urls)
-    const [colorMap, normalMap, roughnessMap] = loaded
+
+    // Map results back by which URLs were actually present — don't assume fixed
+    // array positions, since `.filter(Boolean)` shifts indices when a map is absent.
+    let i = 0
+    const colorMap = loaded[i++]
+    const normalMap = def.normalMapUrl ? loaded[i++] : undefined
+    const roughnessMap = def.roughnessMapUrl ? loaded[i++] : undefined
 
     const maps = useMemo(() => {
         const prep = (t: THREE.Texture) => {
@@ -103,20 +120,15 @@ export function RealTextureWallMat({ width, height, depth, def }: { width: numbe
             c.wrapS = c.wrapT = THREE.RepeatWrapping
             c.repeat.set(width * def.repeatScale, height * def.repeatScale)
             c.needsUpdate = true
-
-            // Fix moire/aliasing on tiled textures viewed at oblique angles —
-            // mipmaps + anisotropic filtering smooth out high-frequency repeat
-            // patterns instead of aliasing into the shimmering interference look.
             c.generateMipmaps = true
             c.minFilter = THREE.LinearMipmapLinearFilter
             c.magFilter = THREE.LinearFilter
-            c.anisotropy = 8 // most GPUs support at least this; renderer.capabilities.getMaxAnisotropy() if you have gl access
-
+            c.anisotropy = 8
             return c
         }
         const result: any = { map: prep(colorMap) }
-        if (def.normalMapUrl) result.normalMap = prep(normalMap)
-        if (def.roughnessMapUrl) result.roughnessMap = prep(roughnessMap)
+        if (normalMap) result.normalMap = prep(normalMap)
+        if (roughnessMap) result.roughnessMap = prep(roughnessMap)
         return result
     }, [colorMap, normalMap, roughnessMap, width, height, def])
 
@@ -136,18 +148,29 @@ export function WallMat({ color, roughness, textured = false, mat = 'paint', wid
     const def = WALL_MAT_DEFS[mat] || WALL_MAT_DEFS['paint']
     const finalColor = color && color !== '#FFFFFF' ? color : def.color
     const finalRoughness = roughness ?? def.roughness
-    if (def.textureUrl) {
-        return <RealTextureWallMat width={width} height={height} depth={depth} def={def} />
-    }
+
+    // Hook must run unconditionally, on every render, regardless of which
+    // branch below actually gets returned — moving this after the early
+    // `def.textureUrl` return (as it was before) violates Rules of Hooks:
+    // switching a wall between a textured and procedural/solid material
+    // would change the number of hooks called between renders.
     const texture = useMemo(() => {
+        if (def.textureUrl) return null // real-texture path handles its own loading, this branch unused
         const tex = createProceduralTexture(mat)
         if (tex) {
-            // Scale repeats based on real world dimensions
             tex.repeat.set(width * def.repeatScale, height * def.repeatScale)
             tex.needsUpdate = true
         }
         return tex
-    }, [mat, width, height, def.repeatScale])
+    }, [mat, width, height, def.repeatScale, def.textureUrl])
+
+    if (def.textureUrl) {
+        return (
+            <Suspense fallback={<LoadingMaterial />}>
+                <RealTextureWallMat width={width} height={height} depth={depth} def={def} />
+            </Suspense>
+        )
+    }
 
     // PVC Groove Geometry Injection (Generalized across wall width)
     if (mat === 'pvc-panel-groove') {
@@ -192,3 +215,4 @@ export function WallMat({ color, roughness, textured = false, mat = 'paint', wid
         />
     )
 }
+

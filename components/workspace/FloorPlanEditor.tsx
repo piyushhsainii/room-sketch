@@ -98,7 +98,7 @@ type Props = {
     isSaving?: boolean
     isSaved?: boolean
 }
-export default function FloorPlanEditor({ onSave, onClose, initialState, initialSceneConfig, isSaving = false, isSaved = false }: Props) {
+export default function <FloorPlanEditor>({ onSave, onClose, initialState, initialSceneConfig, isSaving = false, isSaved = false }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
     const [isFullscreen, setIsFullscreen] = useState(false)
@@ -1783,9 +1783,9 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                         </button>
                     ))}
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                     {rightTab === 'properties' && (
-                        <>
+                        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                             <SceneGraphPanel fp={fp} selectedId={selectedId} onSelect={setSelectedId} />
                             <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
                             <PropsPanel
@@ -1819,14 +1819,15 @@ export default function FloorPlanEditor({ onSave, onClose, initialState, initial
                                 sceneConfig={sceneConfig}
                                 onChangeSceneConfig={setSceneConfig}
                             />
-                        </>
+                        </div>
                     )}
-                    {/* {rightTab === 'scene' && (
-                        <SceneConfigPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} embedded />
-                    )} */}
-                    {rightTab === 'scene' && (
-                        <MaterialsPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} />
-                    )}
+                    <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                        {rightTab === 'scene' && (
+                            <div style={{ flex: 1, minHeight: 0 }}>
+                                <MaterialsPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} />
+                            </div>
+                        )}
+                    </div>
                 </div>
             </Dock>
         </div>

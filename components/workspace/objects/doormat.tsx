@@ -4,16 +4,6 @@ import { useTexture } from '@react-three/drei'
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
 
-export const DOOR_MATERIALS: { id: DoorMaterial; label: string; swatch: string }[] = [
-    { id: 'wood_oak', label: 'Oak', swatch: '#C8A878' },
-    { id: 'wood_dark', label: 'Dark Wood', swatch: '#4A3220' },
-    { id: 'wood_white', label: 'White', swatch: '#F0EDE8' },
-    { id: 'glass_frosted', label: 'Frosted Glass', swatch: '#C8D8E4' },
-    { id: 'glass_clear', label: 'Clear Glass', swatch: '#B8D0E0' },
-    { id: 'metal_steel', label: 'Steel', swatch: '#9AABB8' },
-    { id: 'panel_white', label: 'Panel White', swatch: '#F5F2EE' },
-]
-
 interface DoorMatConfig {
     color: string
     roughness: number
@@ -46,8 +36,9 @@ const WOOD_DARK_TEX_URLS = {
     roughnessMap: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_Roughness.jpg',
 }
 const METAL_TEX_URLS = {
-    normalMap: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Roughness.jpg',
+    map: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_Color.jpg',
+    normalMap: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_NormalGL.jpg',
+    roughnessMap: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_Roughness.jpg',
 }
 
 function DoorMatWood({ style }: { style: DoorMaterial }) {
@@ -81,6 +72,7 @@ function DoorMatMetal() {
     }, [textures])
     return (
         <meshStandardMaterial
+            map={textures.map}
             normalMap={textures.normalMap}
             roughnessMap={textures.roughnessMap}
             color={cfg.color}

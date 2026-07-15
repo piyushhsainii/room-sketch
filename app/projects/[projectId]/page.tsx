@@ -135,7 +135,7 @@ export default function ProjectViewerPage() {
                         console.error("[ProjectViewer] save failed:", err);
                     }
                 }}
-                onClose={() => router.push("/")}
+                onClose={() => router.push("/dashboard")}
             />
         );
     }

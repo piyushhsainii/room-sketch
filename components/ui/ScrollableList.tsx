@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function ScrollableList({ children, maxHeight }: { children: React.ReactNode; maxHeight: number }) {
+export function ScrollableList({ children, maxHeight }: { children: React.ReactNode; maxHeight: number | string }) {
     const contentRef = useRef<HTMLDivElement>(null)
     const trackRef = useRef<HTMLDivElement>(null)
     const [thumb, setThumb] = useState({ height: 0, top: 0, visible: false })
@@ -16,7 +16,18 @@ export function ScrollableList({ children, maxHeight }: { children: React.ReactN
         setThumb({ height: thumbHeight, top: thumbTop, visible: true })
     }, [])
 
-    useEffect(() => { updateThumb() }, [updateThumb, children])
+    // Re-measure on mount, on content change, AND on parent resize — a
+    // string/percentage maxHeight means clientHeight can change after the
+    // initial render (e.g. the Dock sheet expanding), and the old effect
+    // only re-ran on `children` changes, so the thumb could get stuck wrong.
+    useEffect(() => {
+        updateThumb()
+        const el = contentRef.current
+        if (!el || typeof ResizeObserver === 'undefined') return
+        const ro = new ResizeObserver(() => updateThumb())
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [updateThumb, children])
 
     const onThumbMouseDown = (e: React.MouseEvent) => {
         e.preventDefault()
@@ -42,13 +53,17 @@ export function ScrollableList({ children, maxHeight }: { children: React.ReactN
         window.addEventListener('mouseup', onUp)
     }
 
+    const isPercent = typeof maxHeight === 'string'
+
     return (
-        <div style={{ position: 'relative', display: 'flex' }}>
+        <div style={{ position: 'relative', display: 'flex', height: isPercent ? maxHeight : undefined, minHeight: 0 }}>
             <div
                 ref={contentRef}
                 onScroll={updateThumb}
                 style={{
                     maxHeight, overflowY: 'auto', flex: 1,
+                    height: isPercent ? '100%' : undefined,
+                    minHeight: 0,
                     scrollbarWidth: 'none', msOverflowStyle: 'none',
                 }}
                 className="hide-native-scrollbar"

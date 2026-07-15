@@ -1,4 +1,4 @@
-import { GizmoHelper, GizmoViewport, OrbitControls, PointerLockControls } from "@react-three/drei"
+import { OrbitControls } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./Tools/constants"
 import { Room3D } from "./3dRoom"
 import { LineWalls3D } from "./objects/line-walls-3d"
@@ -6,7 +6,6 @@ import { StairsMesh } from "./furniture/stairsMesh"
 import { WalkModeControls } from "./WalkModeControls"
 import { FurnitureMesh } from "./furniture/furnitureMesh"
 import { SceneConfig } from "./FloorPlanEditor"
-import { NavigationGizmo } from "./three/NavigationGizmo"
 
 function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect }: {
     fp: FloorPlanState

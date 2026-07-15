@@ -1,7 +1,6 @@
 import React from 'react'
 import * as Icons from 'lucide-react'
 import {
-    FURNITURE_CATALOG,
     getFurnitureByCategory,
     isFurnitureNew,
     FurnitureType,

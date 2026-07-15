@@ -1,10 +1,15 @@
 import * as THREE from 'three'
-import { useMemo } from 'react'
-import { FloorMaterial, FLOOR_MAT_DEFS, MaterialDef, FLOOR_TEXTURE_URLS } from '../Tools/constants'
-import { useLoader } from '@react-three/fiber'
+import { Suspense, useMemo, useRef } from 'react'
+import { FloorMaterial, FLOOR_MAT_DEFS, MaterialDef } from '../Tools/constants'
+import { useFrame, useLoader } from '@react-three/fiber'
 
+// ── Procedural fallback for solids / anything without a real texture ──────
+// Kept string-matching only as a *visual* fallback for materials that
+// genuinely have no textureUrl in the registry (e.g. solid-*, plain) — any
+// material WITH a textureUrl now always takes the real-texture path below,
+// so this no longer needs to recognize every registry key by name.
 function createFloorTexture(mat: FloorMaterial, def: MaterialDef): THREE.CanvasTexture | null {
-    if (mat === 'plain') return null
+    if (mat === 'plain' || mat.startsWith('solid-')) return null
 
     const canvas = document.createElement('canvas')
     canvas.width = 512
@@ -12,7 +17,7 @@ function createFloorTexture(mat: FloorMaterial, def: MaterialDef): THREE.CanvasT
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
-    ctx.fillStyle = '#FFFFFF'
+    ctx.fillStyle = def.color || '#FFFFFF'
     ctx.fillRect(0, 0, 512, 512)
 
     if (mat.includes('wood')) {
@@ -51,6 +56,16 @@ function createFloorTexture(mat: FloorMaterial, def: MaterialDef): THREE.CanvasT
         const tileSize = 85
         for (let x = 0; x <= 512; x += tileSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 512); ctx.stroke() }
         for (let y = 0; y <= 512; y += tileSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke() }
+    } else if (mat.includes('fabric') || mat.includes('carpet')) {
+        for (let i = 0; i < 8000; i++) {
+            ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`
+            ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2)
+        }
+    } else if (mat.includes('concrete') || mat === 'plaster') {
+        for (let i = 0; i < 15000; i++) {
+            ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.1})`
+            ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2)
+        }
     }
 
     const tex = new THREE.CanvasTexture(canvas)
@@ -58,44 +73,69 @@ function createFloorTexture(mat: FloorMaterial, def: MaterialDef): THREE.CanvasT
     return tex
 }
 
-function ProceduralFloorMat({ mat, width, depth }: { mat: FloorMaterial; width: number; depth: number }) {
-    const def = FLOOR_MAT_DEFS[mat] || FLOOR_MAT_DEFS['plain']
+function LoadingFloorMaterial() {
+    const ref = useRef<THREE.MeshStandardMaterial>(null)
+    useFrame(({ clock }) => {
+        if (ref.current) {
+            const t = (Math.sin(clock.elapsedTime * 3) + 1) / 2
+            ref.current.color.setScalar(0.75 + t * 0.1)
+        }
+    })
+    return <meshStandardMaterial ref={ref} roughness={0.9} />
+}
+
+function ProceduralFloorMat({ mat, def, width, depth }: { mat: FloorMaterial; def: MaterialDef; width: number; depth: number }) {
     const texture = useMemo(() => {
         const tex = createFloorTexture(mat, def)
         if (tex) { tex.repeat.set(width * def.repeatScale, depth * def.repeatScale); tex.needsUpdate = true }
         return tex
-    }, [mat, width, depth, def.repeatScale])
+    }, [mat, width, depth, def.repeatScale, def.color])
 
     return <meshStandardMaterial attach="material" color={def.color} roughness={def.roughness} metalness={def.metalness} map={texture || undefined} />
 }
 
-type FloorTexInfo = {
-    map: string; normalMap: string; roughnessMap: string; repeat: number
-    roughness: number; metalness: number
-}
+// ── Real-texture path — sourced from the registry MaterialDef itself
+// (def.textureUrl / normalMapUrl / roughnessMapUrl), the same way WallMat
+// already does it. This is what was missing: FloorMat previously looked up
+// a SEPARATE, hand-maintained FLOOR_TEXTURE_URLS table instead of the
+// registry def, so any registry-only floor key not manually added to that
+// table (marble-travertine, carpet-plush, wood-floor-herringbone,
+// concrete-polished, every solid-* floor variant, etc.) silently fell back
+// to an untextured/wrong procedural fill — this is why area/room floor
+// overrides using those keys looked like they weren't applying.
+function RealTextureFloorMat({ width, depth, def }: { width: number; depth: number; def: MaterialDef }) {
+    const urls = [def.textureUrl!, def.normalMapUrl, def.roughnessMapUrl].filter(Boolean) as string[]
+    const loaded = useLoader(THREE.TextureLoader, urls)
 
-function RealTextureFloorMat({ width, depth, texInfo }: { width: number; depth: number; texInfo: FloorTexInfo }) {
-    const [colorMap, normalMap, roughnessMap] = useLoader(THREE.TextureLoader, [
-        texInfo.map, texInfo.normalMap, texInfo.roughnessMap,
-    ])
+    let i = 0
+    const colorMap = loaded[i++]
+    const normalMap = def.normalMapUrl ? loaded[i++] : undefined
+    const roughnessMap = def.roughnessMapUrl ? loaded[i++] : undefined
 
     const maps = useMemo(() => {
         const prep = (t: THREE.Texture) => {
             const c = t.clone()
             c.wrapS = c.wrapT = THREE.RepeatWrapping
-            c.repeat.set(width * texInfo.repeat, depth * texInfo.repeat)
+            c.repeat.set(width * def.repeatScale, depth * def.repeatScale)
             c.needsUpdate = true
+            c.generateMipmaps = true
+            c.minFilter = THREE.LinearMipmapLinearFilter
+            c.magFilter = THREE.LinearFilter
+            c.anisotropy = 8
             return c
         }
-        return { map: prep(colorMap), normalMap: prep(normalMap), roughnessMap: prep(roughnessMap) }
-    }, [colorMap, normalMap, roughnessMap, width, depth, texInfo.repeat])
+        const result: any = { map: prep(colorMap) }
+        if (normalMap) result.normalMap = prep(normalMap)
+        if (roughnessMap) result.roughnessMap = prep(roughnessMap)
+        return result
+    }, [colorMap, normalMap, roughnessMap, width, depth, def])
 
     return (
         <meshStandardMaterial
             attach="material"
             color="#FFFFFF"
-            roughness={1} // roughnessMap drives it — flat scalar left at 1 so the map isn't double-applied
-            metalness={texInfo.metalness}
+            roughness={def.roughnessMapUrl ? 1 : def.roughness} // roughnessMap drives it when present — flat scalar left at 1 so the map isn't double-applied
+            metalness={def.metalness}
             {...maps}
         />
     )
@@ -103,13 +143,19 @@ function RealTextureFloorMat({ width, depth, texInfo }: { width: number; depth: 
 
 export function FloorMat({ mat = 'plain', width = 10, depth = 10 }: { mat?: FloorMaterial; width?: number; depth?: number }) {
     const def = FLOOR_MAT_DEFS[mat] || FLOOR_MAT_DEFS['plain']
+
+    if (def.textureUrl) {
+        return (
+            <Suspense fallback={<LoadingFloorMaterial />}>
+                <RealTextureFloorMat width={width} depth={depth} def={def} />
+            </Suspense>
+        )
+    }
+
     const isSolid = mat === 'plain' || mat.startsWith('solid-')
     if (isSolid) {
         return <meshStandardMaterial attach="material" color={def.color} roughness={def.roughness} metalness={def.metalness} />
     }
-    const texInfo = FLOOR_TEXTURE_URLS[mat as Exclude<FloorMaterial, 'plain'>]
-    if (texInfo?.map) {
-        return <RealTextureFloorMat width={width} depth={depth} texInfo={texInfo} />
-    }
-    return <ProceduralFloorMat mat={mat} width={width} depth={depth} />
+
+    return <ProceduralFloorMat mat={mat} def={def} width={width} depth={depth} />
 }

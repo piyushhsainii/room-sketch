@@ -191,12 +191,12 @@ body {
     "Segoe UI Emoji";
 }
 
-* {
+/* * {
   scrollbar-width: none;
 }
 *::-webkit-scrollbar {
   display: none;
-}
+} */
 
 @keyframes fadeUp {
   from {

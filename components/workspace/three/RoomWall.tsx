@@ -107,8 +107,9 @@ function DoorMaterialTextured({ style }: { style: DoorStyle }) {
       roughnessMap: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_Roughness.jpg',
     }
   const metalUrls = {
-    normalMap: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Roughness.jpg',
+    map: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_Color.jpg',
+    normalMap: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_NormalGL.jpg',
+    roughnessMap: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_Roughness.jpg',
   }
 
   if (cfg.textureKey === 'wood_oak' || cfg.textureKey === 'wood_dark') {
@@ -161,7 +162,7 @@ function DoorMaterialWood({
 function DoorMaterialMetal({
   urls,
 }: {
-  urls: { normalMap: string; roughnessMap: string }
+  urls: { map: string; normalMap: string; roughnessMap: string }
 }) {
   const cfg = DOOR_MAT_CONFIGS['metal_steel']
   const textures = useTexture(urls)
@@ -176,6 +177,7 @@ function DoorMaterialMetal({
   }, [textures])
   return (
     <meshStandardMaterial
+      map={textures.map}
       normalMap={textures.normalMap}
       roughnessMap={textures.roughnessMap}
       color={cfg.color}

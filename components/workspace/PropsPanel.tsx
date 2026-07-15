@@ -1,10 +1,9 @@
 import { snapFurniture, snapM } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
-import { EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_LABELS, FURNITURE_MATERIALS, LineNode, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WALL_MAT_DEFS, WALL_MATERIALS, WallMaterial } from "./Tools/constants"
-import { DOOR_MATERIALS } from './Tools/constants'
-
-
-
+import { EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_LABELS, FURNITURE_MATERIALS, LineNode, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./Tools/constants"
+import { getMaterialsFor } from "./texture/universalMaterials"
+import { MaterialTexturePicker } from "./texture/MaterialPicker"
+import { getMaterialsForDomain } from './Tools/constants'
 
 export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, onChangeSceneConfig }: {
     fp: FloorPlanState
@@ -22,6 +21,15 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         color: THEME.text, fontSize: 12,
         padding: '0 8px', outline: 'none',
     }
+
+    const pickerTheme = { border: THEME.border, borderStrong: THEME.borderStrong, textMuted: THEME.textMuted }
+    const wallMaterials = getMaterialsFor('wall')
+    const floorMaterials = getMaterialsFor('floor')
+    const furnitureMaterials = getMaterialsFor('furniture')
+    // NOTE: door materials are now sourced live from getMaterialsForDomain('door')
+    // at the call site below, not from the older universalMaterials catalog —
+    // see the "Known gap" note regarding furniture materials, which have NOT
+    // yet been migrated to MATERIAL_REGISTRY for the reasons flagged there.
 
     // Parsing Single-Wall Selections
     const wallSel = selectedId?.includes('::wall::')
@@ -80,7 +88,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     const patchNode = (patch: Partial<LineNode>) =>
         onChange({ ...fp, lineNodes: fp.lineNodes.map(n => n.id === node?.id ? { ...n, ...patch } : n) })
 
-    // Lookups for wall specific overrides
+    // Lookups for wall specific overrides (single room-wall selection, e.g. "roomA::wall::north")
     const roomConfig = sceneConfig.rooms.find(r => r.roomId === wallRoom?.id)
     const specificWallColor = wallSel ? roomConfig?.wallOverrides?.[wallSel.wall]?.color : undefined
     const specificWallTexture = wallSel ? roomConfig?.wallOverrides?.[wallSel.wall]?.material : undefined
@@ -103,6 +111,11 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         })
         onChangeSceneConfig({ ...sceneConfig, rooms: nextRooms })
     }
+
+    // Lookup for line-wall SEGMENT material override (this was previously
+    // missing entirely — segments only had a color picker, no texture picker,
+    // so there was no way to override a single line-wall segment's material).
+    const segSceneConfig = seg ? sceneConfig.rooms.find(r => r.roomId === seg.id) : undefined
 
     return (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -138,88 +151,16 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         />
                     </PropField>
 
-                    <PropField label="Texture">
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                            {/* Default Plain Paint */}
-                            <button
-                                onClick={() => patchSpecificWall({ material: null })}
-                                title="Default Paint"
-                                style={{
-                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                                    width: 52, padding: '6px 2px', borderRadius: 8, cursor: 'pointer',
-                                    border: !specificWallTexture ? '2px solid #6366F1' : `1px solid ${THEME.borderStrong}`,
-                                    background: !specificWallTexture ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                }}
-                            >
-                                <div style={{
-                                    width: 28, height: 28, borderRadius: 6,
-                                    background: 'repeating-conic-gradient(#D4D4D4 0% 25%, #FFFFFF 0% 50%) 0 0/10px 10px',
-                                    border: `1px solid ${THEME.borderStrong}`,
-                                }} />
-                                <span style={{ fontSize: 8.5, color: THEME.textMuted, textAlign: 'center', lineHeight: 1.15 }}>
-                                    Plain Paint
-                                </span>
-                            </button>
-
-                            {/* Map over materials using the "material" property */}
-                            {WALL_MATERIALS.map(m => (
-                                <button
-                                    key={m.id}
-                                    onClick={() => patchSpecificWall({ material: m.id as WallMaterial })}
-                                    title={m.label}
-                                    style={{
-                                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                                        width: 52, padding: '6px 2px', borderRadius: 8, cursor: 'pointer',
-                                        border: specificWallTexture === m.id ? '2px solid #6366F1' : `1px solid ${THEME.borderStrong}`,
-                                        background: specificWallTexture === m.id ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                    }}
-                                >
-                                    <div style={{
-                                        width: 28, height: 28, borderRadius: 6,
-                                        background: m.swatch,
-                                        border: `1px solid ${THEME.borderStrong}`,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12
-                                    }}>
-                                        {WALL_MATERIALS.map(m => {
-                                            // 1. Narrow the lookup locally first
-                                            const matDef = WALL_MAT_DEFS[m.id as WallMaterial];
-                                            if (!matDef) return null; // Safe fallback guard that pleases TypeScript
-
-                                            return (
-                                                <button
-                                                    key={m.id}
-                                                    onClick={() => patchSpecificWall({ material: m.id as WallMaterial })}
-                                                    title={m.label}
-                                                    style={{
-                                                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                                                        width: 52, padding: '6px 2px', borderRadius: 8, cursor: 'pointer',
-                                                        border: specificWallTexture === m.id ? '2px solid #6366F1' : `1px solid ${THEME.borderStrong}`,
-                                                        background: specificWallTexture === m.id ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                                    }}
-                                                >
-                                                    <div style={{
-                                                        width: 28, height: 28, borderRadius: 6,
-                                                        background: m.swatch,
-                                                        border: `1px solid ${THEME.borderStrong}`,
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12
-                                                    }}>
-                                                        {/* 2. Now safe to access directly since matDef is guaranteed defined */}
-                                                        {matDef.preview && matDef.preview.length <= 2 && matDef.preview}
-                                                    </div>
-                                                    <span style={{ fontSize: 8.5, color: THEME.textMuted, textAlign: 'center', lineHeight: 1.15 }}>
-                                                        {m.label}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                    <span style={{ fontSize: 8.5, color: THEME.textMuted, textAlign: 'center', lineHeight: 1.15 }}>
-                                        {m.label}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-                    </PropField>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 4 }}>
+                        TEXTURE
+                    </div>
+                    <MaterialTexturePicker
+                        items={wallMaterials}
+                        currentId={specificWallTexture}
+                        onSelect={(id) => patchSpecificWall({ material: id as WallMaterial })}
+                        onClear={() => patchSpecificWall({ material: null })}
+                        theme={pickerTheme}
+                    />
                 </>
             )}
 
@@ -246,15 +187,22 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         onChange={e => patchRoomScene({ wallColor: e.target.value })}
                         style={{ width: 40, height: 26, border: `1px solid ${THEME.borderStrong}`, borderRadius: 5, padding: 0, cursor: 'pointer' }} />
                 </PropField>
-                <PropField label="Floor">
-                    <select
-                        value={sceneConfig.rooms.find(r => r.roomId === room.id)?.floorMaterial ?? sceneConfig.globalFloorMaterial ?? 'plain'}
-                        onChange={e => patchRoomScene({ floorMaterial: e.target.value as FloorMaterial })}
-                        style={{ ...inputStyle, width: 120 }}
-                    >
-                        {FLOOR_MATERIALS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-                    </select>
-                </PropField>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 4 }}>WALL TEXTURE</div>
+                <MaterialTexturePicker
+                    items={wallMaterials}
+                    currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallMaterial}
+                    onSelect={(id) => patchRoomScene({ wallMaterial: id as WallMaterial })}
+                    onClear={() => patchRoomScene({ wallMaterial: undefined })}
+                    theme={pickerTheme}
+                />
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 8 }}>FLOOR TEXTURE</div>
+                <MaterialTexturePicker
+                    items={floorMaterials}
+                    currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.floorMaterial}
+                    onSelect={(id) => patchRoomScene({ floorMaterial: id as FloorMaterial })}
+                    onClear={() => patchRoomScene({ floorMaterial: undefined })}
+                    theme={pickerTheme}
+                />
             </>}
 
             {node && <>
@@ -270,19 +218,31 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>APPEARANCE</div>
                 <PropField label="Wall color">
                     <input type="color"
-                        value={sceneConfig.rooms.find(r => r.roomId === seg.id)?.wallColor ?? '#FFFFFF'}
+                        value={segSceneConfig?.wallColor ?? '#FFFFFF'}
                         onChange={e => patchRoomSceneById(seg.id, { wallColor: e.target.value })}
                         style={{ width: 40, height: 26, border: `1px solid ${THEME.borderStrong}`, borderRadius: 5, padding: 0, cursor: 'pointer' }} />
                 </PropField>
-                <PropField label="Floor">
-                    <select
-                        value={sceneConfig.rooms.find(r => r.roomId === seg.id)?.floorMaterial ?? sceneConfig.globalFloorMaterial ?? 'plain'}
-                        onChange={e => patchRoomSceneById(seg.id, { floorMaterial: e.target.value as FloorMaterial })}
-                        style={{ ...inputStyle, width: 120 }}
-                    >
-                        {FLOOR_MATERIALS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-                    </select>
-                </PropField>
+
+                {/* THE FIX — this texture picker did not exist before, which
+                    is why a line-wall segment's material could never be
+                    overridden individually (only its color could). */}
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 4 }}>WALL TEXTURE</div>
+                <MaterialTexturePicker
+                    items={wallMaterials}
+                    currentId={segSceneConfig?.wallMaterial}
+                    onSelect={(id) => patchRoomSceneById(seg.id, { wallMaterial: id as WallMaterial })}
+                    onClear={() => patchRoomSceneById(seg.id, { wallMaterial: undefined })}
+                    theme={pickerTheme}
+                />
+
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 8 }}>FLOOR TEXTURE</div>
+                <MaterialTexturePicker
+                    items={floorMaterials}
+                    currentId={segSceneConfig?.floorMaterial}
+                    onSelect={(id) => patchRoomSceneById(seg.id, { floorMaterial: id as FloorMaterial })}
+                    onClear={() => patchRoomSceneById(seg.id, { floorMaterial: undefined })}
+                    theme={pickerTheme}
+                />
             </>}
 
             {opening && <>
@@ -301,60 +261,29 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             >
                                 {opening.swingDirection === 'inward' ? '← Inward' : '→ Outward'}
                             </button>
-                        </PropField> {/* Make sure PropField is closed cleanly */}
-
-                        {/* Delete any extra '</>' or '<>' that might have slipped here */}
+                        </PropField>
 
                         <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
                         <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>
                             MATERIAL
                         </div>
                         <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.55)', marginBottom: 2 }}>
-                            Overrides the global door style for this door only. Leave on "Default" to follow setting.
+                            Overrides the global door style for this door only. Leave on "Default" to follow the scene-wide setting.
                         </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                            <button
-                                onClick={() => patchOpening({ material: undefined })}
-                                title="Use global default"
-                                style={{
-                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                                    width: 52, padding: '6px 2px', borderRadius: 8, cursor: 'pointer',
-                                    border: !opening.material ? '2px solid #6366F1' : `1px solid ${THEME.borderStrong}`,
-                                    background: !opening.material ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                }}
-                            >
-                                <div style={{
-                                    width: 28, height: 28, borderRadius: 6,
-                                    background: 'repeating-conic-gradient(#D4D4D4 0% 25%, #FFFFFF 0% 50%) 0 0/10px 10px',
-                                    border: `1px solid ${THEME.borderStrong}`,
-                                }} />
-                                <span style={{ fontSize: 8.5, color: THEME.textMuted, textAlign: 'center', lineHeight: 1.15 }}>
-                                    Default
-                                </span>
-                            </button>
-                            {DOOR_MATERIALS.map(m => (
-                                <button
-                                    key={m.id}
-                                    onClick={() => patchOpening({ material: m.id })}
-                                    title={m.label}
-                                    style={{
-                                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                                        width: 52, padding: '6px 2px', borderRadius: 8, cursor: 'pointer',
-                                        border: opening.material === m.id ? '2px solid #6366F1' : `1px solid ${THEME.borderStrong}`,
-                                        background: opening.material === m.id ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                    }}
-                                >
-                                    <div style={{
-                                        width: 28, height: 28, borderRadius: 6,
-                                        background: m.swatch,
-                                        border: `1px solid ${THEME.borderStrong}`,
-                                    }} />
-                                    <span style={{ fontSize: 8.5, color: THEME.textMuted, textAlign: 'center', lineHeight: 1.15 }}>
-                                        {m.label}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
+                        <MaterialTexturePicker
+                            items={getMaterialsForDomain('door').map(({ key, def }) => ({
+                                id: key,
+                                label: def.label ?? key,
+                                swatch: def.color,
+                                thumbnail: def.textureUrl,
+                                category: def.category as any,
+                                appliesTo: ['door'],
+                            }))}
+                            currentId={opening.material}
+                            onSelect={(id) => patchOpening({ material: id as any })}
+                            onClear={() => patchOpening({ material: undefined })}
+                            theme={pickerTheme}
+                        />
                     </>
                 )}
             </>}
@@ -407,56 +336,26 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     </button>
                 </div>
 
-                {/* --- Renders textures only if catalog item supports texture feature --- */}
                 {supportsFurnitureTexture(furniture.type) && (
                     <>
                         <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
                         <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>
                             FURNITURE TEXTURE
                         </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                            <button
-                                onClick={() => patchFurniture({ materialId: undefined })}
-                                title="Default texture"
-                                style={{
-                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                                    width: 52, padding: '6px 2px', borderRadius: 8, cursor: 'pointer',
-                                    border: !furniture.materialId ? '2px solid #6366F1' : `1px solid ${THEME.borderStrong}`,
-                                    background: !furniture.materialId ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                }}
-                            >
-                                <div style={{
-                                    width: 28, height: 28, borderRadius: 6,
-                                    background: 'repeating-conic-gradient(#D4D4D4 0% 25%, #FFFFFF 0% 50%) 0 0/10px 10px',
-                                    border: `1px solid ${THEME.borderStrong}`,
-                                }} />
-                                <span style={{ fontSize: 8.5, color: THEME.textMuted, textAlign: 'center', lineHeight: 1.15 }}>
-                                    Default
-                                </span>
-                            </button>
-                            {FURNITURE_MATERIALS.map(m => (
-                                <button
-                                    key={m.id}
-                                    onClick={() => patchFurniture({ materialId: m.id })}
-                                    title={m.label}
-                                    style={{
-                                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                                        width: 52, padding: '6px 2px', borderRadius: 8, cursor: 'pointer',
-                                        border: furniture.materialId === m.id ? '2px solid #6366F1' : `1px solid ${THEME.borderStrong}`,
-                                        background: furniture.materialId === m.id ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                    }}
-                                >
-                                    <div style={{
-                                        width: 28, height: 28, borderRadius: 6,
-                                        background: m.swatch,
-                                        border: `1px solid ${THEME.borderStrong}`,
-                                    }} />
-                                    <span style={{ fontSize: 8.5, color: THEME.textMuted, textAlign: 'center', lineHeight: 1.15 }}>
-                                        {m.label}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
+                        {furnitureMaterials.length > 0 ? (
+                            <MaterialTexturePicker
+                                items={furnitureMaterials}
+                                currentId={furniture.materialId}
+                                onSelect={(id) => patchFurniture({ materialId: id })}
+                                onClear={() => patchFurniture({ materialId: undefined })}
+                                theme={pickerTheme}
+                            />
+                        ) : (
+                            <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.5)' }}>
+                                No furniture materials wired into the universal catalog yet —
+                                see the commented-out FURNITURE_MATERIALS import in universalMaterials.ts.
+                            </div>
+                        )}
                     </>
                 )}
             </>}
@@ -526,6 +425,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         </div>
     )
 }
+
 
 function PropField({ label, children }: { label: string; children: React.ReactNode }) {
     return (

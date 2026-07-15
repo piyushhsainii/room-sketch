@@ -1,92 +1,117 @@
-'use client'
-import dynamic from 'next/dynamic'
-import { useCallback, useState } from 'react'
-import type { SceneConfig } from '@/components/workspace/FloorPlanEditor'
-import { FloorPlanState } from './Tools/constants'
+"use client";
 
-const FloorPlanEditor = dynamic(
-    () => import('@/components/workspace/FloorPlanEditor'),
-    {
-        ssr: false, loading: () => (
-            <div style={{
-                width: '100vw', height: '100vh', display: 'grid', placeItems: 'center',
-                background: '#0F0E0C', color: 'rgba(148,163,184,0.6)', fontSize: 13,
-            }}>
-                Loading editor…
-            </div>
-        )
-    }
-)
-type Props = {
-    projectId: string
-    initialFloorPlanState?: any | null
-    initialSceneConfig?: SceneConfig | null
-    onSaved: (sceneJSON: any) => void
-    onClose: () => void
-}
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+import FloorPlanEditorModal from "@/components/workspace/FloorPlanEditorModal";
 
-export default function FloorPlanEditorModal({ projectId, initialFloorPlanState, initialSceneConfig, onSaved, onClose }: Props) {
-    const [saving, setSaving] = useState(false)
-    const [error, setError] = useState<string | null>(null)
-    const [saved, setSaved] = useState(false)
+const WorkspaceContainer = dynamic(
+    () => import("@/components/workspace/WorkspaceContainer"),
+    { ssr: false, loading: () => null }
+);
 
-    const handleSave = useCallback(async (fp: FloorPlanState, sceneConfig?: SceneConfig) => {
-        setSaving(true)
-        setError(null)
-        try {
-            const res = await fetch('/api/workspace/floorplan-editor-state', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    project_id: projectId,
-                    state: { floorPlanState: fp, sceneConfig },
-                }),
-            })
+export default function ProjectViewerPage() {
+    const params = useParams<{ id: string }>();
+    const router = useRouter();
+    const [project, setProject] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-            if (!res.ok) {
-                const body = await res.json() as { error?: string }
-                throw new Error(body.error ?? 'Failed to save')
+    useEffect(() => {
+        let cancelled = false;
+        async function load() {
+            setLoading(true);
+            setError(null);
+            try {
+                const res = await fetch(`/api/projects/${params.id}`, { cache: "no-store" });
+                if (cancelled) return;
+                if (res.status === 401) {
+                    setLoading(false);
+                    router.push("/");
+                    return;
+                }
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    setError(body.error ?? "Failed to load project.");
+                    return;
+                }
+                const body = await res.json();
+                setProject(body.project ?? body);
+            } catch (err) {
+                console.error("Failed to load project:", err);
+                if (!cancelled) setError("Failed to load project.");
+            } finally {
+                if (!cancelled) setLoading(false);
             }
-
-            const body = await res.json() as { scene_json?: any }
-            onSaved(body.scene_json)
-            setSaved(true)
-            setTimeout(() => setSaved(false), 2000)
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to save')
-        } finally {
-            setSaving(false)
         }
-    }, [projectId, onSaved])
+        if (params.id) void load();
+        else setLoading(false);
+        return () => { cancelled = true; };
+    }, [params.id, router]);
 
-    return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
-            {saving && (
-                <div style={{ position: 'absolute', inset: 0, zIndex: 200, background: 'rgba(10,9,7,0.7)', display: 'grid', placeItems: 'center' }}>
-                    <div style={{ fontSize: 14, color: 'rgba(165,168,255,0.9)' }}>Saving floor plan…</div>
-                </div>
-            )}
+    if (loading) {
+        return (
+            <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", background: "#0F0E0C", color: "rgba(148,163,184,0.6)", fontSize: 13 }}>
+                Loading project…
+            </div>
+        );
+    }
 
-            {error && (
-                <div style={{
-                    position: 'absolute', top: 60, left: '50%', transform: 'translateX(-50%)',
-                    zIndex: 200, background: 'rgba(239,68,68,0.15)',
-                    border: '1px solid rgba(239,68,68,0.4)',
-                    borderRadius: 8, padding: '8px 16px', fontSize: 12,
-                    color: 'rgba(248,113,113,0.9)',
-                }}>
-                    {error}
-                </div>
-            )}
+    if (error || !project) {
+        return (
+            <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", background: "#0F0E0C", color: "#EF4444", fontSize: 13, gap: 12, flexDirection: "column" }}>
+                <div>{error ?? "Project not found."}</div>
+                <button
+                    onClick={() => router.push("/")}
+                    style={{ height: 32, padding: "0 14px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "#94A3B8", fontSize: 12.5, cursor: "pointer" }}
+                >
+                    Back to Projects
+                </button>
+            </div>
+        );
+    }
 
-            <FloorPlanEditor
-                onSave={handleSave}
-                onClose={onClose}
-                initialState={initialFloorPlanState ?? undefined}
-                initialSceneConfig={initialSceneConfig ?? undefined}
-                isSaving={saving}
-                isSaved={saved}
+    // No editor state yet AND no AI-extracted floorplan_url — brand new project
+    if (!project.floorplan_editor_state && !project.floorplan_url) {
+        return (
+            <FloorPlanEditorModal
+                projectId={project.id}
+                initialFloorPlanState={null}
+                initialSceneConfig={null}
+                onSaved={(sceneJSON) => {
+                    setProject((p: any) => ({ ...p, scene_json: sceneJSON }));
+                }}
+                onClose={() => router.push("/")}
             />
-        </div>
-    )
+        );
+    }
+
+    // Has saved editor state — load it into the editor
+    if (project.floorplan_editor_state) {
+        const { floorPlanState, sceneConfig } = project.floorplan_editor_state as {
+            floorPlanState: any;
+            sceneConfig: any;
+        };
+
+        return (
+            <FloorPlanEditorModal
+                projectId={project.id!}
+                initialFloorPlanState={floorPlanState}
+                initialSceneConfig={sceneConfig}
+                onSaved={(sceneJSON) => {
+                    setProject((p: any) => ({ ...p, scene_json: sceneJSON }));
+                }}
+                onClose={() => router.push("/dashboard")}
+            />
+        );
+    }
+
+    // AI-extracted floor plan — original extraction flow, unchanged
+    return (
+        <WorkspaceContainer
+            projectId={project.id}
+            floorplanUrl={project.floorplan_url}
+            onExit={() => router.push("/")}
+        />
+    );
 }

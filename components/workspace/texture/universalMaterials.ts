@@ -2,14 +2,12 @@ import {
   DOOR_MATERIALS,
   FLOOR_MAT_DEFS,
   FURNITURE_MATERIALS,
+  MATERIAL_REGISTRY,
   WALL_MAT_DEFS,
   WALL_MATERIALS,
 } from "../Tools/constants";
-import {
-  categoryFromThumbnail,
-  thumbnailFromDef,
-  MaterialCategory,
-} from "./textureCategorize";
+import { MaterialCategory } from "./materials-registry";
+import { categoryFromThumbnail, thumbnailFromDef } from "./textureCategorize";
 
 // If you have a FURNITURE_MATERIALS export (used in PropsPanel's furniture
 // texture section — "Light Wood / Dark Wood / Grey Fabric / Blue Fabric /
@@ -26,6 +24,7 @@ export interface UniversalMaterial {
   thumbnail?: string;
   category: MaterialCategory;
   appliesTo: ApplicableTo[];
+  textureUrl?: string;
 }
 
 function buildCatalog(): UniversalMaterial[] {
@@ -40,6 +39,10 @@ function buildCatalog(): UniversalMaterial[] {
       label: w.label,
       swatch: w.swatch,
       thumbnail,
+      // full-res map for the mesh — falls back to thumbnail if the def
+      // doesn't separately provide one, so real-time apply still works
+      // even for defs that only ever had a single texture path.
+      textureUrl: def?.textureUrl ?? def?.mapUrl ?? thumbnail,
       category: categoryFromThumbnail(thumbnail),
       appliesTo: ["wall"],
     });
@@ -55,6 +58,7 @@ function buildCatalog(): UniversalMaterial[] {
         key.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
       swatch: def.swatch ?? def.color ?? "#ccc",
       thumbnail,
+      textureUrl: def.textureUrl ?? def.mapUrl ?? thumbnail,
       category: categoryFromThumbnail(thumbnail),
       appliesTo: ["floor"],
     });
@@ -67,18 +71,20 @@ function buildCatalog(): UniversalMaterial[] {
       label: d.label,
       swatch: d.swatch,
       thumbnail: undefined, // door textures are resolved by DoorMat internally, not a flat file path here
+      textureUrl: undefined,
       category: categorizeDoorMaterial(d.id),
       appliesTo: ["door"],
     });
   }
 
-  // ── Furniture (if you export FURNITURE_MATERIALS, uncomment) ───────────
+  // ── Furniture ────────────────────────────────────────────────────────
   for (const f of FURNITURE_MATERIALS) {
     items.push({
       id: f.id,
       label: f.label,
       swatch: f.swatch,
-      thumbnail: undefined,
+      thumbnail: f.thumbnail, // was hardcoded undefined — dropped the picker swatch image
+      textureUrl: f.textureUrl, // was missing entirely — this is what FurnitureMesh's resolver reads
       category: categoryFromThumbnail(f.id) ?? "other",
       appliesTo: ["furniture"],
     });
@@ -90,11 +96,36 @@ function buildCatalog(): UniversalMaterial[] {
 // Door style ids don't carry a texture file path directly (DoorMat.tsx picks
 // its own texture per id internally), so categorize by the id itself.
 function categorizeDoorMaterial(id: string): MaterialCategory {
-  if (id.startsWith("wood_")) return "wood";
-  if (id.startsWith("glass_")) return "other";
-  if (id.startsWith("metal_")) return "metal";
-  if (id.startsWith("panel_")) return "other";
-  return "other";
+  const material = MATERIAL_REGISTRY[id];
+
+  if (!material) {
+    // Fallback for unknown materials
+    if (id.includes("wood") || id.startsWith("wood-")) return "wood";
+    if (id.includes("glass")) return "glass";
+    if (id.includes("metal")) return "metal";
+    return "glass";
+  }
+
+  // Use the actual category from registry
+  const category = material.category as MaterialCategory;
+
+  // Map internal categories to the expected MaterialCategory union if needed
+  switch (category) {
+    case "solid":
+    case "fabric":
+    case "wood":
+    case "marble-stone":
+    case "brick":
+    case "tile":
+    case "concrete":
+    case "metal":
+    case "wallpaper":
+    case "pvc-panel":
+    case "glass":
+      return category;
+    default:
+      return "pvc-panel";
+  }
 }
 
 export const UNIVERSAL_MATERIALS: UniversalMaterial[] = buildCatalog();

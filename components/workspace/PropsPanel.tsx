@@ -26,6 +26,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     const wallMaterials = getMaterialsFor('wall')
     const floorMaterials = getMaterialsFor('floor')
     const furnitureMaterials = getMaterialsFor('furniture')
+
+    console.log(getMaterialsForDomain('furniture').length);
     // NOTE: door materials are now sourced live from getMaterialsForDomain('door')
     // at the call site below, not from the older universalMaterials catalog —
     // see the "Known gap" note regarding furniture materials, which have NOT
@@ -116,7 +118,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     // missing entirely — segments only had a color picker, no texture picker,
     // so there was no way to override a single line-wall segment's material).
     const segSceneConfig = seg ? sceneConfig.rooms.find(r => r.roomId === seg.id) : undefined
-
+    console.log(furnitureMaterials)
     return (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
@@ -451,4 +453,3 @@ function NumInput({ value, min, max, step, onChange }: { value: number; min: num
             style={{ ...inputStyle, width: 72 }} />
     )
 }
-

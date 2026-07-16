@@ -136,7 +136,7 @@ function DoorMaterialWood({
   style: DoorStyle
   urls: { map: string; normalMap: string; roughnessMap: string }
 }) {
-  const cfg = DOOR_MAT_CONFIGS[style]
+  const cfg = DOOR_MAT_CONFIGS[style] ?? DOOR_MAT_CONFIGS.wood_oak
   const textures = useTexture(urls)
   useMemo(() => {
     Object.values(textures).forEach((t) => {

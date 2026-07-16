@@ -1,51 +1,61 @@
 import { labelize } from "../MaterialPicker";
 import { DOOR_STYLES, FLOOR_MAT_DEFS, WALL_MAT_DEFS } from "../Tools/constants";
 import { DOOR_TEXTURE_MATERIALS } from "../Tools/textureMaterials";
-import { MaterialDomain, MaterialGridItem } from "./materials-registry";
-
-export type MaterialCategory =
-  | "fabric"
-  | "wood"
-  | "marble"
-  | "brick"
-  | "tile"
-  | "concrete"
-  | "plaster"
-  | "metal"
-  | "other";
+import { MaterialCategory, MaterialDomain } from "./materials-registry";
 
 export const CATEGORY_META: Record<
   MaterialCategory,
   { label: string; icon: string; order: number }
 > = {
-  fabric: { label: "Fabric", icon: "🧵", order: 0 },
-  wood: { label: "Wood", icon: "🪵", order: 1 },
-  marble: { label: "Marble & Stone", icon: "🗿", order: 2 },
-  brick: { label: "Brick", icon: "🧱", order: 3 },
-  tile: { label: "Tile", icon: "◻️", order: 4 },
-  concrete: { label: "Concrete", icon: "🪨", order: 5 },
-  plaster: { label: "Plaster", icon: "🎨", order: 6 },
+  solid: { label: "Solid Colors", icon: "🎨", order: 0 },
+  fabric: { label: "Fabric", icon: "🧵", order: 1 },
+  wood: { label: "Wood", icon: "🪵", order: 2 },
+  "marble-stone": { label: "Marble & Stone", icon: "🗿", order: 3 },
+  brick: { label: "Brick", icon: "🧱", order: 4 },
+  tile: { label: "Tile", icon: "◻️", order: 5 },
+  concrete: { label: "Concrete", icon: "🪨", order: 6 },
   metal: { label: "Metal", icon: "⚙️", order: 7 },
-  other: { label: "Solid Colors", icon: "🎨", order: 8 },
+  glass: { label: "Glass", icon: "🫙", order: 8 },
+  wallpaper: { label: "Wallpaper", icon: "📜", order: 9 },
+  "pvc-panel": { label: "PVC Panels", icon: "🪵", order: 10 },
 };
 
 // filename prefix (lowercased, digits stripped) → category
 const PREFIX_TO_CATEGORY: Record<string, MaterialCategory> = {
+  // Solids & Paints
+  paint: "solid",
+  plain: "solid",
+  solid: "solid",
+
+  // Fabrics
   fabric: "fabric",
   carpet: "fabric",
+
+  // Woods
   wood: "wood",
   woodfloor: "wood",
-  marble: "marble",
-  onyx: "marble",
-  travertine: "marble",
+
+  // Stones
+  marble: "marble-stone",
+  onyx: "marble-stone",
+  travertine: "marble-stone",
+
+  // Structural Materials
   brick: "brick",
   bricks: "brick",
   tile: "tile",
   tiles: "tile",
   concrete: "concrete",
-  plaster: "plaster",
+  plaster: "solid", // In your registry, plaster has category: 'solid'
+
+  // Metals
   metal: "metal",
   corrugatedsteel: "metal",
+
+  // Specialty items
+  glass: "glass",
+  wallpaper: "wallpaper",
+  pvc: "pvc-panel",
 };
 
 /**
@@ -55,12 +65,25 @@ const PREFIX_TO_CATEGORY: Record<string, MaterialCategory> = {
  * nested ones ("/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_Color.jpg").
  */
 export function categoryFromThumbnail(path?: string): MaterialCategory {
-  if (!path) return "other";
-  const filename = path.split("/").pop() ?? "";
-  const prefixMatch = filename.match(/^([A-Za-z]+)/);
-  const prefix = prefixMatch?.[1]?.toLowerCase();
-  if (prefix && PREFIX_TO_CATEGORY[prefix]) return PREFIX_TO_CATEGORY[prefix];
-  return "other";
+  if (!path) return "solid"; // Fallback changed from "other" to "solid"
+
+  const lowerPath = path.toLowerCase();
+
+  // 1. Try to match explicit directory strings first (e.g., /textures/pvc-panel/...)
+  if (lowerPath.includes("pvc-panel")) return "pvc-panel";
+  if (lowerPath.includes("wallpaper")) return "wallpaper";
+  if (lowerPath.includes("marble")) return "marble-stone";
+
+  // 2. Extract the filename prefix as a secondary fallback strategy
+  const filename = lowerPath.split("/").pop() ?? "";
+  const prefixMatch = filename.match(/^([a-z0-9]+)/); // Included numbers just in case
+  const prefix = prefixMatch?.[1];
+
+  if (prefix && PREFIX_TO_CATEGORY[prefix]) {
+    return PREFIX_TO_CATEGORY[prefix];
+  }
+
+  return "solid"; // Default fallback
 }
 
 /** Pulls the actual preview image off a material def (textureUrl, or an
@@ -68,32 +91,10 @@ export function categoryFromThumbnail(path?: string): MaterialCategory {
  *  and are treated as "no thumbnail", landing in Solid Colors). */
 export function thumbnailFromDef(def: any): string | undefined {
   if (def?.textureUrl) return def.textureUrl;
-  if (typeof def?.preview === "string" && def.preview.startsWith("/"))
+  if (typeof def?.preview === "string" && def.preview.startsWith("/")) {
     return def.preview;
+  }
   return undefined;
 }
 
 // getMaterialItems.ts
-
-export function getMaterialItems(domain: MaterialDomain): MaterialGridItem[] {
-  if (domain === "door") {
-    return DOOR_STYLES.map((d) => ({
-      key: d.value,
-      label: d.label,
-      color: d.color,
-      thumbnail: DOOR_TEXTURE_MATERIALS[d.value]?.map,
-      category: "other" as MaterialCategory,
-    }));
-  }
-  const defs = domain === "wall" ? WALL_MAT_DEFS : FLOOR_MAT_DEFS;
-  return Object.entries(defs).map(([key, def]) => {
-    const thumbnail = def.preview?.startsWith("/") ? def.preview : undefined;
-    return {
-      key,
-      label: labelize(key),
-      color: def.color,
-      thumbnail,
-      category: categoryFromThumbnail(thumbnail),
-    };
-  });
-}

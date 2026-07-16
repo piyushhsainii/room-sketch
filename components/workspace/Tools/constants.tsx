@@ -1,8 +1,8 @@
 import { SceneConfig } from "../FloorPlanEditor"
+import { PlacedLight } from "../lights-constant"
+import { MaterialCategory } from "../texture/materials-registry"
+import { UniversalMaterial } from "../texture/universalMaterials"
 
-export type MaterialCategory =
-    | 'solid' | 'fabric' | 'wood' | 'marble-stone' | 'brick'
-    | 'tile' | 'concrete' | 'metal' | 'wallpaper' | 'pvc-panel' | 'glass'
 
 export type MaterialDomain = 'wall' | 'floor' | 'door' | 'furniture'
 
@@ -99,6 +99,7 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     glass_clear: { color: '#B8D0E0', roughness: 0.05, metalness: 0, repeatScale: 1, category: 'glass', domains: ['door'] },
     plaster: { color: '#D8D0C8', roughness: 0.88, metalness: 0, repeatScale: 8, category: 'solid', domains: ['floor'], textureUrl: '/textures/Plaster001_1K-JPG_Color.jpg', normalMapUrl: '/textures/Plaster001_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Plaster001_1K-JPG_Roughness.jpg' },
 }
+
 export function getMaterialsForDomain(domain: MaterialDomain): { key: string; def: MaterialDef }[] {
     return Object.entries(MATERIAL_REGISTRY)
         .filter(([, def]) => def.domains.includes(domain))
@@ -173,7 +174,7 @@ export type FloorPlanState = {
     annotations: Annotation[]
     furniture: PlacedFurniture[]
     stairs: PlacedStairs[]   // ← new
-    wallDecor: PlacedWallDecor[]
+    wallDecor: PlacedWallDecor[], lights: PlacedLight[]
 }
 
 export const DEFAULT_FP: FloorPlanState = {
@@ -183,6 +184,7 @@ export const DEFAULT_FP: FloorPlanState = {
     furniture: [],
     stairs: [],   // ← new
     wallDecor: [],
+    lights: []
 }
 
 export const STAIRS_FOOTPRINTS: Record<StairsType, { w: number; d: number }> = {
@@ -294,7 +296,7 @@ export type EditorTool =
     | 'stairs-straight' | 'stairs-l' | 'stairs-u' | 'stairs-spiral' | 'stairs-ramp'
     | 'elevator'
     | 'wall-decor-led' | 'wall-decor-pvc' | 'wall-decor-painting'   // ← new
-    | 'annotate' | 'furniture' | 'delete'
+    | 'annotate' | 'furniture' | 'delete' | 'light-wall-sconce' | 'light-ceiling-pendant' | 'light-floor-lamp' | 'light-ceiling-recessed'
 
 export interface ToolLeaf {
     id: EditorTool
@@ -462,6 +464,26 @@ export const ICONS: Record<EditorTool, React.ReactNode> = {
         <circle cx="9" cy="9" r="2" />
         <path d="M21 15l-5-5-8 8" />
     </>),
+    'light-wall-sconce': S(<>
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v4M12 18v4" strokeDasharray="1 1" opacity="0.5" />
+        <path d="M4 4l2 2M20 4l-2 2M4 20l2-2M20 20l-2-2" strokeWidth="1.5" opacity="0.6" />
+    </>),
+    'light-ceiling-pendant': S(<>
+        <path d="M12 2v6" />
+        <path d="M7 8h10l-2 6H9l-2-6z" />
+        <circle cx="12" cy="17" r="2.5" fill="currentColor" opacity="0.3" />
+    </>),
+    'light-ceiling-recessed': S(<>
+        <circle cx="12" cy="12" r="8" />
+        <circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.3" />
+    </>),
+    'light-floor-lamp': S(<>
+        <path d="M12 2l5 7H7l5-7z" />
+        <line x1="12" y1="9" x2="12" y2="19" />
+        <path d="M8 22h8" />
+        <path d="M10 19h4" />
+    </>),
 }
 
 // ── Tool groups (drives the toolbar layout) ─────────────────────────────────
@@ -528,6 +550,14 @@ export const TOOL_GROUPS: ToolGroup[] = [
             { id: 'wall-decor-painting', label: 'Painting', icon: ICONS['wall-decor-painting'] },
         ]
     },
+    {
+        id: 'lights', label: 'Lights', leaves: [
+            { id: 'light-wall-sconce', label: 'Wall Sconce', icon: ICONS['light-wall-sconce'] },
+            { id: 'light-ceiling-pendant', label: 'Pendant Light', icon: ICONS['light-ceiling-pendant'] },
+            { id: 'light-ceiling-recessed', label: 'Recessed Light', icon: ICONS['light-ceiling-recessed'] },
+            { id: 'light-floor-lamp', label: 'Floor Lamp', icon: ICONS['light-floor-lamp'] },
+        ]
+    },
 ]
 
 
@@ -542,6 +572,7 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
     globalFloorMaterial: 'plain',
     globalWallMaterial: 'paint',
     rooms: [],
+    lights: []
 }
 
 export const WALL_COLORS = [
@@ -1013,19 +1044,20 @@ export const DOOR_TEXTURE_URLS: Record<DoorStyle, { map: string; normalMap: stri
     ) as Record<DoorStyle, { map: string; normalMap: string; roughnessMap: string } | null>
 
 
-// ── Furniture materials, derived from the registry ───────────────────────
-// FURNITURE_MATERIALS previously had its own hand-picked short list
-// (wood_light/wood_dark/fabric_grey/etc, non-overlapping ids with the wall/
-// floor registry). Keeping those exact ids would mean either duplicating
-// entries in MATERIAL_REGISTRY under two different key sets, or renaming
-// furniture's usages to match registry keys — see note below before this
-// is treated as final.
-export const FURNITURE_MATERIALS: FurnitureMaterial[] =
+
+export const FURNITURE_MATERIALS: UniversalMaterial[] =
     getMaterialsForDomain('furniture').map(({ key, def }) => ({
         id: key,
         label: def.label ?? labelize(key),
-        swatch: def.textureUrl ?? def.color, // FurnitureMaterial.swatch accepts hex OR image url already
-    }))
+        category: def.category as MaterialCategory,
+
+        swatch: def.color,
+        thumbnail: def.textureUrl || undefined,
+        textureUrl: def.textureUrl,
+
+        // Required by UniversalMaterial
+        appliesTo: ['furniture'] as const,
+    }));
 
 function labelize(key: string) {
     return key

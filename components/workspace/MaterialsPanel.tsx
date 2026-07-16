@@ -8,7 +8,6 @@ import {
     WallMaterial,
     DoorStyle,
     ClosedShape,
-    MaterialCategory,
     MaterialDomain,
     getMaterialsForDomain,
     getMaterialsByCategory,
@@ -17,6 +16,7 @@ import { SceneConfig, RoomSceneConfig } from './FloorPlanEditor'
 import { deriveClosedPolygons } from '@/lib/helpers'
 import { ScrollableList } from '../ui/ScrollableList'
 import { labelize } from './MaterialPicker'
+import { MaterialCategory } from './texture/materials-registry'
 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 

@@ -10,15 +10,14 @@ import { SceneGraphPanel } from './objects/scene-graph'
 import { ScrollableList } from '../ui/ScrollableList'
 import { MaterialsPanel } from './MaterialsPanel'
 import Scene3D from './3DScene'
-import SceneErrorBoundary from './objects/error-boundary'
 import { PropsPanel } from './PropsPanel'
 import { draw2D } from './2dDraw'
 import WorkspaceNav from '../ui/WorkspaceNav'
 import ToolHintBar from '../ui/ToolHint'
 import { createPortal } from 'react-dom'
-import { GizmoHelper, GizmoViewport } from '@react-three/drei'
-import { CameraOrientationReporter, NavigationGizmo, useGizmoApiRef } from './three/NavigationGizmo'
+import { useGizmoApiRef } from './three/NavigationGizmo'
 import * as THREE from "three"
+import { LIGHT_FIXTURE_DEFAULTS, LightFixtureType, PlacedLight } from './lights-constant'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -39,7 +38,10 @@ export type SceneConfig = {
     globalFloorMaterial: FloorMaterial
     globalWallMaterial?: WallMaterial
     rooms: RoomSceneConfig[]
+    lights: PlacedLight[]   // ← new
 }
+
+
 export const THEME = {
     bg: '#F7F7F5',
     bgPanel: '#FFFFFF',
@@ -109,6 +111,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
     const isDrawingRef = useRef(false)
     const [openFurnitureCats, setOpenFurnitureCats] = useState<Set<string>>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
     const [tool, setTool] = useState<EditorTool>('room')
+    const lightDragRef = useRef<{ id: string; roomId?: string; wall?: 'north' | 'south' | 'east' | 'west'; segmentNodeIds?: string[]; isFree: boolean } | null>(null)
     const [pencilPoints, setPencilPoints] = useState<{ x: number, z: number }[]>([])
     const isPencilDrawing = useRef(false)
     const wallDecorDragRef = useRef<{ id: string; roomId: string; wall?: 'north' | 'south' | 'east' | 'west'; segmentNodeIds?: string[] } | null>(null)
@@ -185,6 +188,8 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
     const chevronRef = useRef<HTMLButtonElement | null>(null)
     const groupAnchorsRef = useRef<Record<string, HTMLDivElement | null>>({})
     const [furnitureAnchorRect, setFurnitureAnchorRect] = useState<DOMRect | null>(null)
+
+    console.log(fp)
 
     // Re-measure whenever the furniture tool becomes active (mirrors the
     // pattern GroupButton already uses for its own flyouts).
@@ -320,7 +325,57 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
         const rooms = [...fpRef.current.rooms].reverse()
         return rooms.find(r => roomContainsPoint(r, wx, wz)) ?? null
     }, [])
+    const hitLight = useCallback((wx: number, wz: number) => {
+        // Increase hit radius slightly to 0.5 world units so it's easy to tap
+        const threshold = 0.5;
 
+        for (const l of fpRef.current.lights ?? []) {
+            // A. Wall Sconces mounted on line-segments (shown in your screenshot)
+            if (l.segmentNodeIds && l.segmentNodeIds.length >= 2) {
+                const a = fpRef.current.lineNodes.find(n => n.id === l.segmentNodeIds![0]);
+                const b = fpRef.current.lineNodes.find(n => n.id === l.segmentNodeIds![1]);
+                if (!a || !b) continue;
+
+                // Find coordinate along the segment
+                const t = l.segmentT ?? 0.5;
+                const px = a.x + (b.x - a.x) * t;
+                const pz = a.z + (b.z - a.z) * t;
+
+                if (Math.hypot(wx - px, wz - pz) < threshold) {
+                    return l;
+                }
+            }
+            // B. Wall Sconces mounted on a classic Room boundary
+            else if (l.wall && l.roomId) {
+                const room = fpRef.current.rooms.find(r => r.id === l.roomId);
+                if (!room) continue;
+
+                const isH = l.wall === 'north' || l.wall === 'south';
+                let dx: number, dz: number;
+
+                if (l.wall === 'north') { dx = room.x + (l.position ?? 0); dz = room.z; }
+                else if (l.wall === 'south') { dx = room.x + (l.position ?? 0); dz = room.z + room.depth; }
+                else if (l.wall === 'west') { dx = room.x; dz = room.z + (l.position ?? 0); }
+                else { dx = room.x + room.width; dz = room.z + (l.position ?? 0); }
+
+                const along = isH ? Math.abs(wx - dx) : Math.abs(wz - dz);
+                const across = isH ? Math.abs(wz - dz) : Math.abs(wx - dx);
+
+                if (along < threshold + 0.15 && across < threshold + 0.15) {
+                    return l;
+                }
+            }
+            // C. Free-placed Lights (like Pendant Lights shown in your screenshot)
+            else {
+                const lx = l.x ?? 0;
+                const lz = l.z ?? 0;
+                if (Math.hypot(wx - lx, wz - lz) < threshold) {
+                    return l;
+                }
+            }
+        }
+        return null;
+    }, []);
     const hitLineNode = useCallback((wx: number, wz: number) => {
         return fpRef.current.lineNodes.find(n =>
             Math.hypot(wx - n.x, wz - n.z) < 0.5 / zoomRef.current
@@ -437,7 +492,6 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing'
             return
         }
-
         if (e.button === 1) {
             setMidPan({ sx: cx, sy: cy, px: panRef.current.x, py: panRef.current.y })
             return
@@ -500,19 +554,55 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
         }
         // ── Select tool ───────────────────────────────────────────────────────
         if (tool === 'select') {
-            const node = hitLineNode(wx, wz)
-            if (node) { setSelectedId(node.id); dragRoomRef.current = { id: node.id, ox: wx - node.x, oz: wz - node.z, type: 'node' }; return }
+            // 1. HIGHEST PRIORITY: Check Lights first (stops rooms/walls/decor from intercepting)
+            if (typeof hitLight === 'function') {
+                const lightHit = hitLight(wx, wz);
+                if (lightHit) {
+                    setSelectedId(lightHit.id);
+                    if (lightDragRef) {
+                        (lightDragRef as any).current = {
+                            id: lightHit.id,
+                            roomId: lightHit.roomId,
+                            wall: lightHit.wall,
+                            segmentNodeIds: lightHit.segmentNodeIds,
+                            isFree: lightHit.type !== 'wall_sconce'
+                        };
+                    }
+                    isMouseDownRef.current = true;
+                    return;
+                }
+            }
 
-            const op = hitOpening(wx, wz)
+            // 2. Decor & Openings on walls
             const wd = hitWallDecor(wx, wz)
             if (wd) {
                 setSelectedId(wd.id)
-                wallDecorDragRef.current = { id: wd.id, roomId: wd.roomId, wall: wd.wall, segmentNodeIds: wd.segmentNodeIds }
+                if (wallDecorDragRef) {
+                    wallDecorDragRef.current = { id: wd.id, roomId: wd.roomId, wall: wd.wall, segmentNodeIds: wd.segmentNodeIds }
+                }
                 dragRoomRef.current = null
+                isMouseDownRef.current = true
                 return
             }
-            if (op) { setSelectedId(op.id); dragRoomRef.current = null; return }
 
+            const op = hitOpening(wx, wz)
+            if (op) {
+                setSelectedId(op.id);
+                dragRoomRef.current = null;
+                isMouseDownRef.current = true;
+                return
+            }
+
+            // 3. Line Nodes
+            const node = hitLineNode(wx, wz)
+            if (node) {
+                setSelectedId(node.id);
+                dragRoomRef.current = { id: node.id, ox: wx - node.x, oz: wz - node.z, type: 'node' };
+                isMouseDownRef.current = true;
+                return
+            }
+
+            // 4. Furniture & Stairs
             const hitFurnitureFirst = (fpRef.current.furniture ?? []).findLast(f => {
                 const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
                 const dx = wx - f.x, dz = wz - f.z
@@ -525,6 +615,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 setSelectedId(hitFurnitureFirst.id)
                 furnitureDragRef.current = { id: hitFurnitureFirst.id, ox: wx - hitFurnitureFirst.x, oz: wz - hitFurnitureFirst.z }
                 dragRoomRef.current = null
+                isMouseDownRef.current = true
                 return
             }
 
@@ -538,13 +629,11 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 setSelectedId(hitStairsFirst.id)
                 furnitureDragRef.current = { id: hitStairsFirst.id, ox: wx - hitStairsFirst.x, oz: wz - hitStairsFirst.z }
                 dragRoomRef.current = null
+                isMouseDownRef.current = true
                 return
             }
 
-            // ── Closed shape — checked BEFORE line segments so interior clicks   
-            // select/drag the whole shape rather than falling through to the     
-            // nearest border segment. Segment-only editing still works via the   
-            // Scene Graph or by first selecting the shape then a node.           
+            // 5. Closed Shapes
             const shape = hitClosedShape(wx, wz)
             if (shape) {
                 setSelectedId(shape.id)
@@ -555,17 +644,17 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 }
                 shapeDragRef.current = { shapeId: shape.id, ox: wx, oz: wz, startPositions }
                 dragRoomRef.current = null
+                isMouseDownRef.current = true
                 return
             }
 
-            const room = hitRoom(wx, wz)
-            if (room) { setSelectedId(room.id); dragRoomRef.current = { id: room.id, ox: wx - room.x, oz: wz - room.z, type: 'room' }; return }
-
+            // 6. Wall segments (Room Walls & Line Segments)
             const wallHit = hitRoomWall(wx, wz)
             if (wallHit) {
                 setSelectedId(`${wallHit.room.id}::wall::${wallHit.wall}`)
                 wallDragRef.current = { roomId: wallHit.room.id, wall: wallHit.wall, startRoom: { ...wallHit.room } }
                 dragRoomRef.current = null
+                isMouseDownRef.current = true
                 return
             }
 
@@ -598,25 +687,24 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 }
                 segDragRef.current = { segId: segHit.seg.id, ox: wx, oz: wz, nodeIds: [...visited], startPositions }
                 dragRoomRef.current = null
+                isMouseDownRef.current = true
                 return
             }
 
-            const hitFurniture = (fpRef.current.furniture ?? []).find(f => {
-                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
-                const dx = wx - f.x, dz = wz - f.z
-                const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
-                const lx = dx * cosR - dz * sinR
-                const lz = dx * sinR + dz * cosR
-                return Math.abs(lx) < fp2.w / 2 + 0.1 && Math.abs(lz) < fp2.d / 2 + 0.1
-            })
-            if (hitFurniture) {
-                setSelectedId(hitFurniture.id)
-                furnitureDragRef.current = { id: hitFurniture.id, ox: wx - hitFurniture.x, oz: wz - hitFurniture.z }
-                dragRoomRef.current = null
+            // 7. LOWEST PRIORITY: Room areas (clicked on the floor area)
+            const room = hitRoom(wx, wz)
+            if (room) {
+                setSelectedId(room.id);
+                dragRoomRef.current = { id: room.id, ox: wx - room.x, oz: wz - room.z, type: 'room' };
+                isMouseDownRef.current = true;
                 return
             }
 
-            setSelectedId(null); dragRoomRef.current = null; return
+            // 8. FALLBACK (Deselect everything if empty canvas clicked)
+            setSelectedId(null);
+            dragRoomRef.current = null;
+            if (lightDragRef) (lightDragRef as any).current = null;
+            if (wallDecorDragRef) wallDecorDragRef.current = null;
         }
         // ── Room tool ─────────────────────────────────────────────────────────
         if (tool === 'room') {
@@ -634,7 +722,6 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             setPencilPoints([{ x: snapM(wx), z: snapM(wz) }])
             return
         }
-
         // ── Line / Bend tool ──────────────────────────────────────────────────
         if (tool === 'line' || tool === 'bend') {
             const snapX = snapM(wx), snapZ = snapM(wz)
@@ -683,10 +770,8 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             }
             return
         }
-        // ── Door / Window tool ────────────────────────────────────────────────
         const isDoorTool = tool.startsWith('door-')
         const isWindowTool = tool.startsWith('window-')
-        const opW = isDoorTool ? (tool === 'door-swing-double' ? 1.6 : 0.9) : 1.2
 
         if (isDoorTool || isWindowTool) {
             const room = hitRoom(wx, wz)
@@ -981,6 +1066,92 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 return
             }
         }
+        const isLightTool = tool.startsWith('light-')
+        if (isLightTool) {
+
+
+
+            const lightType: LightFixtureType =
+                tool === 'light-wall-sconce' ? 'wall_sconce'
+                    : tool === 'light-ceiling-pendant' ? 'ceiling_pendant'
+                        : tool === 'light-ceiling-recessed' ? 'ceiling_recessed'
+                            : 'floor_lamp'
+            const defaults = LIGHT_FIXTURE_DEFAULTS[lightType]
+
+            if (lightType === 'wall_sconce') {
+                // Wall-anchored — identical pattern to isWallDecorTool
+                const room = hitRoom(wx, wz)
+                if (room) {
+                    const wallDir = getWallHit(room, wx, wz, 0.5)
+                    if (!wallDir) return
+                    const isH = wallDir === 'north' || wallDir === 'south'
+                    const wallLen = isH ? room.width : room.depth
+                    const rawPos = isH ? wx - room.x : wz - room.z
+                    const clampedPos = Math.max(0.2, Math.min(wallLen - 0.2, rawPos))
+                    const newLight: PlacedLight = {
+                        id: uid(), type: lightType, roomId: room.id, wall: wallDir,
+                        position: parseFloat(clampedPos.toFixed(2)),
+                        heightOffset: defaults.heightOffset,
+                        color: defaults.color, intensity: defaults.intensity,
+                        castShadow: true, scale: 1,
+                        facingInward: true, // Target 1: Added inward orientation default
+                    }
+                    pushHistory()
+                    setFp(prev => ({ ...prev, lights: [...(prev.lights ?? []), newLight] }))
+                    setSelectedId(newLight.id)
+                    return
+                }
+
+                const segHit = hitLineSegment(wx, wz)
+                if (segHit) {
+                    const { seg, t, fromId, toId } = segHit
+                    const a = fpRef.current.lineNodes.find(n => n.id === fromId)!
+                    const b = fpRef.current.lineNodes.find(n => n.id === toId)!
+                    const segLen = Math.hypot(b.x - a.x, b.z - a.z)
+                    const rawPos = t * segLen
+                    const clampedPos = Math.max(0.2, Math.min(segLen - 0.2, rawPos))
+                    const clampedT = clampedPos / segLen
+                    const newLight: PlacedLight = {
+                        id: uid(), type: lightType, roomId: seg.id,
+                        position: parseFloat(clampedPos.toFixed(2)),
+                        heightOffset: defaults.heightOffset,
+                        color: defaults.color, intensity: defaults.intensity,
+                        castShadow: true, scale: 1,
+                        segmentNodeIds: [fromId, toId], segmentT: clampedT,
+                        facingInward: true, // Target 2: Added inward orientation default
+                    }
+                    pushHistory()
+                    setFp(prev => ({ ...prev, lights: [...(prev.lights ?? []), newLight] }))
+                    setSelectedId(newLight.id)
+                    return
+                }
+                return
+            }
+
+            // Ceiling / floor types — free placement, click anywhere inside a room or a closed shape interior
+            const room = hitRoom(wx, wz)
+            const shape = !room && typeof hitClosedShape === 'function' ? hitClosedShape(wx, wz) : null
+
+            if (room || shape) {
+                const heightOffset = lightType === 'ceiling_pendant' || lightType === 'ceiling_recessed'
+                    ? Math.max(0.3, fp.roomHeight - 0.3)  // near ceiling, room-height-relative
+                    : 0  // floor lamp sits at floor level
+                const newLight: PlacedLight = {
+                    id: uid(), type: lightType,
+                    x: snapM(wx), z: snapM(wz),
+                    heightOffset,
+                    color: defaults.color, intensity: defaults.intensity,
+                    castShadow: true, scale: 1,
+                }
+                pushHistory()
+                setFp(prev => ({ ...prev, lights: [...(prev.lights ?? []), newLight] }))
+                setSelectedId(newLight.id)
+                return
+            }
+            return
+        }
+
+
 
     }, [evWorld, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, selectedId, pushHistory, selectedFurnitureType])
 
@@ -1004,7 +1175,9 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             newCursor = 'grabbing'
         } else if (dragRoomRef.current) {
             newCursor = 'grabbing'
-        } else {
+        }
+
+        else {
             const doorWindowCursor = 'cell'
             const toolCursors: Record<EditorTool, string> = {
                 select: 'default',
@@ -1038,6 +1211,10 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 'wall-decor-led': doorWindowCursor,
                 'wall-decor-pvc': doorWindowCursor,
                 'wall-decor-painting': doorWindowCursor,
+                "light-ceiling-pendant": 'default',
+                "light-ceiling-recessed": 'default',
+                "light-floor-lamp": 'default',
+                "light-wall-sconce": 'default',
             }
             newCursor = toolCursors[tool] ?? 'default'
         }
@@ -1102,6 +1279,23 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             return
         }
 
+        if (lightDragRef?.current) {
+            const drag = lightDragRef.current;
+
+            if (drag.isFree) {
+                // Free placement updates (Ceiling/Floor lights)
+                setFp(prev => ({
+                    ...prev,
+                    lights: (prev.lights ?? []).map(l =>
+                        l.id === drag.id
+                            ? { ...l, x: snapM(wx), z: snapM(wz) }
+                            : l
+                    )
+                }));
+                return; // Prevent fallthrough & exit early
+            }
+        } // <── FIXED: Closed this block cleanly here
+
         if (resizeHandleRef.current) {
             const { handle, room } = resizeHandleRef.current
             let newX = room.x, newZ = room.z, newW = room.width, newD = room.depth
@@ -1137,6 +1331,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             }))
             return
         }
+
         if (wallDecorDragRef.current) {
             const wd = wallDecorDragRef.current
             if (wd.wall) {
@@ -1169,6 +1364,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             }
             return
         }
+
         if (dragRoomRef.current) {
             const dr = dragRoomRef.current
             const nx = snapM(wx - dr.ox)
@@ -1198,7 +1394,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             return
         }
 
-        // ── Whole closed-shape drag — was completely missing before ────────
+        // ── Whole closed-shape drag ──────────────────────────────────────────
         if (shapeDragRef.current) {
             const sd = shapeDragRef.current
             const ddx = snapM(wx - sd.ox)
@@ -1282,11 +1478,60 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             }
             return next
         })
+
+        if (lightDragRef.current) {
+            const ld = lightDragRef.current
+            if (ld.isFree) {
+                setFp(prev => ({
+                    ...prev,
+                    lights: (prev.lights ?? []).map(l => l.id === ld.id ? { ...l, x: snapM(wx), z: snapM(wz) } : l)
+                }))
+            } else if (ld.wall && ld.roomId) {
+                const room = fpRef.current.rooms.find(r => r.id === ld.roomId)
+                if (room) {
+                    const isH = ld.wall === 'north' || ld.wall === 'south'
+                    const wallLen = isH ? room.width : room.depth
+                    const rawPos = isH ? wx - room.x : wz - room.z
+                    setFp(prev => ({
+                        ...prev,
+                        lights: (prev.lights ?? []).map(l => {
+                            if (l.id !== ld.id) return l
+                            const clamped = Math.max(0.2, Math.min(wallLen - 0.2, rawPos))
+                            return { ...l, position: parseFloat(clamped.toFixed(2)) }
+                        })
+                    }))
+                }
+            } else if (ld.segmentNodeIds) {
+                const a = fpRef.current.lineNodes.find(n => n.id === ld.segmentNodeIds![0])
+                const b = fpRef.current.lineNodes.find(n => n.id === ld.segmentNodeIds![1])
+                if (a && b) {
+                    const dx = b.x - a.x, dz = b.z - a.z
+                    const segLen = Math.hypot(dx, dz)
+                    const t = Math.max(0, Math.min(1, ((wx - a.x) * dx + (wz - a.z) * dz) / (segLen * segLen)))
+                    setFp(prev => ({
+                        ...prev,
+                        lights: (prev.lights ?? []).map(l => l.id === ld.id ? { ...l, segmentT: t, position: t * segLen } : l)
+                    }))
+                }
+            } // <── FIXED: Removed stray block and semicolon here
+            return
+        }
+
     }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, scheduleRedraw])
 
     const handleMouseUp = useCallback(() => {
         isMouseDownRef.current = false
-        const hadDrag = Boolean(dragRoomRef.current || segDragRef.current || resizeHandleRef.current || shapeDragRef.current || wallDragRef.current)
+
+        // 1. ADD lightDragRef.current to the boolean check so dragging a light pushes to undo history!
+        const hadDrag = Boolean(
+            dragRoomRef.current ||
+            segDragRef.current ||
+            resizeHandleRef.current ||
+            shapeDragRef.current ||
+            wallDragRef.current ||
+            lightDragRef.current // ← Added here
+        )
+
         shapeResizeRef.current = null
         furnitureDragRef.current = null
         setMidPan(null)
@@ -1297,7 +1542,10 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
         shapeDragRef.current = null
         wallDecorDragRef.current = null
         resizeHandleRef.current = null
-        wallDragRef.current = null   // ← add this — was never cleared, so cursor stuck permanently
+        wallDragRef.current = null   // ← Cleared so cursor doesn't stick
+
+        // 2. CLEAR lightDragRef.current here so dragging stops immediately on release
+        if (lightDragRef) (lightDragRef as any).current = null // ← Added here
 
         if (hadDrag) pushHistory()
 
@@ -1329,6 +1577,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             const currentRect = drawRectRef.current
             drawStartRef.current = null
             drawRectRef.current = null
+
             setDrawRect(null)
             setDrawStart(null)
             // Use currentRect if dragged, else fall back to the start point with zero size (won't pass MIN_ROOM check)
@@ -1565,6 +1814,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                             segDragRef.current = null;
                             setHoverTooltip(null)
                             shapeResizeRef.current = null
+                            lightDragRef.current = null
                             wallDragRef.current = null   // ← add this too
                         }}
                         onContextMenu={handleContextMenu}
@@ -1625,6 +1875,8 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                         </div>
                     )}
                 </div>
+
+
                 {hoverTooltip && (
                     <div style={{
                         position: 'fixed', left: hoverTooltip.x + 14, top: hoverTooltip.y + 14,
@@ -1785,7 +2037,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 </div>
                 <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                     {rightTab === 'properties' && (
-                        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                        <div style={{ overflowY: 'auto', minHeight: 0 }} className=''>
                             <SceneGraphPanel fp={fp} selectedId={selectedId} onSelect={setSelectedId} />
                             <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
                             <PropsPanel

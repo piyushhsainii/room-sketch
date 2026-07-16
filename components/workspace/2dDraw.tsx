@@ -1,5 +1,6 @@
 import { deriveClosedPolygons, getSegmentOpeningWorldPos, toCanvas } from "@/lib/helpers";
 import { EditorTool, FloorPlanState, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./Tools/constants";
+import { LIGHT_FIXTURE_LABELS } from "./lights-constant";
 
 export function draw2D(
     ctx: CanvasRenderingContext2D,
@@ -273,7 +274,114 @@ export function draw2D(
         )
         ctx.restore()
     }
-    // ── Preview rectangle while drawing ───────────────────────────────────────
+    // ── Lights ─────────────────────────────────────────────────────────────
+    for (const l of fp.lights ?? []) {
+        const isSel = selectedId === l.id
+        const isHov = hoveredId === l.id
+        const label = LIGHT_FIXTURE_LABELS[l.type] ?? l.type
+
+        if (l.type === 'wall_sconce') {
+            // Wall-anchored — mirrors wallDecor's exact resolution + labeled
+            // pill treatment above, since this is the same placement mode.
+            let dx: number, dz: number, angle: number
+            if (l.segmentNodeIds) {
+                const a = fp.lineNodes.find(n => n.id === l.segmentNodeIds![0])
+                const b = fp.lineNodes.find(n => n.id === l.segmentNodeIds![1])
+                if (!a || !b) continue
+                const t = l.segmentT ?? 0
+                dx = a.x + (b.x - a.x) * t
+                dz = a.z + (b.z - a.z) * t
+                angle = Math.atan2(b.z - a.z, b.x - a.x)
+            } else {
+                const room = fp.rooms.find(r => r.id === l.roomId)
+                if (!room || !l.wall) continue
+                if (l.wall === 'north') { dx = room.x + (l.position ?? 0); dz = room.z; angle = 0 }
+                else if (l.wall === 'south') { dx = room.x + (l.position ?? 0); dz = room.z + room.depth; angle = 0 }
+                else if (l.wall === 'west') { dx = room.x; dz = room.z + (l.position ?? 0); angle = Math.PI / 2 }
+                else { dx = room.x + room.width; dz = room.z + (l.position ?? 0); angle = Math.PI / 2 }
+            }
+
+            ctx.save()
+            ctx.translate(cx(dx), cy(dz))
+            ctx.rotate(angle)
+            ctx.fillStyle = isSel ? 'rgba(99,102,241,0.6)' : isHov ? 'rgba(165,168,255,0.7)' : l.color
+            ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.25)'
+            ctx.lineWidth = isSel || isHov ? 1.5 : 1
+            ctx.beginPath()
+            ctx.arc(0, 0, isSel ? 7 : isHov ? 6 : 5, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.stroke()
+            ctx.restore()
+
+            const normalX = Math.sin(angle), normalZ = -Math.cos(angle)
+            const labelOffset = 14
+            ctx.save()
+            ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
+            const tw = ctx.measureText(label).width
+            const lx = cx(dx) + normalX * labelOffset
+            const ly = cy(dz) + normalZ * labelOffset
+
+            // Background pill (Responsive to Hover and Select)
+            ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
+            ctx.beginPath()
+            ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
+            ctx.fill()
+            ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.08)'
+            ctx.lineWidth = 1
+            ctx.stroke()
+
+            // Text color logic
+            ctx.fillStyle = isSel ? '#FFFFFF' : isHov ? '#4F46E5' : 'rgba(80,60,40,0.9)'
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(label, lx, ly)
+            ctx.restore()
+        } else {
+            // Free-placed ceiling/floor types
+            const px = cx(l.x ?? 0), pz = cy(l.z ?? 0)
+            ctx.save()
+            ctx.beginPath()
+            ctx.arc(px, pz, isSel ? 8 : isHov ? 7 : 6, 0, Math.PI * 2)
+            ctx.fillStyle = isSel ? 'rgba(99,102,241,0.65)' : isHov ? 'rgba(165,168,255,0.7)' : l.color
+            ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.25)'
+            ctx.lineWidth = isSel || isHov ? 1.5 : 1
+            ctx.fill()
+            ctx.stroke()
+
+            // Dashed Selection/Hover Outer Ring
+            if (isSel || isHov) {
+                ctx.beginPath()
+                ctx.arc(px, pz, 12, 0, Math.PI * 2)
+                ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.5)' : 'rgba(99,102,241,0.25)'
+                ctx.lineWidth = 1.5
+                ctx.setLineDash([3, 3])
+                ctx.stroke()
+                ctx.setLineDash([])
+            }
+            ctx.restore()
+
+            // Text Label with Background Pill Container for Free-placed items
+            ctx.save()
+            ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
+            const tw = ctx.measureText(label).width
+            const lx = px
+            const ly = pz + 16
+
+            ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
+            ctx.beginPath()
+            ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
+            ctx.fill()
+            ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.08)'
+            ctx.lineWidth = 1
+            ctx.stroke()
+
+            ctx.fillStyle = isSel ? '#FFFFFF' : isHov ? '#4F46E5' : 'rgba(80,60,40,0.85)'
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(label, lx, ly)
+            ctx.restore()
+        }
+    }
     if (drawRect && Math.abs(drawRect.w) > 0.1 && Math.abs(drawRect.d) > 0.1) {
         const rx = cx(Math.min(drawRect.x, drawRect.x + drawRect.w))
         const rz = cy(Math.min(drawRect.z, drawRect.z + drawRect.d))

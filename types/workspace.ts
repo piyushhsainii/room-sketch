@@ -2,6 +2,7 @@ import {
   DoorMaterial,
   DoorStyle,
   FloorMaterial,
+  PlacedFurniture,
   WallMaterial,
 } from "@/components/workspace/Tools/constants";
 
@@ -39,14 +40,14 @@ export interface SceneRoom {
 
 export type SceneJSON = {
   rooms: SceneRoom[];
-  furniture: unknown[];
+  furniture: PlacedFurniture[]; // was unknown[] — silently dropped furniture on save before this was fixed once already; do not regress it back to unknown[]
   door_style?: DoorStyle;
   global_wall_material?: WallMaterial;
   global_floor_material?: FloorMaterial;
   closed_shapes?: {
     id: string;
     label?: string;
-    node_ids: string[]; // references into a saved node list, see below
+    node_ids: string[];
     floor_material?: FloorMaterial;
     wall_material?: WallMaterial;
     wall_overrides?: Record<
@@ -54,8 +55,25 @@ export type SceneJSON = {
       { color?: string; material?: WallMaterial }
     >;
   }[];
-  line_nodes?: { id: string; x: number; z: number }[]; // NEW — needed so closed_shapes.node_ids resolve to something real on reload
-  line_segments?: { id: string; node_ids: string[]; thickness?: number }[]; // NEW — replaces the flattened-box approach for round-tripping
+  line_nodes?: { id: string; x: number; z: number }[];
+  line_segments?: { id: string; node_ids: string[]; thickness?: number }[];
+  lights?: {
+    id: string;
+    type: "wall_sconce" | "ceiling_pendant" | "ceiling_recessed" | "floor_lamp";
+    room_id?: string;
+    wall?: "north" | "south" | "east" | "west";
+    position?: number;
+    segment_node_ids?: string[];
+    segment_t?: number;
+    x?: number;
+    z?: number;
+    height_offset: number;
+    color: string;
+    intensity: number;
+    cast_shadow: boolean;
+    scale: number;
+    facing_inward?: boolean; // Added optional flag for inward orientation
+  }[];
   extracted_at: string;
   floorplan_url: string;
 };

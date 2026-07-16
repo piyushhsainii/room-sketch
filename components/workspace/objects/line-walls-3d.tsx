@@ -415,10 +415,6 @@ function DerivedFloorShape({
         geo.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2))
 
         return geo
-        // Only rebuild when the actual shape geometry changes — node id set (order/
-        // membership) and each node's real x/z. Hover/selection changes elsewhere in
-        // the tree no longer trigger this expensive rebuild.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nodeIds.join(','), ...nodes.flatMap(n => [n.x, n.z]), minX, minZ, worldW, worldD])
 
     return (

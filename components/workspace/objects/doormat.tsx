@@ -1,119 +1,118 @@
 import { Suspense, useMemo } from 'react'
 import * as THREE from 'three'
 import { useTexture } from '@react-three/drei'
+import { MATERIAL_REGISTRY } from '../Tools/constants' // adjust path to wherever MATERIAL_REGISTRY actually lives
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
 
-interface DoorMatConfig {
+const DOOR_MATERIAL_TO_REGISTRY_KEY: Record<DoorMaterial, string> = {
+    wood_oak: 'wood-oak',
+    wood_dark: 'wood-slat-dark',
+    wood_white: 'solid-white',
+    glass_frosted: 'glass_frosted',
+    glass_clear: 'glass_clear',
+    metal_steel: 'metal-brushed',
+    panel_white: 'solid-white',
+}
+
+const FALLBACK_REGISTRY_KEY = 'wood-oak'
+
+type ResolvedDoorMat = {
     color: string
     roughness: number
     metalness: number
     transparent: boolean
     opacity: number
-    textureKey: 'wood_oak' | 'wood_dark' | 'metal' | null
+    textureUrl?: string
+    normalMapUrl?: string
+    roughnessMapUrl?: string
 }
 
-// Mirrors RoomWall.tsx's DOOR_MAT_CONFIGS exactly, so a door looks the same
-// in the live editor preview as it does in the published workspace view.
-const DOOR_MAT_CONFIGS: Record<DoorMaterial, DoorMatConfig> = {
-    wood_oak: { color: '#C8A878', roughness: 0.55, metalness: 0.02, transparent: false, opacity: 1.0, textureKey: 'wood_oak' },
-    wood_dark: { color: '#4A3220', roughness: 0.60, metalness: 0.02, transparent: false, opacity: 1.0, textureKey: 'wood_dark' },
-    wood_white: { color: '#F0EDE8', roughness: 0.75, metalness: 0.0, transparent: false, opacity: 1.0, textureKey: null },
-    glass_frosted: { color: '#C8D8E4', roughness: 0.35, metalness: 0.08, transparent: true, opacity: 0.55, textureKey: null },
-    glass_clear: { color: '#B8D0E0', roughness: 0.05, metalness: 0.12, transparent: true, opacity: 0.25, textureKey: null },
-    metal_steel: { color: '#9AABB8', roughness: 0.22, metalness: 0.85, transparent: false, opacity: 1.0, textureKey: 'metal' },
-    panel_white: { color: '#F5F2EE', roughness: 0.70, metalness: 0.0, transparent: false, opacity: 1.0, textureKey: null },
+/**
+ * Resolves a DoorMaterial to registry data. Always returns a valid object —
+ * unknown/legacy style values (see doorStyleMigration.ts for the proper fix
+ * at the data-loading boundary) fall back to FALLBACK_REGISTRY_KEY here as a
+ * structural safety net, not just a per-call-site `?? ...` that's easy to
+ * forget to add somewhere.
+ */
+function resolveDoorMaterial(style: string): ResolvedDoorMat {
+    const registryKey = DOOR_MATERIAL_TO_REGISTRY_KEY[style as DoorMaterial] ?? FALLBACK_REGISTRY_KEY
+    const def = MATERIAL_REGISTRY[registryKey] ?? MATERIAL_REGISTRY[FALLBACK_REGISTRY_KEY]
+
+    // def is still theoretically undefined only if FALLBACK_REGISTRY_KEY
+    // itself were removed from MATERIAL_REGISTRY — guard that too, with a
+    // hardcoded last-resort so this function truly cannot throw.
+    if (!def) {
+        return { color: '#C8A878', roughness: 0.55, metalness: 0.02, transparent: false, opacity: 1 }
+    }
+
+    const isGlass = def.category === 'glass'
+    return {
+        color: def.color,
+        roughness: def.roughness,
+        metalness: def.metalness,
+        transparent: isGlass,
+        opacity: isGlass ? (style === 'glass_frosted' ? 0.55 : 0.25) : 1.0,
+        textureUrl: def.textureUrl,
+        normalMapUrl: def.normalMapUrl,
+        roughnessMapUrl: def.roughnessMapUrl,
+    }
 }
 
-const WOOD_OAK_TEX_URLS = {
-    map: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_Color.jpg',
-    normalMap: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_Roughness.jpg',
-}
-const WOOD_DARK_TEX_URLS = {
-    map: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_Color.jpg',
-    normalMap: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_Roughness.jpg',
-}
-const METAL_TEX_URLS = {
-    map: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_Color.jpg',
-    normalMap: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/metal/Metal050A_1K-JPG/Metal050A_1K-JPG_Roughness.jpg',
-}
-
-function DoorMatWood({ style }: { style: DoorMaterial }) {
-    const cfg = DOOR_MAT_CONFIGS[style]
-    const urls = style === 'wood_dark' ? WOOD_DARK_TEX_URLS : WOOD_OAK_TEX_URLS
-    const textures = useTexture(urls)
+function DoorMatTextured({ resolved }: { resolved: ResolvedDoorMat }) {
+    // resolved.textureUrl is guaranteed present when this component is used
+    // (see DoorMatPBR's branch below) — useTexture still needs concrete URLs.
+    const textures = useTexture({
+        map: resolved.textureUrl!,
+        normalMap: resolved.normalMapUrl ?? resolved.textureUrl!,
+        roughnessMap: resolved.roughnessMapUrl ?? resolved.textureUrl!,
+    })
     useMemo(() => {
         Object.values(textures).forEach((t) => {
-            if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 2.2); t.needsUpdate = true }
+            if (t instanceof THREE.Texture) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 2.2); t.needsUpdate = true }
         })
     }, [textures])
     return (
         <meshStandardMaterial
             map={textures.map}
-            normalMap={textures.normalMap}
-            roughnessMap={textures.roughnessMap}
-            color={cfg.color}
-            roughness={cfg.roughness}
-            metalness={cfg.metalness}
+            normalMap={resolved.normalMapUrl ? textures.normalMap : undefined}
+            roughnessMap={resolved.roughnessMapUrl ? textures.roughnessMap : undefined}
+            color={resolved.color}
+            roughness={resolved.roughness}
+            metalness={resolved.metalness}
         />
     )
 }
 
-function DoorMatMetal() {
-    const cfg = DOOR_MAT_CONFIGS.metal_steel
-    const textures = useTexture(METAL_TEX_URLS)
-    useMemo(() => {
-        Object.values(textures).forEach((t) => {
-            if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 3); t.needsUpdate = true }
-        })
-    }, [textures])
-    return (
-        <meshStandardMaterial
-            map={textures.map}
-            normalMap={textures.normalMap}
-            roughnessMap={textures.roughnessMap}
-            color={cfg.color}
-            roughness={cfg.roughness}
-            metalness={cfg.metalness}
-        />
-    )
-}
-
-function DoorMatPBR({ style }: { style: DoorMaterial }) {
-    const cfg = DOOR_MAT_CONFIGS[style] ?? DOOR_MAT_CONFIGS.wood_oak
-    if (cfg.textureKey === 'wood_oak' || cfg.textureKey === 'wood_dark') {
-        return <DoorMatWood style={style} />
-    }
-    if (cfg.textureKey === 'metal') {
-        return <DoorMatMetal />
+function DoorMatPBR({ style }: { style: string }) {
+    const resolved = resolveDoorMaterial(style)
+    if (resolved.textureUrl) {
+        return <DoorMatTextured resolved={resolved} />
     }
     return (
         <meshStandardMaterial
-            color={cfg.color}
-            roughness={cfg.roughness}
-            metalness={cfg.metalness}
-            transparent={cfg.transparent}
-            opacity={cfg.opacity}
+            color={resolved.color}
+            roughness={resolved.roughness}
+            metalness={resolved.metalness}
+            transparent={resolved.transparent}
+            opacity={resolved.opacity}
         />
     )
 }
 
 export function DoorMat({ style }: { style: string }) {
-    const cfg = DOOR_MAT_CONFIGS[style as DoorMaterial] ?? DOOR_MAT_CONFIGS.wood_oak
+    const resolved = resolveDoorMaterial(style)
     return (
         <Suspense fallback={
             <meshStandardMaterial
-                color={cfg.color}
-                roughness={cfg.roughness}
-                metalness={cfg.metalness}
-                transparent={cfg.transparent}
-                opacity={cfg.opacity}
+                color={resolved.color}
+                roughness={resolved.roughness}
+                metalness={resolved.metalness}
+                transparent={resolved.transparent}
+                opacity={resolved.opacity}
             />
         }>
-            <DoorMatPBR style={style as DoorMaterial} />
+            <DoorMatPBR style={style} />
         </Suspense>
     )
 }

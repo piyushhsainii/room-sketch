@@ -2,6 +2,7 @@ import React from 'react'
 import { FURNITURE_FOOTPRINTS, PlacedFurniture } from "../Tools/constants"
 import { RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
+import { getMaterialsForDomain } from "../Tools/constants"
 
 // ---------------------------------------------------------------------------
 // Fabric texture set (drop your Fabric049_1K-JPG_* files into /public/textures/fabric049/
@@ -28,18 +29,15 @@ function hashPick<T>(id: string, arr: T[]): T {
     return arr[h % arr.length]
 }
 
-// Module-level cache so we only ever attempt each texture load once,
-// regardless of how many furniture instances mount.
 const _texCache = new Map<string, THREE.Texture | null>()
 const _failed = new Set<string>()
 
-// A LoadingManager whose onError is a no-op swallows the error at the
-// three.js level, before it can ever bubble up as an uncaught image error
-// that a <SceneErrorBoundary> would treat as a fatal 3D scene crash.
 const _manager = new THREE.LoadingManager()
 _manager.onError = (url) => {
     _failed.add(url)
-    console.warn(`[FurnitureMesh] texture not found (404), using flat color instead: ${url}`)
+    // bumped to console.error so texture 404s aren't buried among the
+    // WebGL deprecation warnings that flood this console otherwise
+    console.error(`[FurnitureMesh] ❌ texture 404, falling back to solid color: ${url}`)
 }
 const _loader = new THREE.TextureLoader(_manager)
 
@@ -64,16 +62,9 @@ function loadTextureSafe(url: string): THREE.Texture | null {
     return null
 }
 
-/**
- * Fail-safe fabric material builder. Attempts to load the PBR texture set;
- * if any file 404s the furniture still renders (just without that map)
- * instead of crashing the scene. Applies UV repeat so the weave reads at
- * furniture scale instead of stretching.
- */
 function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
     const [, forceTick] = React.useState(0)
 
-    // Reading from the cache is a pure computation — fine in useMemo.
     const textures = React.useMemo(() => {
         const out: Record<string, THREE.Texture | undefined> = {}
         for (const [key, url] of Object.entries(FABRIC_TEX_URLS)) {
@@ -84,8 +75,6 @@ function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
-    // Kicking off loads and scheduling a re-render are side effects —
-    // they belong in useEffect, not useMemo.
     React.useEffect(() => {
         let cancelled = false
         let pending = false
@@ -121,6 +110,65 @@ function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
     return textures
 }
 
+// Generalized version of useFabricMaterialProps that takes an arbitrary url
+// set instead of the hardcoded FABRIC_TEX_URLS constant, so a user-chosen
+// material override can reuse the same async-load + cache + re-render
+// machinery. Pass `null` to skip loading entirely (no override selected).
+function useTextureMaterialProps(urls: Record<string, string> | null, repeatX = 2, repeatY = 2) {
+    const [, forceTick] = React.useState(0)
+    const key = urls ? Object.values(urls).join('|') : ''
+
+    const textures = React.useMemo(() => {
+        if (!urls) return {}
+        const out: Record<string, THREE.Texture | undefined> = {}
+        for (const [k, url] of Object.entries(urls)) {
+            const cached = _texCache.get(url)
+            if (cached) out[k] = cached
+        }
+        return out
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key])
+
+    React.useEffect(() => {
+        if (!urls) return
+        let cancelled = false
+        let pending = false
+        for (const url of Object.values(urls)) {
+            if (_failed.has(url)) continue
+            if (_texCache.get(url)) continue
+            pending = true
+            loadTextureSafe(url)
+        }
+        if (pending) {
+            const t = setTimeout(() => { if (!cancelled) forceTick(n => n + 1) }, 150)
+            return () => { cancelled = true; clearTimeout(t) }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key])
+
+    React.useMemo(() => {
+        Object.values(textures).forEach(t => {
+            if (!t) return
+            t.wrapS = t.wrapT = THREE.RepeatWrapping
+            t.repeat.set(repeatX, repeatY)
+            t.needsUpdate = true
+        })
+    }, [textures, repeatX, repeatY])
+
+    return textures
+}
+
+// Flat lookup of every furniture material, keyed by id, built once at module
+// load. Pulled live from getMaterialsForDomain so it stays in sync with
+// whatever the picker is showing — no separate hardcoded import to drift out
+// of sync with the panel's source of truth.
+const _furnitureMatById = new Map(
+    getMaterialsForDomain('furniture').map(({ key, def }: any) => [
+        key,
+        { swatch: def.color, textureUrl: def.textureUrl as string | undefined },
+    ])
+)
+
 export function FurnitureMesh({
     f,
     selected = false,
@@ -136,13 +184,29 @@ export function FurnitureMesh({
     const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
     const [hovered, setHovered] = React.useState(false)
 
-    // fabric textures, shared and reused across all upholstered pieces
+    // fabric textures, shared and reused across all upholstered pieces (default look, no override)
     const fabric = useFabricMaterialProps(2.4, 2.4)
     const fabricTight = useFabricMaterialProps(4, 4) // finer repeat for smaller cushions/chairs
 
-    // per-instance color variation, stable per furniture id
+    // per-instance color variation, stable per furniture id (used when no material override is set)
     const sofaColor = React.useMemo(() => hashPick(f.id, SOFA_VARIANTS), [f.id])
     const cushionColor = React.useMemo(() => hashPick(f.id, CUSHION_VARIANTS), [f.id])
+
+    const overrideMat = f.materialId ? _furnitureMatById.get(f.materialId) : undefined
+    const overrideTex = useTextureMaterialProps(
+        overrideMat?.textureUrl ? { map: overrideMat.textureUrl } : null,
+        2.4, 2.4
+    )
+    const textureLoaded = !!overrideTex.map
+
+    const bodyColor = overrideMat
+        ? (textureLoaded ? '#FFFFFF' : overrideMat.swatch)
+        : sofaColor
+    const bodyMaterialProps = overrideMat ? overrideTex : fabric
+    const cushionColorResolved = overrideMat
+        ? (textureLoaded ? '#FFFFFF' : overrideMat.swatch)
+        : cushionColor
+    const cushionMaterialProps = overrideMat ? overrideTex : fabricTight
 
     const handleClick = (e: any) => {
         if (!interactive) return
@@ -191,8 +255,8 @@ export function FurnitureMesh({
                         receiveShadow
                     >
                         <meshStandardMaterial
-                            {...fabric}
-                            color={sofaColor}
+                            {...bodyMaterialProps}
+                            color={bodyColor}
                             roughness={0.95}
                             metalness={0}
                         />
@@ -208,8 +272,8 @@ export function FurnitureMesh({
                         castShadow
                     >
                         <meshStandardMaterial
-                            {...fabric}
-                            color={sofaColor}
+                            {...bodyMaterialProps}
+                            color={bodyColor}
                             roughness={0.95}
                         />
                     </RoundedBox>
@@ -222,7 +286,7 @@ export function FurnitureMesh({
                         position={[-1.02 * s, 0.42 * s, 0]}
                         castShadow
                     >
-                        <meshStandardMaterial {...fabric} color={sofaColor} roughness={0.95} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
 
                     {/* Right Arm */}
@@ -233,7 +297,7 @@ export function FurnitureMesh({
                         position={[1.02 * s, 0.42 * s, 0]}
                         castShadow
                     >
-                        <meshStandardMaterial {...fabric} color={sofaColor} roughness={0.95} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
 
                     {/* Left Cushion — soft, puffy, slightly lighter tone */}
@@ -245,8 +309,8 @@ export function FurnitureMesh({
                         castShadow
                     >
                         <meshStandardMaterial
-                            {...fabricTight}
-                            color={cushionColor}
+                            {...cushionMaterialProps}
+                            color={cushionColorResolved}
                             roughness={0.97}
                         />
                     </RoundedBox>
@@ -260,8 +324,8 @@ export function FurnitureMesh({
                         castShadow
                     >
                         <meshStandardMaterial
-                            {...fabricTight}
-                            color={cushionColor}
+                            {...cushionMaterialProps}
+                            color={cushionColorResolved}
                             roughness={0.97}
                         />
                     </RoundedBox>
@@ -272,7 +336,10 @@ export function FurnitureMesh({
                         <meshStandardMaterial color="#111" roughness={0.9} />
                     </mesh>
 
-                    {/* Throw pillows for texture contrast / realism */}
+                    {/* Throw pillows for texture contrast / realism — intentionally keep
+                        the per-pillow hash colors even under a material override, so
+                        pillows still read as an accent rather than flattening to the
+                        exact same swatch as the sofa body. */}
                     <RoundedBox
                         args={[0.30 * s, 0.28 * s, 0.10 * s]}
                         radius={0.08 * s}
@@ -322,22 +389,22 @@ export function FurnitureMesh({
                         <meshStandardMaterial color="#4A3A2E" roughness={0.75} />
                     </RoundedBox>
                     <RoundedBox args={[1.58 * s, 0.22 * s, 1.95 * s]} radius={0.07 * s} smoothness={8} position={[0, 0.34 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial {...fabric} color="#EDE8E0" roughness={0.95} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={overrideMat ? bodyColor : "#EDE8E0"} roughness={0.95} />
                     </RoundedBox>
                     <RoundedBox args={[1.7 * s, 0.82 * s, 0.10 * s]} radius={0.06 * s} smoothness={8} position={[0, 0.74 * s, -0.92 * s]} castShadow>
-                        <meshStandardMaterial {...fabric} color="#8A8280" roughness={0.9} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={overrideMat ? bodyColor : "#8A8280"} roughness={0.9} />
                     </RoundedBox>
                     <RoundedBox args={[1.7 * s, 0.42 * s, 0.08 * s]} radius={0.04 * s} smoothness={6} position={[0, 0.52 * s, 0.92 * s]} castShadow>
                         <meshStandardMaterial color="#4A3A2E" roughness={0.7} />
                     </RoundedBox>
                     <RoundedBox args={[0.58 * s, 0.12 * s, 0.38 * s]} radius={0.06 * s} smoothness={10} position={[-0.38 * s, 0.49 * s, -0.72 * s]} castShadow>
-                        <meshStandardMaterial {...fabricTight} color="#F0EBE4" roughness={0.97} />
+                        <meshStandardMaterial {...cushionMaterialProps} color={overrideMat ? cushionColorResolved : "#F0EBE4"} roughness={0.97} />
                     </RoundedBox>
                     <RoundedBox args={[0.58 * s, 0.12 * s, 0.38 * s]} radius={0.06 * s} smoothness={10} position={[0.38 * s, 0.49 * s, -0.72 * s]} castShadow>
-                        <meshStandardMaterial {...fabricTight} color="#F0EBE4" roughness={0.97} />
+                        <meshStandardMaterial {...cushionMaterialProps} color={overrideMat ? cushionColorResolved : "#F0EBE4"} roughness={0.97} />
                     </RoundedBox>
                     <RoundedBox args={[1.52 * s, 0.10 * s, 1.15 * s]} radius={0.05 * s} smoothness={8} position={[0, 0.48 * s, 0.35 * s]} castShadow>
-                        <meshStandardMaterial {...fabric} color="#E8E0D4" roughness={0.95} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={overrideMat ? bodyColor : "#E8E0D4"} roughness={0.95} />
                     </RoundedBox>
                 </group>
             )}
@@ -423,10 +490,10 @@ export function FurnitureMesh({
             {f.type === 'chair' && (
                 <group>
                     <RoundedBox args={[0.50 * s, 0.06 * s, 0.50 * s]} radius={0.03 * s} smoothness={8} position={[0, 0.44 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial {...fabricTight} color="#C0B8A8" roughness={0.85} />
+                        <meshStandardMaterial {...cushionMaterialProps} color={overrideMat ? cushionColorResolved : "#C0B8A8"} roughness={0.85} />
                     </RoundedBox>
                     <RoundedBox args={[0.50 * s, 0.52 * s, 0.06 * s]} radius={0.03 * s} smoothness={8} position={[0, 0.72 * s, 0.22 * s]} castShadow>
-                        <meshStandardMaterial {...fabricTight} color="#B0A898" roughness={0.85} />
+                        <meshStandardMaterial {...cushionMaterialProps} color={overrideMat ? cushionColorResolved : "#B0A898"} roughness={0.85} />
                     </RoundedBox>
                     {([-0.20, 0.20] as number[]).flatMap(x => [-0.20, 0.20].map(z => (
                         <mesh key={`${x}${z}`} position={[x * s, 0.22 * s, z * s]} castShadow><cylinderGeometry args={[0.02 * s, 0.02 * s, 0.44 * s, 10]} /><meshStandardMaterial color="#8A7868" roughness={0.55} /></mesh>
@@ -449,19 +516,19 @@ export function FurnitureMesh({
             {f.type === 'single_sofa' && (
                 <group>
                     <RoundedBox args={[0.95 * s, 0.42 * s, 0.9 * s]} radius={0.09 * s} smoothness={8} position={[0, 0.21 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial {...fabric} color={sofaColor} roughness={0.95} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
                     <RoundedBox args={[0.95 * s, 0.5 * s, 0.14 * s]} radius={0.08 * s} smoothness={8} position={[0, 0.60 * s, 0.36 * s]} castShadow>
-                        <meshStandardMaterial {...fabric} color={sofaColor} roughness={0.95} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
                     <RoundedBox args={[0.12 * s, 0.42 * s, 0.9 * s]} radius={0.06 * s} smoothness={8} position={[-0.44 * s, 0.44 * s, 0]} castShadow>
-                        <meshStandardMaterial {...fabric} color={sofaColor} roughness={0.9} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.9} />
                     </RoundedBox>
                     <RoundedBox args={[0.12 * s, 0.42 * s, 0.9 * s]} radius={0.06 * s} smoothness={8} position={[0.44 * s, 0.44 * s, 0]} castShadow>
-                        <meshStandardMaterial {...fabric} color={sofaColor} roughness={0.9} />
+                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.9} />
                     </RoundedBox>
                     <RoundedBox args={[0.68 * s, 0.1 * s, 0.66 * s]} radius={0.06 * s} smoothness={10} position={[0, 0.46 * s, -0.06 * s]} castShadow>
-                        <meshStandardMaterial {...fabricTight} color={cushionColor} roughness={0.97} />
+                        <meshStandardMaterial {...cushionMaterialProps} color={cushionColorResolved} roughness={0.97} />
                     </RoundedBox>
                     {([-0.38, 0.38] as number[]).flatMap(x => [-0.38, 0.38].map(z => (
                         <mesh key={`${x}${z}`} position={[x * s, 0.05 * s, z * s]}><cylinderGeometry args={[0.03 * s, 0.03 * s, 0.1 * s, 10]} /><meshStandardMaterial color="#6B5B4E" roughness={0.5} metalness={0.1} /></mesh>

@@ -1,15 +1,9 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { FURNITURE_FOOTPRINTS, PlacedFurniture } from "../Tools/constants"
 import { RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
 import { getMaterialsForDomain } from "../Tools/constants"
 
-// ---------------------------------------------------------------------------
-// Fabric texture set (drop your Fabric049_1K-JPG_* files into /public/textures/fabric049/
-// so they resolve at these exact URLs — e.g. public/textures/fabric049/Fabric049_1K-JPG_Color.jpg)
-// If the files aren't there, loading fails silently and furniture just renders
-// with flat color instead of crashing the whole scene.
-// ---------------------------------------------------------------------------
 const FABRIC_TEX_URLS = {
     map: '/textures/Fabric049_1K-JPG_Color.jpg',
     normalMap: '/textures/Fabric049_1K-JPG_NormalGL.jpg',
@@ -29,41 +23,58 @@ function hashPick<T>(id: string, arr: T[]): T {
     return arr[h % arr.length]
 }
 
-const _texCache = new Map<string, THREE.Texture | null>()
+const _texCache = new Map<string, THREE.Texture>()   // only ever holds a REAL loaded texture now
+const _pending = new Set<string>()                    // tracks in-flight loads
 const _failed = new Set<string>()
 
 const _manager = new THREE.LoadingManager()
 _manager.onError = (url) => {
+    _pending.delete(url)
     _failed.add(url)
-    // bumped to console.error so texture 404s aren't buried among the
-    // WebGL deprecation warnings that flood this console otherwise
     console.error(`[FurnitureMesh] ❌ texture 404, falling back to solid color: ${url}`)
 }
 const _loader = new THREE.TextureLoader(_manager)
 
 function loadTextureSafe(url: string): THREE.Texture | null {
     if (_failed.has(url)) return null
-    if (_texCache.has(url)) return _texCache.get(url) ?? null
-    // Insert a placeholder immediately so concurrent calls don't double-load.
-    _texCache.set(url, null)
+    const cached = _texCache.get(url)
+    if (cached) return cached
+    if (_pending.has(url)) return null
+
+    _pending.add(url)
+    // Failsafe: if this never resolves within 8s (aborted mid-flight on
+    // unmount, network stall, etc.), clear the pending flag so a future
+    // mount can retry instead of being stuck waiting forever.
+    const timeout = setTimeout(() => { _pending.delete(url) }, 8000)
+
     try {
         _loader.load(
             url,
-            (tex) => { _texCache.set(url, tex) },
+            (tex) => {
+                clearTimeout(timeout)
+                _pending.delete(url)
+                _texCache.set(url, tex)
+                notify(url) // NEW: wake up every hook waiting on this URL
+            },
             undefined,
             () => {
-                // belt-and-braces: also caught here in case a loader ignores the manager
+                clearTimeout(timeout)
+                _pending.delete(url)
                 _failed.add(url)
+                notify(url) // NEW: also notify on failure, so waiters stop waiting
             }
         )
     } catch {
+        clearTimeout(timeout)
+        _pending.delete(url)
         _failed.add(url)
+        notify(url) // NEW: cover the synchronous-throw path too
     }
     return null
 }
 
 function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
-    const [, forceTick] = React.useState(0)
+    const [tick, forceTick] = React.useState(0)
 
     const textures = React.useMemo(() => {
         const out: Record<string, THREE.Texture | undefined> = {}
@@ -73,27 +84,26 @@ function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
         }
         return out
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, [tick])
 
     React.useEffect(() => {
+        // FIX: subscribe to real load completion instead of a fixed-delay
+        // single re-check. See file header comment for why the old
+        // setTimeout(..., 150) approach silently failed on slower loads.
         let cancelled = false
-        let pending = false
+        const unsubs: (() => void)[] = []
 
         for (const url of Object.values(FABRIC_TEX_URLS)) {
-            if (_failed.has(url)) continue
-            if (_texCache.get(url)) continue
-            pending = true
+            if (_failed.has(url) || _texCache.get(url)) continue
             loadTextureSafe(url)
+            unsubs.push(subscribe(url, () => {
+                if (!cancelled) forceTick((n) => n + 1)
+            }))
         }
 
-        if (pending) {
-            const t = setTimeout(() => {
-                if (!cancelled) forceTick((n) => n + 1)
-            }, 150)
-            return () => {
-                cancelled = true
-                clearTimeout(t)
-            }
+        return () => {
+            cancelled = true
+            unsubs.forEach((u) => u())
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
@@ -115,34 +125,42 @@ function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
 // material override can reuse the same async-load + cache + re-render
 // machinery. Pass `null` to skip loading entirely (no override selected).
 function useTextureMaterialProps(urls: Record<string, string> | null, repeatX = 2, repeatY = 2) {
-    const [, forceTick] = React.useState(0)
+    const [tick, forceTick] = React.useState(0)
     const key = urls ? Object.values(urls).join('|') : ''
 
-    const textures = React.useMemo(() => {
-        if (!urls) return {}
+    const { textures, status } = React.useMemo(() => {
+        if (!urls) return { textures: {}, status: 'none' as const }
         const out: Record<string, THREE.Texture | undefined> = {}
+        let anyPending = false
+        let anyFailed = false
         for (const [k, url] of Object.entries(urls)) {
             const cached = _texCache.get(url)
-            if (cached) out[k] = cached
+            if (cached) { out[k] = cached; continue }
+            if (_failed.has(url)) { anyFailed = true; continue }
+            anyPending = true
         }
-        return out
+        const status = anyPending ? 'loading' : anyFailed ? 'failed' : 'loaded'
+        return { textures: out, status }
+        // `tick` is intentionally a dependency here even though it's unused
+        // in the body — it exists solely to force this memo to actually
+        // recompute when a texture finishes loading. Without it, `key`
+        // alone never changes on load-completion, so this memo would keep
+        // returning its original "loading"/empty result forever, even
+        // though _texCache has since been populated and re-renders are
+        // happening (that was the actual bug — not the async load itself).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key])
+    }, [key, tick])
 
     React.useEffect(() => {
         if (!urls) return
         let cancelled = false
-        let pending = false
+        const unsubs: (() => void)[] = []
         for (const url of Object.values(urls)) {
-            if (_failed.has(url)) continue
-            if (_texCache.get(url)) continue
-            pending = true
+            if (_failed.has(url) || _texCache.get(url)) continue
             loadTextureSafe(url)
+            unsubs.push(subscribe(url, () => { if (!cancelled) forceTick(n => n + 1) }))
         }
-        if (pending) {
-            const t = setTimeout(() => { if (!cancelled) forceTick(n => n + 1) }, 150)
-            return () => { cancelled = true; clearTimeout(t) }
-        }
+        return () => { cancelled = true; unsubs.forEach(u => u()) }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key])
 
@@ -155,12 +173,25 @@ function useTextureMaterialProps(urls: Record<string, string> | null, repeatX = 
         })
     }, [textures, repeatX, repeatY])
 
-    return textures
+    return { textures, status }
 }
 
-// Flat lookup of every furniture material, keyed by id, built once at module
-// load. Pulled live from getMaterialsForDomain so it stays in sync with
-// whatever the picker is showing — no separate hardcoded import to drift out
+const _subscribers = new Map<string, Set<() => void>>()
+
+function subscribe(url: string, cb: () => void): () => void {
+    if (!_subscribers.has(url)) _subscribers.set(url, new Set())
+    _subscribers.get(url)!.add(cb)
+    return () => {
+        _subscribers.get(url)?.delete(cb)
+        if (_subscribers.get(url)?.size === 0) _subscribers.delete(url)
+    }
+}
+
+function notify(url: string) {
+    _subscribers.get(url)?.forEach((cb) => cb())
+    _subscribers.delete(url)
+}
+
 // of sync with the panel's source of truth.
 const _furnitureMatById = new Map(
     getMaterialsForDomain('furniture').map(({ key, def }: any) => [
@@ -189,24 +220,35 @@ export function FurnitureMesh({
     const fabricTight = useFabricMaterialProps(4, 4) // finer repeat for smaller cushions/chairs
 
     // per-instance color variation, stable per furniture id (used when no material override is set)
-    const sofaColor = React.useMemo(() => hashPick(f.id, SOFA_VARIANTS), [f.id])
-    const cushionColor = React.useMemo(() => hashPick(f.id, CUSHION_VARIANTS), [f.id])
+    const sofaColor = hashPick(f.id, SOFA_VARIANTS)
+    const cushionColor = hashPick(f.id, CUSHION_VARIANTS)
 
     const overrideMat = f.materialId ? _furnitureMatById.get(f.materialId) : undefined
-    const overrideTex = useTextureMaterialProps(
+    const { textures: overrideTex, status: overrideStatus } = useTextureMaterialProps(
         overrideMat?.textureUrl ? { map: overrideMat.textureUrl } : null,
         2.4, 2.4
     )
-    const textureLoaded = !!overrideTex.map
 
-    const bodyColor = overrideMat
-        ? (textureLoaded ? '#FFFFFF' : overrideMat.swatch)
+    // Only actually apply the override once we KNOW something — while it's
+    // still loading, keep rendering the default fabric look so nothing flashes
+    // into a flat, texture-less swatch color prematurely.
+    const overrideReady = overrideStatus === 'loaded' || overrideStatus === 'failed'
+    const useOverride = overrideMat && overrideReady
+
+    const bodyColor = useOverride
+        ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch) // loaded → white base for texture; failed → swatch fallback
         : sofaColor
-    const bodyMaterialProps = overrideMat ? overrideTex : fabric
-    const cushionColorResolved = overrideMat
-        ? (textureLoaded ? '#FFFFFF' : overrideMat.swatch)
+    const bodyMaterialProps = useOverride ? overrideTex : fabric
+    const cushionColorResolved = useOverride
+        ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch)
         : cushionColor
-    const cushionMaterialProps = overrideMat ? overrideTex : fabricTight
+    const cushionMaterialProps = useOverride ? overrideTex : fabricTight
+    console.log('overrideMat', overrideMat)
+    console.log('overrideTex', overrideTex)
+    const textureLoaded = !!overrideTex.map
+    console.log(`[FurnitureMesh] id=${f.id} textureLoaded=${textureLoaded} overrideTex=`, overrideTex)
+    console.log('texture loaded:', textureLoaded)
+    console.log(bodyColor)
 
     const handleClick = (e: any) => {
         if (!interactive) return

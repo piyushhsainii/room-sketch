@@ -17,27 +17,21 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
     onSelect?: (id: string | null) => void
 }) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
+
+
     return (
         <>
-            {/* White background + ground plane — replaces the old black-void
-                scene backdrop */}
             <color attach="background" args={['#FFFFFF']} />
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
                 <planeGeometry args={[500, 500]} />
                 <meshStandardMaterial color="#F5F5F3" roughness={0.9} />
             </mesh>
             <fog attach="fog" args={['#F2F2F0', 30, 90]} />
-
             <ambientLight intensity={cfg.ambientIntensity} color="#FFF8F0" />
             <directionalLight position={[10, 15, 10]} intensity={2.5} castShadow shadow-mapSize={[2048, 2048]} />
             <directionalLight position={[-5, 8, -5]} intensity={0.8} color="#C8D4E8" />
-            {/* NOTE: fog color changed from the old '#0F0E0C' (dark, left over
-                from the black-background scene) to a light tone matching the
-                new white backdrop — a dark fog here would render as a dark
-                haze against white and look like a bug. */}
             {cfg.fogEnabled && <fog attach="fog" args={['#F2F2F0', 20, 60]} />}
 
-            {/* Click empty space to deselect, only when interactive mode is on */}
             {interactiveMode && (
                 <mesh
                     position={[0, -0.01, 0]}
@@ -73,18 +67,11 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
             })}
 
             {(fp.lights ?? []).map(light => {
-                // Resolve world position depending on placement type — mirrors
-                // wallDecor's dual room-wall/line-wall + free-position
-                // resolution pattern used throughout this codebase.
                 let pos: [number, number, number]
                 let rot = 0
                 const T = 0.15, normalOffset = T / 2 + 0.05
 
                 if (light.segmentNodeIds) {
-                    // FIX: this branch was previously missing entirely — lights
-                    // placed on a line-wall segment (segmentNodeIds+segmentT
-                    // set, but `wall` left undefined) fell through to the
-                    // free-position branch below and rendered at [0, y, 0].
                     const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
                     const b = fp.lineNodes.find(n => n.id === light.segmentNodeIds![1])
                     if (!a || !b) return null
@@ -92,16 +79,6 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                     const px = a.x + (b.x - a.x) * t
                     const pz = a.z + (b.z - a.z) * t
                     const angle = Math.atan2(b.z - a.z, b.x - a.x)
-                    // Outward normal to the wall direction, same
-                    // centerline-burial-avoidance offset as the room-wall
-                    // branch below — ASSUMPTION: WallDecorMesh may apply its
-                    // own internal offset differently for segment-placed decor
-                    // (its caller in LineWalls3D passes the raw centerline
-                    // point with no offset) — this branch instead applies an
-                    // explicit world-space offset, matching the room-wall
-                    // light branch's already-proven convention. Flagging this
-                    // as a judgment call in case it needs to match
-                    // WallDecorMesh's convention instead.
                     const nx = Math.sin(angle), nz = -Math.cos(angle)
                     pos = [px + nx * normalOffset, light.heightOffset, pz + nz * normalOffset]
                     rot = -angle
@@ -113,7 +90,6 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                     else if (light.wall === 'west') { pos = [room.x + normalOffset, light.heightOffset, room.z + (light.position ?? 0)]; rot = Math.PI / 2 }
                     else { pos = [room.x + room.width - normalOffset, light.heightOffset, room.z + (light.position ?? 0)]; rot = -Math.PI / 2 }
                 } else {
-                    // ceiling / floor — free x/z position
                     pos = [light.x ?? 0, light.heightOffset, light.z ?? 0]
                 }
 

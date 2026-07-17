@@ -283,12 +283,18 @@ export function LineWalls3D({
                     />
                 )
             })}
-            {(fp.lineNodes ?? []).map(node => (
-                <mesh key={node.id} position={[node.x, H / 2, node.z]}>
-                    <cylinderGeometry args={[T / 2, T / 2, H, 8]} />
-                    <meshStandardMaterial color={wallColor} roughness={wallRoughness} />
-                </mesh>
-            ))}
+            {(fp.lineNodes ?? []).map(node => {
+
+                const owningSeg = (fp.lineSegments ?? []).find(seg => seg.nodeIds.includes(node.id))
+                const nodeMat = owningSeg ? (segWallMaterial.get(owningSeg.id) ?? wallMaterial) : wallMaterial
+
+                return (
+                    <mesh key={node.id} position={[node.x, H / 2, node.z]} castShadow receiveShadow>
+                        <cylinderGeometry args={[T / 2, T / 2, H, 8]} />
+                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={T} height={H} depth={T} />
+                    </mesh>
+                )
+            })}
 
             {/* Wall decor on line-wall segments — click passes through to parent room */}
             {(fp.wallDecor ?? []).filter(d => d.segmentNodeIds).map(d => {

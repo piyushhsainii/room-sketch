@@ -20,7 +20,8 @@ function Room3D({
     onSelectRoom,
     interactive = false,
     selectedId,
-    onSelect
+    onSelect,
+    onToggleDoorOpen
 }: {
     room: EditorRoom;
     openings?: EditorOpening[];
@@ -36,6 +37,8 @@ function Room3D({
     interactive?: boolean
     selectedId?: string | null
     onSelect?: (id: string | null) => void
+    onToggleDoorOpen?: (openingId: string) => void
+
 }) {
     const cx = room.x + room.width / 2
     const cz = room.z + room.depth / 2
@@ -204,6 +207,8 @@ function Room3D({
                                         angle={angle}
                                         basePos={doorBasePos}
                                         doorStyle={doorStyle}
+                                        onToggleOpen={onToggleDoorOpen}
+                                        interactive={interactive}
                                     />
                                 </group>
                             )

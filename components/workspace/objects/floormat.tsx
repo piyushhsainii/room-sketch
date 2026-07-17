@@ -143,7 +143,6 @@ function RealTextureFloorMat({ width, depth, def }: { width: number; depth: numb
 
 export function FloorMat({ mat = 'plain', width = 10, depth = 10 }: { mat?: FloorMaterial; width?: number; depth?: number }) {
     const def = FLOOR_MAT_DEFS[mat] || FLOOR_MAT_DEFS['plain']
-
     if (def.textureUrl) {
         return (
             <Suspense fallback={<LoadingFloorMaterial />}>

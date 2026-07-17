@@ -12,11 +12,12 @@ import { WallDecorMesh } from './wall-decor-mesh';
 export function LineWalls3D({
     fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural', closedShapes, wallColor = '#FFFFFF',
     wallMaterial = 'paint',
-    interactive = false, selectedId, onSelect,
+    interactive = false, selectedId, onSelect, onToggleDoorOpen,
 }: {
     fp: FloorPlanState; wallRoughness?: number; floorMaterial?: string; doorStyle?: string; closedShapes?: ClosedShape[]; wallColor?: string;
     wallMaterial?: WallMaterial;
     interactive?: boolean; selectedId?: string | null; onSelect?: (id: string) => void
+    onToggleDoorOpen?: (openingId: string) => void   // NEW
 }) {
     const H = fp.roomHeight
     const T = 0.15

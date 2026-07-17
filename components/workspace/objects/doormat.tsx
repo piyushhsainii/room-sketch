@@ -36,12 +36,11 @@ type ResolvedDoorMat = {
  * forget to add somewhere.
  */
 function resolveDoorMaterial(style: string): ResolvedDoorMat {
-    const registryKey = DOOR_MATERIAL_TO_REGISTRY_KEY[style as DoorMaterial] ?? FALLBACK_REGISTRY_KEY
-    const def = MATERIAL_REGISTRY[registryKey] ?? MATERIAL_REGISTRY[FALLBACK_REGISTRY_KEY]
+    const def =
+        MATERIAL_REGISTRY[style]
+        ?? MATERIAL_REGISTRY[DOOR_MATERIAL_TO_REGISTRY_KEY[style as DoorMaterial] ?? '']
+        ?? MATERIAL_REGISTRY[FALLBACK_REGISTRY_KEY]
 
-    // def is still theoretically undefined only if FALLBACK_REGISTRY_KEY
-    // itself were removed from MATERIAL_REGISTRY — guard that too, with a
-    // hardcoded last-resort so this function truly cannot throw.
     if (!def) {
         return { color: '#C8A878', roughness: 0.55, metalness: 0.02, transparent: false, opacity: 1 }
     }
@@ -58,7 +57,6 @@ function resolveDoorMaterial(style: string): ResolvedDoorMat {
         roughnessMapUrl: def.roughnessMapUrl,
     }
 }
-
 function DoorMatTextured({ resolved }: { resolved: ResolvedDoorMat }) {
     // resolved.textureUrl is guaranteed present when this component is used
     // (see DoorMatPBR's branch below) — useTexture still needs concrete URLs.

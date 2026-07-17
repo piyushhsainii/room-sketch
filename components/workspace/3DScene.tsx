@@ -8,13 +8,14 @@ import { FurnitureMesh } from "./furniture/furnitureMesh"
 import { SceneConfig } from "./FloorPlanEditor"
 import { LightFixtureMesh } from "./objects/lights-mesh"
 
-function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect }: {
+function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen }: {
     fp: FloorPlanState
     sceneConfig?: SceneConfig
     walkMode?: boolean
     interactiveMode?: boolean
     selectedId?: string | null
     onSelect?: (id: string | null) => void
+    onToggleDoorOpen?: (openingId: string) => void
 }) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
 
@@ -62,6 +63,8 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                         selectedId={selectedId}
                         onSelect={onSelect}
                         wallMaterial={roomCfg?.wallMaterial ?? cfg.globalWallMaterial ?? 'paint'}
+                        onSelectRoom={(roomId) => onSelect?.(roomId)}
+                        onToggleDoorOpen={onToggleDoorOpen}
                     />
                 )
             })}

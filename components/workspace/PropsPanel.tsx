@@ -27,13 +27,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     const floorMaterials = getMaterialsFor('floor')
     const furnitureMaterials = getMaterialsFor('furniture')
 
-    console.log(getMaterialsForDomain('furniture').length);
-    // NOTE: door materials are now sourced live from getMaterialsForDomain('door')
-    // at the call site below, not from the older universalMaterials catalog —
-    // see the "Known gap" note regarding furniture materials, which have NOT
-    // yet been migrated to MATERIAL_REGISTRY for the reasons flagged there.
 
-    // Parsing Single-Wall Selections
     const wallSel = selectedId?.includes('::wall::')
         ? { roomId: selectedId.split('::wall::')[0], wall: selectedId.split('::wall::')[1] as 'north' | 'south' | 'east' | 'west' }
         : null
@@ -90,7 +84,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     const patchNode = (patch: Partial<LineNode>) =>
         onChange({ ...fp, lineNodes: fp.lineNodes.map(n => n.id === node?.id ? { ...n, ...patch } : n) })
 
-    // Lookups for wall specific overrides (single room-wall selection, e.g. "roomA::wall::north")
     const roomConfig = sceneConfig.rooms.find(r => r.roomId === wallRoom?.id)
     const specificWallColor = wallSel ? roomConfig?.wallOverrides?.[wallSel.wall]?.color : undefined
     const specificWallTexture = wallSel ? roomConfig?.wallOverrides?.[wallSel.wall]?.material : undefined
@@ -114,18 +107,13 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         onChangeSceneConfig({ ...sceneConfig, rooms: nextRooms })
     }
 
-    // Lookup for line-wall SEGMENT material override (this was previously
-    // missing entirely — segments only had a color picker, no texture picker,
-    // so there was no way to override a single line-wall segment's material).
     const segSceneConfig = seg ? sceneConfig.rooms.find(r => r.roomId === seg.id) : undefined
-    console.log(furnitureMaterials)
     return (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
                 {wallRoom ? 'WALL' : room || seg ? 'ROOM' : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type).toUpperCase() : node ? 'WALL NODE' : furniture ? 'FURNITURE' : stairs ? 'STAIRS / ELEVATOR' : wallDecor ? WALL_DECOR_LABELS[wallDecor.type].toUpperCase() : 'WALL SEGMENT'}
             </div>
 
-            {/* --- SINGLE WALL SELECTION INTERFACE --- */}
             {wallRoom && wallSel && (
                 <>
                     <PropField label="Room">
@@ -224,10 +212,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         onChange={e => patchRoomSceneById(seg.id, { wallColor: e.target.value })}
                         style={{ width: 40, height: 26, border: `1px solid ${THEME.borderStrong}`, borderRadius: 5, padding: 0, cursor: 'pointer' }} />
                 </PropField>
-
-                {/* THE FIX — this texture picker did not exist before, which
-                    is why a line-wall segment's material could never be
-                    overridden individually (only its color could). */}
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 4 }}>WALL TEXTURE</div>
                 <MaterialTexturePicker
                     items={wallMaterials}
@@ -256,12 +240,19 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 <PropField label="Position (m)"><NumInput value={opening.position} min={0.3} max={20} step={0.1} onChange={v => patchOpening({ position: v })} /></PropField>
                 {opening.type === 'door' && (
                     <>
+
                         <PropField label="Swing">
-                            <button
-                                onClick={() => patchOpening({ swingDirection: opening.swingDirection === 'inward' ? 'outward' : 'inward' })}
-                                style={{ height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600 }}
-                            >
+                            <button onClick={() => patchOpening({ swingDirection: opening.swingDirection === 'inward' ? 'outward' : 'inward' })}
+                                style={{ height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600 }}>
                                 {opening.swingDirection === 'inward' ? '← Inward' : '→ Outward'}
+                            </button>
+                        </PropField>
+                        <PropField label="State">
+                            <button
+                                onClick={() => patchOpening({ isOpen: !opening.isOpen })}
+                                style={{ height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(99,102,241,0.4)', background: opening.isOpen ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)', color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600 }}
+                            >
+                                {opening.isOpen ? '🚪 Open' : '🚪 Closed'}
                             </button>
                         </PropField>
 
@@ -288,7 +279,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         />
                     </>
                 )}
-            </>}
+            </>
+            }
 
             {/* --- FURNITURE SELECTION INTERFACE --- */}
             {furniture && <>

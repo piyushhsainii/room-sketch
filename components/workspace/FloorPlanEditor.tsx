@@ -1990,6 +1990,12 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                                         interactiveMode={interactiveMode}
                                         selectedId={selectedId}
                                         onSelect={handleSceneSelect}
+                                        onToggleDoorOpen={(openingId) =>
+                                            setFp(prev => ({
+                                                ...prev,
+                                                openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o)
+                                            }))
+                                        }
                                     />
                                     {/* <CameraOrientationReporter gizmoApiRef={gizmoApiRef} /> */}
                                 </ResilientCanvas>

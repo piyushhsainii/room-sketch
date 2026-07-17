@@ -20,7 +20,7 @@ export function draw2D(
     ctx.clearRect(0, 0, W, H)
 
     const scale = PX_PER_M * zoom
-
+    console.log('DRAW 2D')
     // ── Grid ──────────────────────────────────────────────────────────────────
     ctx.save()
     ctx.strokeStyle = 'rgba(99,102,241,0.07)'

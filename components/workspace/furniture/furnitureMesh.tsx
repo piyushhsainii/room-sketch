@@ -83,13 +83,10 @@ function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
             if (cached) out[key] = cached
         }
         return out
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tick])
 
     React.useEffect(() => {
-        // FIX: subscribe to real load completion instead of a fixed-delay
-        // single re-check. See file header comment for why the old
-        // setTimeout(..., 150) approach silently failed on slower loads.
+
         let cancelled = false
         const unsubs: (() => void)[] = []
 
@@ -351,8 +348,8 @@ export function FurnitureMesh({
                         castShadow
                     >
                         <meshStandardMaterial
-                            {...cushionMaterialProps}
-                            color={cushionColorResolved}
+                            {...bodyMaterialProps}
+                            color={bodyColor}
                             roughness={0.97}
                         />
                     </RoundedBox>
@@ -366,8 +363,8 @@ export function FurnitureMesh({
                         castShadow
                     >
                         <meshStandardMaterial
-                            {...cushionMaterialProps}
-                            color={cushionColorResolved}
+                            {...bodyMaterialProps}
+                            color={bodyColor}
                             roughness={0.97}
                         />
                     </RoundedBox>
@@ -377,11 +374,6 @@ export function FurnitureMesh({
                         <boxGeometry args={[0.03 * s, 0.15 * s, 0.70 * s]} />
                         <meshStandardMaterial color="#111" roughness={0.9} />
                     </mesh>
-
-                    {/* Throw pillows for texture contrast / realism — intentionally keep
-                        the per-pillow hash colors even under a material override, so
-                        pillows still read as an accent rather than flattening to the
-                        exact same swatch as the sofa body. */}
                     <RoundedBox
                         args={[0.30 * s, 0.28 * s, 0.10 * s]}
                         radius={0.08 * s}
@@ -403,7 +395,6 @@ export function FurnitureMesh({
                         <meshStandardMaterial {...fabricTight} color={hashPick(f.id + 'p2', SOFA_VARIANTS)} roughness={0.98} />
                     </RoundedBox>
 
-                    {/* Legs — slightly rounded, warm metal */}
                     {[-0.95, 0.95].flatMap(x =>
                         [-0.38, 0.38].map(z => (
                             <mesh

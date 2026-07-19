@@ -7,7 +7,7 @@ import { WallMat } from './wallmat';
 import { DoorVariant3D } from './door-variants';
 import { WindowVariant3D } from './window-variant3d';
 import { WallDecorMesh } from '../mesh/wall-decor-mesh';
-
+import { matchClosedShape } from '../MaterialsPanel';
 
 function LineWalls3DImpl({
     fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural', closedShapes, wallColor = '#FFFFFF',
@@ -20,7 +20,8 @@ function LineWalls3DImpl({
     onToggleDoorOpen?: (openingId: string) => void
 }) {
     const H = fp.roomHeight
-    const T = 0.15
+    const DEFAULT_T = 0.15 // fallback for segments/nodes with no thickness set
+
     const [hovered, setHovered] = React.useState(false)
 
     const makeRoomHandlers = (roomId: string, hovered: boolean, setHovered: (v: boolean) => void) => ({
@@ -44,6 +45,9 @@ function LineWalls3DImpl({
     })
 
     const segWallMaterial = new Map<string, WallMaterial>()
+    // NEW — per-segment thickness, falling back to 0.15 for any segment
+    // created before this field existed.
+    const segThickness = new Map<string, number>()
     for (const seg of fp.lineSegments ?? []) {
         const nodeIdSet = new Set(seg.nodeIds)
         const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
@@ -51,6 +55,7 @@ function LineWalls3DImpl({
             s.nodeIds.every(id => nodeIdSet.has(id))
         )
         segWallMaterial.set(seg.id, matchedShape?.wallMaterial ?? wallMaterial)
+        segThickness.set(seg.id, seg.thickness ?? 0.15)
     }
 
     return (
@@ -64,6 +69,7 @@ function LineWalls3DImpl({
                 const isRoomSelected = interactive && selectedId === seg.id
                 const panels: React.ReactNode[] = []
                 const segMat = segWallMaterial.get(seg.id) ?? wallMaterial
+                const T = segThickness.get(seg.id) ?? 0.15
 
                 for (let i = 0; i < nodes.length - 1; i++) {
                     const a = nodes[i]!, b = nodes[i + 1]!
@@ -252,10 +258,8 @@ function LineWalls3DImpl({
 
                 const nodeIdSet = new Set(nodeIds)
 
-                const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
-                    s.nodeIds.length === nodeIds.length &&
-                    s.nodeIds.every(id => nodeIdSet.has(id))
-                )
+                const matchedShape = matchClosedShape(nodeIds, fp.lineNodes, closedShapes ?? fp.closedShapes ?? [])
+
                 const shapeMat = matchedShape?.floorMaterial ?? floorMaterial
 
                 const matchedSeg = (fp.lineSegments ?? []).find(s =>
@@ -285,11 +289,12 @@ function LineWalls3DImpl({
             {(fp.lineNodes ?? []).map(node => {
                 const owningSeg = (fp.lineSegments ?? []).find(seg => seg.nodeIds.includes(node.id))
                 const nodeMat = owningSeg ? (segWallMaterial.get(owningSeg.id) ?? wallMaterial) : wallMaterial
+                const nodeT = owningSeg ? (segThickness.get(owningSeg.id) ?? DEFAULT_T) : DEFAULT_T
 
                 return (
                     <mesh key={node.id} position={[node.x, H / 2, node.z]} castShadow receiveShadow>
-                        <cylinderGeometry args={[T / 2, T / 2, H, 8]} />
-                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={T} height={H} depth={T} />
+                        <cylinderGeometry args={[nodeT / 2, nodeT / 2, H, 8]} />
+                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={nodeT} height={H} depth={nodeT} />
                     </mesh>
                 )
             })}
@@ -323,13 +328,8 @@ function LineWalls3DImpl({
     )
 }
 
-// Memoized export — LineWalls3D rebuilds every wall panel, opening cutout,
-// and floor shape geometry on every render. None of that needs to re-run
-// just because the 2D editor's hover/pan/tooltip state changed elsewhere in
-// FloorPlanEditor — same fix as FurnitureMesh/StairsMesh.
 export const LineWalls3D = React.memo(LineWalls3DImpl)
 
-// Separate component so the floor mesh can carry its own hover state cleanly.
 function FloorPiece({
     geometry, shapeMat, worldW, worldD, interactive, roomId, selected, onSelect,
 }: {
@@ -401,7 +401,6 @@ function FloorPiece({
     )
 }
 
-
 function DerivedFloorShape({
     nodeIds, nodes, minX, minZ, worldW, worldD,
     shapeMat, interactive, roomId, selected, onSelect,
@@ -451,7 +450,6 @@ function DerivedFloorShape({
         />
     )
 }
-
 
 function polygonOverlapsRoom(
     minX: number, maxX: number, minZ: number, maxZ: number,

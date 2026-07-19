@@ -1,6 +1,6 @@
 import { snapFurniture, snapM } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
-import { EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_LABELS, FURNITURE_MATERIALS, LineNode, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./Tools/constants"
+import { EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_LABELS, FURNITURE_MATERIALS, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./Tools/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
 import { MaterialTexturePicker } from "./texture/MaterialPicker"
 import { getMaterialsForDomain } from './Tools/constants'
@@ -106,6 +106,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         })
         onChangeSceneConfig({ ...sceneConfig, rooms: nextRooms })
     }
+    const patchSegment = (patch: Partial<LineSegment>) =>
+        onChange({ ...fp, lineSegments: fp.lineSegments.map(s => s.id === seg?.id ? { ...s, ...patch } : s) })
 
     const segSceneConfig = seg ? sceneConfig.rooms.find(r => r.roomId === seg.id) : undefined
     return (
@@ -214,6 +216,12 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 </div>
                 <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>APPEARANCE</div>
+                {/* NEW — was previously missing entirely; seg.thickness existed on the
+        data model (default 0.15 at creation) but had no UI to edit it. */}
+                <PropField label="Thickness (m)">
+                    <NumInput value={seg.thickness ?? 0.15} min={0.05} max={0.4} step={0.01}
+                        onChange={v => patchSegment({ thickness: v })} />
+                </PropField>
                 <PropField label="Wall color">
                     <input type="color"
                         value={segSceneConfig?.wallColor ?? '#FFFFFF'}

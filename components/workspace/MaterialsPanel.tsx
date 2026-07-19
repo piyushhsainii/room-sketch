@@ -11,6 +11,7 @@ import {
     MaterialDomain,
     getMaterialsForDomain,
     getMaterialsByCategory,
+    LineNode,
 } from './Tools/constants'
 import { SceneConfig, RoomSceneConfig } from './FloorPlanEditor'
 import { deriveClosedPolygons } from '@/lib/helpers'
@@ -437,4 +438,58 @@ export function MaterialsPanel({ fp, config, onChange, onChangeFp }: Props) {
             </ScrollableList>
         </div>
     )
+}
+
+
+export function matchClosedShape(
+    nodeIds: string[],
+    lineNodes: LineNode[],
+    closedShapes: ClosedShape[],
+): ClosedShape | undefined {
+    const nodeIdSet = new Set(nodeIds)
+
+    const exact = closedShapes.find(s =>
+        s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIdSet.has(id))
+    )
+    if (exact) return exact
+
+    const nodeMap = new Map(lineNodes.map(n => [n.id, n]))
+    const pts = nodeIds.map(id => nodeMap.get(id)).filter(Boolean) as LineNode[]
+    if (pts.length < 3) return undefined
+
+    const centroidAndArea = (points: LineNode[]) => {
+        const cx = points.reduce((s, p) => s + p.x, 0) / points.length
+        const cz = points.reduce((s, p) => s + p.z, 0) / points.length
+        let area = 0
+        for (let i = 0; i < points.length; i++) {
+            const a = points[i]!, b = points[(i + 1) % points.length]!
+            area += a.x * b.z - b.x * a.z
+        }
+        return { cx, cz, area: Math.abs(area) / 2 }
+    }
+
+    const target = centroidAndArea(pts)
+
+    let best: ClosedShape | undefined
+    let bestScore = Infinity
+    for (const s of closedShapes) {
+        const sPts = s.nodeIds.map(id => nodeMap.get(id)).filter(Boolean) as LineNode[]
+        if (sPts.length < 3) continue
+        const candidate = centroidAndArea(sPts)
+
+        const centroidDist = Math.hypot(target.cx - candidate.cx, target.cz - candidate.cz)
+        const areaDiff = Math.abs(target.area - candidate.area)
+
+        // Both centroid and area must be close — a room that genuinely
+        // moved or resized a lot shouldn't silently inherit another
+        // room's saved material. Tolerances are deliberately tight
+        // (0.5m centroid drift, 10% area difference or 0.5m² absolute,
+        // whichever is larger) since this is meant to catch incidental
+        // node-id churn, not real geometry changes.
+        if (centroidDist < 0.5 && areaDiff < Math.max(0.5, target.area * 0.1)) {
+            const score = centroidDist + areaDiff
+            if (score < bestScore) { bestScore = score; best = s }
+        }
+    }
+    return best
 }

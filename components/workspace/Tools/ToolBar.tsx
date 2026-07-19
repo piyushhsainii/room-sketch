@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from "react"
-import { EditorTool, TOOL_GROUPS } from "./constants"
+import { EditorTool } from "./constants"
 import { GroupButton } from "./GroupComponent"
+import { TOOL_GROUPS } from "./tool-constants"
 
 export function Toolbar({
     tool,

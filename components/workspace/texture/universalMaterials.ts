@@ -15,8 +15,7 @@ import { categoryFromThumbnail, thumbnailFromDef } from "./textureCategorize";
 //
 // import { FURNITURE_MATERIALS } from './furnitureMaterials'
 
-export type ApplicableTo = "wall" | "floor" | "door" | "furniture";
-
+export type ApplicableTo = "wall" | "floor" | "door" | "furniture" | "outdoor"; // add 'outdoor'
 export interface UniversalMaterial {
   id: string;
   label: string;

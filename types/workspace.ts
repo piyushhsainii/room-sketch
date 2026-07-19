@@ -3,6 +3,7 @@ import {
   DoorStyle,
   FloorMaterial,
   PlacedFurniture,
+  PlacedStairs,
   WallMaterial,
 } from "@/components/workspace/Tools/constants";
 
@@ -38,10 +39,21 @@ export interface SceneRoom {
   windows: RoomWindow[];
 }
 
+export type SceneOutdoorObject = {
+  id: string;
+  type: "crosswalk" | "dustbin" | "bench" | "mailbox";
+  x: number;
+  z: number;
+  rotation: number;
+  scale: number;
+  material_id?: string;
+};
+
 export type SceneJSON = {
   rooms: SceneRoom[];
   furniture: PlacedFurniture[]; // was unknown[] — silently dropped furniture on save before this was fixed once already; do not regress it back to unknown[]
   door_style?: DoorStyle;
+  stairs: PlacedStairs[];
   global_wall_material?: WallMaterial;
   global_floor_material?: FloorMaterial;
   closed_shapes?: {
@@ -74,6 +86,8 @@ export type SceneJSON = {
     scale: number;
     facing_inward?: boolean; // Added optional flag for inward orientation
   }[];
+  outdoor_objects: SceneOutdoorObject[]; // NEW
+  ground_material?: string;
   extracted_at: string;
   floorplan_url: string;
 };

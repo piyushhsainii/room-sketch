@@ -1,6 +1,7 @@
 import { deriveClosedPolygons, getSegmentOpeningWorldPos, toCanvas } from "@/lib/helpers";
 import { EditorTool, FloorPlanState, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./Tools/constants";
 import { LIGHT_FIXTURE_LABELS } from "./lights-constant";
+import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./Tools/outdoor-constants";
 
 export function draw2D(
     ctx: CanvasRenderingContext2D,
@@ -20,7 +21,6 @@ export function draw2D(
     ctx.clearRect(0, 0, W, H)
 
     const scale = PX_PER_M * zoom
-    console.log('DRAW 2D')
     // ── Grid ──────────────────────────────────────────────────────────────────
     ctx.save()
     ctx.strokeStyle = 'rgba(99,102,241,0.07)'
@@ -736,6 +736,47 @@ export function draw2D(
         ctx.fillText(ann.text, ax, az)
         ctx.restore()
     }
+    // ── Outdoor Objects ───────────────────────────────────────────────────
+    for (const o of fp.outdoorObjects ?? []) {
+        const isSel = selectedId === o.id
+        const isHov = hoveredId === o.id
+        const label = OUTDOOR_OBJECT_LABELS[o.type]
+        const fp2 = OUTDOOR_OBJECT_FOOTPRINTS[o.type]
+        const isFlat = OUTDOOR_FLAT_TYPES.has(o.type)
+
+        ctx.save()
+        ctx.translate(cx(o.x), cy(o.z))
+        ctx.rotate(o.rotation)
+
+        if (isFlat) {
+            // Crosswalk — draw its actual footprint rectangle, not a dot
+            const w = fp2.w * (o.scale ?? 1) * PX_PER_M * zoom
+            const d = fp2.d * (o.scale ?? 1) * PX_PER_M * zoom
+            ctx.fillStyle = isSel ? 'rgba(99,102,241,0.25)' : 'rgba(180,180,180,0.4)'
+            ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.8)' : 'rgba(120,120,120,0.6)'
+            ctx.lineWidth = isSel ? 1.5 : 1
+            ctx.fillRect(-w / 2, -d / 2, w, d)
+            ctx.strokeRect(-w / 2, -d / 2, w, d)
+        } else {
+            ctx.beginPath()
+            ctx.arc(0, 0, isSel ? 8 : isHov ? 7 : 6, 0, Math.PI * 2)
+            ctx.fillStyle = isSel ? 'rgba(99,102,241,0.65)' : '#8B7355'
+            ctx.strokeStyle = isSel ? 'rgba(165,168,255,0.9)' : 'rgba(0,0,0,0.25)'
+            ctx.lineWidth = isSel ? 1.5 : 1
+            ctx.fill()
+            ctx.stroke()
+        }
+        ctx.restore()
+
+        ctx.save()
+        ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
+        ctx.fillStyle = 'rgba(80,60,40,0.85)'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(label, cx(o.x), cy(o.z) + (isFlat ? 0 : 14))
+        ctx.restore()
+    }
+
     // ── Live measurement rubber band ──────────────────────────────────────────
     if ((tool === 'line' || tool === 'bend') && activeLineNodeId && preview) {
         const fromNode = fp.lineNodes.find(n => n.id === activeLineNodeId)

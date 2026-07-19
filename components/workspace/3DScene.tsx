@@ -7,6 +7,7 @@ import { WalkModeControls } from "./WalkModeControls"
 import { FurnitureMesh } from "./mesh/furnitureMesh"
 import { SceneConfig } from "./FloorPlanEditor"
 import { LightFixtureMesh } from "./mesh/lights-mesh"
+import { OutdoorObjectMesh } from "./mesh/outdoor-object-mesh"
 
 function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen }: {
     fp: FloorPlanState
@@ -131,7 +132,15 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                     <FurnitureMesh f={f} selected={interactiveMode && selectedId === f.id} />
                 </group>
             ))}
-
+            {(fp.outdoorObjects ?? []).map(o => (
+                <OutdoorObjectMesh
+                    key={o.id}
+                    obj={o}
+                    selected={interactiveMode && selectedId === o.id}
+                    interactive={interactiveMode}
+                    onSelect={interactiveMode ? () => onSelect?.(o.id) : undefined}
+                />
+            ))}
             {cfg.showFurniture !== false && (fp.stairs ?? []).map(s => (
                 <group
                     key={s.id}

@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom'
 import { useGizmoApiRef } from './three/NavigationGizmo'
 import * as THREE from "three"
 import { LIGHT_FIXTURE_DEFAULTS, LightFixtureType, PlacedLight } from './lights-constant'
+import { OUTDOOR_OBJECT_FOOTPRINTS, OutdoorObjectType, PlacedOutdoorObject } from './Tools/outdoor-constants'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -37,10 +38,10 @@ export type SceneConfig = {
     doorStyle: DoorStyle
     globalFloorMaterial: FloorMaterial
     globalWallMaterial?: WallMaterial
+    groundMaterial?: string   // ← NEW
     rooms: RoomSceneConfig[]
-    lights: PlacedLight[]   // ← new
+    lights: PlacedLight[]
 }
-
 
 export const THEME = {
     bg: '#F7F7F5',
@@ -148,6 +149,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
     const [rightTab, setRightTab] = useState<'properties' | 'scene' | 'materials'>('properties')
     const [editingAnnotation, setEditingAnnotation] = useState<{ id: string; text: string; x: number; y: number } | null>(null)
     const annotationInputRef = useRef<HTMLInputElement>(null)
+    const outdoorDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
     const [furnitureCategoryIdx, setFurnitureCategoryIdx] = useState(0)
     const wallDragRef = useRef<{ roomId: string; wall: 'north' | 'south' | 'east' | 'west'; startRoom: EditorRoom } | null>(null)
@@ -155,10 +157,10 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
     const shapeResizeRef = useRef<{ shapeId: string; handle: string; startNodes: Map<string, { x: number; z: number }>; bbox: { minX: number; maxX: number; minZ: number; maxZ: number } } | null>(null)
     const resizeHandleRef = useRef<{ handle: string; room: EditorRoom; startWx: number; startWz: number } | null>(null)
     fpRef.current = fp
-    const mainCameraRef = useRef<THREE.Camera | null>(null)
+    // const mainCameraRef = useRef<THREE.Camera | null>(null)
     const [interactiveMode, setInteractiveMode] = useState(false)
     const justToggledRef = useRef(false)
-    const gizmoApiRef = useGizmoApiRef()
+    // const gizmoApiRef = useGizmoApiRef()
 
     const handleToggleInteractive = () => {
         justToggledRef.current = true
@@ -167,6 +169,18 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             requestAnimationFrame(() => { justToggledRef.current = false })
         })
     }
+
+    const hitOutdoorObject = useCallback((wx: number, wz: number) => {
+        return (fpRef.current.outdoorObjects ?? []).findLast(o => {
+
+            const fp2 = OUTDOOR_OBJECT_FOOTPRINTS[o.type] ?? { w: 0.5, d: 0.5 }
+            const dx = wx - o.x, dz = wz - o.z
+            const cosR = Math.cos(-o.rotation), sinR = Math.sin(-o.rotation)
+            const lx = dx * cosR - dz * sinR
+            const lz = dx * sinR + dz * cosR
+            return Math.abs(lx) < (fp2.w * (o.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (o.scale ?? 1)) / 2 + 0.05
+        })
+    }, [])
 
     const handleSceneSelect = (id: string | null) => {
         if (justToggledRef.current) return
@@ -180,7 +194,6 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
         historyRef.current.push(JSON.parse(JSON.stringify(current)))
         historyIndexRef.current = historyRef.current.length - 1
     }, [])
-
     // ── Optimized Redraw with rAF ────────────────────────────────────────────
     const rafIdRef = useRef(0)
     const hoveredIdRef = useRef<string | null>(null)
@@ -188,8 +201,6 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
     const chevronRef = useRef<HTMLButtonElement | null>(null)
     const groupAnchorsRef = useRef<Record<string, HTMLDivElement | null>>({})
     const [furnitureAnchorRect, setFurnitureAnchorRect] = useState<DOMRect | null>(null)
-
-    console.log(fp)
 
     // Re-measure whenever the furniture tool becomes active (mirrors the
     // pattern GroupButton already uses for its own flyouts).
@@ -699,12 +710,20 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 isMouseDownRef.current = true;
                 return
             }
-
+            const hitOutdoorFirst = hitOutdoorObject(wx, wz)
+            if (hitOutdoorFirst) {
+                setSelectedId(hitOutdoorFirst.id)
+                outdoorDragRef.current = { id: hitOutdoorFirst.id, ox: wx - hitOutdoorFirst.x, oz: wz - hitOutdoorFirst.z }
+                dragRoomRef.current = null
+                isMouseDownRef.current = true
+                return
+            }
             // 8. FALLBACK (Deselect everything if empty canvas clicked)
             setSelectedId(null);
             dragRoomRef.current = null;
             if (lightDragRef) (lightDragRef as any).current = null;
             if (wallDecorDragRef) wallDecorDragRef.current = null;
+            outdoorDragRef.current = null;
         }
         // ── Room tool ─────────────────────────────────────────────────────────
         if (tool === 'room') {
@@ -933,6 +952,20 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 const lx = dx * cosR - dz * sinR, lz = dx * sinR + dz * cosR
                 return Math.abs(lx) < fp2.w / 2 + 0.15 && Math.abs(lz) < fp2.d / 2 + 0.15
             })
+
+            const outdoorIdx = (fpRef.current.outdoorObjects ?? []).findIndex(o => {
+                const fp2 = OUTDOOR_OBJECT_FOOTPRINTS[o.type] ?? { w: 0.5, d: 0.5 }
+                const dx = wx - o.x, dz = wz - o.z
+                const cosR = Math.cos(-o.rotation), sinR = Math.sin(-o.rotation)
+                const lx = dx * cosR - dz * sinR, lz = dx * sinR + dz * cosR
+                return Math.abs(lx) < fp2.w / 2 + 0.15 && Math.abs(lz) < fp2.d / 2 + 0.15
+            })
+            if (outdoorIdx !== -1) {
+                pushHistory()
+                setFp(prev => ({ ...prev, outdoorObjects: (prev.outdoorObjects ?? []).filter((_, i) => i !== outdoorIdx) }))
+                return
+            }
+
             if (furIdx !== -1) {
                 pushHistory()
                 setFp(prev => ({ ...prev, furniture: (prev.furniture ?? []).filter((_, i) => i !== furIdx) }))
@@ -1072,9 +1105,6 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
         }
         const isLightTool = tool.startsWith('light-')
         if (isLightTool) {
-
-
-
             const lightType: LightFixtureType =
                 tool === 'light-wall-sconce' ? 'wall_sconce'
                     : tool === 'light-ceiling-pendant' ? 'ceiling_pendant'
@@ -1155,10 +1185,77 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             return
         }
 
+        const isOutdoorTool = tool.startsWith('outdoor-')
+        if (isOutdoorTool) {
+            const objType: OutdoorObjectType =
+                tool === 'outdoor-crosswalk' ? 'crosswalk'
+                    : tool === 'outdoor-dustbin' ? 'dustbin'
+                        : tool === 'outdoor-bench' ? 'bench'
+                            : 'mailbox'
+            const newObj: PlacedOutdoorObject = {
+                id: uid(), type: objType,
+                x: snapM(wx), z: snapM(wz),
+                rotation: 0, scale: 1,
+                materialId: objType === 'crosswalk' ? 'paving-stone-149' : undefined,
+            }
+            pushHistory()
+            setFp(prev => ({ ...prev, outdoorObjects: [...(prev.outdoorObjects ?? []), newObj] }))
+            setSelectedId(newObj.id)
+            outdoorDragRef.current = null   // NEW — make sure no stale drag state carries over
+            setTool('select')               // NEW — switch back to select so cursor/tool isn't stuck
+            return
+        }
 
 
     }, [evWorld, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, selectedId, pushHistory, selectedFurnitureType])
 
+    // Module-level — was previously rebuilt as a fresh object literal on every
+    // single mousemove event just to do one lookup. Static data belongs
+    // outside the render/callback path; this is now allocated once per module
+    // load instead of ~60-120 times per second while the mouse is moving.
+    const DOOR_WINDOW_CURSOR = 'cell'
+    const TOOL_CURSORS: Record<EditorTool, string> = {
+        select: 'default',
+        pan: 'grab',
+        room: 'crosshair',
+        pencil: 'crosshair',
+        line: 'crosshair',
+        bend: 'crosshair',
+        'door-swing-single': DOOR_WINDOW_CURSOR,
+        'door-swing-double': DOOR_WINDOW_CURSOR,
+        'door-sliding': DOOR_WINDOW_CURSOR,
+        'door-pocket': DOOR_WINDOW_CURSOR,
+        'door-folding': DOOR_WINDOW_CURSOR,
+        'door-garage': DOOR_WINDOW_CURSOR,
+        'window-fixed': DOOR_WINDOW_CURSOR,
+        'window-sliding': DOOR_WINDOW_CURSOR,
+        'window-casement': DOOR_WINDOW_CURSOR,
+        'window-bay': DOOR_WINDOW_CURSOR,
+        'window-skylight': DOOR_WINDOW_CURSOR,
+        'opening-archway': DOOR_WINDOW_CURSOR,
+        'opening-passage': DOOR_WINDOW_CURSOR,
+        'stairs-straight': 'crosshair',
+        'stairs-l': 'crosshair',
+        'stairs-u': 'crosshair',
+        'stairs-spiral': 'crosshair',
+        'stairs-ramp': 'crosshair',
+        elevator: 'crosshair',
+        delete: 'not-allowed',
+        annotate: 'crosshair',
+        furniture: 'copy',
+        'wall-decor-led': DOOR_WINDOW_CURSOR,
+        'wall-decor-pvc': DOOR_WINDOW_CURSOR,
+        'wall-decor-painting': DOOR_WINDOW_CURSOR,
+        'light-ceiling-pendant': 'default',
+        'light-ceiling-recessed': 'default',
+        'light-floor-lamp': 'default',
+        'light-wall-sconce': 'default',
+        'outdoor-crosswalk': 'crosshair',
+        'outdoor-dustbin': 'crosshair',
+        'outdoor-bench': 'crosshair',
+        'outdoor-mailbox': 'crosshair',
+        led_tv: 'default', // FIX — was "defaultt" (typo, invalid CSS cursor value)
+    }
 
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const { wx, wz, cx, cy } = evWorld(e)
@@ -1179,49 +1276,10 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             newCursor = 'grabbing'
         } else if (dragRoomRef.current) {
             newCursor = 'grabbing'
-        }
-
-        else {
-            const doorWindowCursor = 'cell'
-            const toolCursors: Record<EditorTool, string> = {
-                select: 'default',
-                pan: 'grab',
-                room: 'crosshair',
-                pencil: 'crosshair',
-                line: 'crosshair',
-                bend: 'crosshair',
-                'door-swing-single': doorWindowCursor,
-                'door-swing-double': doorWindowCursor,
-                'door-sliding': doorWindowCursor,
-                'door-pocket': doorWindowCursor,
-                'door-folding': doorWindowCursor,
-                'door-garage': doorWindowCursor,
-                'window-fixed': doorWindowCursor,
-                'window-sliding': doorWindowCursor,
-                'window-casement': doorWindowCursor,
-                'window-bay': doorWindowCursor,
-                'window-skylight': doorWindowCursor,
-                'opening-archway': doorWindowCursor,
-                'opening-passage': doorWindowCursor,
-                'stairs-straight': 'crosshair',
-                'stairs-l': 'crosshair',
-                'stairs-u': 'crosshair',
-                'stairs-spiral': 'crosshair',
-                'stairs-ramp': 'crosshair',
-                elevator: 'crosshair',
-                delete: 'not-allowed',
-                annotate: 'crosshair',
-                furniture: 'copy',
-                'wall-decor-led': doorWindowCursor,
-                'wall-decor-pvc': doorWindowCursor,
-                'wall-decor-painting': doorWindowCursor,
-                "light-ceiling-pendant": 'default',
-                "light-ceiling-recessed": 'default',
-                "light-floor-lamp": 'default',
-                "light-wall-sconce": 'default',
-                "led_tv": "defaultt"
-            }
-            newCursor = toolCursors[tool] ?? 'default'
+        } else {
+            // FIX — was rebuilding a ~30-entry object literal here every call.
+            // Now a single hoisted lookup.
+            newCursor = TOOL_CURSORS[tool] ?? 'default'
         }
         if (canvasDivRef.current && canvasDivRef.current.style.cursor !== newCursor) {
             canvasDivRef.current.style.cursor = newCursor
@@ -1285,10 +1343,8 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
         }
 
         if (lightDragRef?.current) {
-            const drag = lightDragRef.current;
-
+            const drag = lightDragRef.current
             if (drag.isFree) {
-                // Free placement updates (Ceiling/Floor lights)
                 setFp(prev => ({
                     ...prev,
                     lights: (prev.lights ?? []).map(l =>
@@ -1296,10 +1352,10 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                             ? { ...l, x: snapM(wx), z: snapM(wz) }
                             : l
                     )
-                }));
-                return; // Prevent fallthrough & exit early
+                }))
+                return
             }
-        } // <── FIXED: Closed this block cleanly here
+        }
 
         if (resizeHandleRef.current) {
             const { handle, room } = resizeHandleRef.current
@@ -1321,7 +1377,14 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             })
             return
         }
-
+        if (outdoorDragRef.current) {
+            const od = outdoorDragRef.current
+            setFp(prev => ({
+                ...prev,
+                outdoorObjects: (prev.outdoorObjects ?? []).map(o => o.id === od.id ? { ...o, x: snapM(wx - od.ox), z: snapM(wz - od.oz) } : o)
+            }))
+            return
+        }
         if (midPan) {
             setPan({ x: midPan.px + cx - midPan.sx, y: midPan.py + cy - midPan.sy })
             return
@@ -1424,45 +1487,54 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             return
         }
 
-        // ── Hover detection ──────────────────────────────────────────────
         let newHoverId: string | null = null
         const node = hitLineNode(wx, wz)
-        if (node) { newHoverId = node.id }
-        else {
-            const hoveredOpening = hitOpening(wx, wz)
+        if (node) {
+            newHoverId = node.id
+        } else {
             const hovDecor = hitWallDecor(wx, wz)
-            if (hovDecor) { newHoverId = hovDecor.id }
-            if (hoveredOpening) { newHoverId = hoveredOpening.id }
-            else {
-                const wallHit = hitRoomWall(wx, wz)
-                if (wallHit) { newHoverId = `${wallHit.room.id}::wall::${wallHit.wall}` }
-                else {
-                    const segHit = hitLineSegment(wx, wz)
-                    if (segHit) { newHoverId = segHit.seg.id }
-                    else {
-                        const hovShape = hitClosedShape(wx, wz)
-                        if (hovShape) { newHoverId = hovShape.id }
-                        else {
-                            const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
-                                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
-                                const dx = wx - f.x, dz = wz - f.z
-                                const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
-                                const lx = dx * cosR - dz * sinR
-                                const lz = dx * sinR + dz * cosR
-                                return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
-                            })
-                            if (hovFurniture) { newHoverId = hovFurniture.id }
-                            else {
-                                const hovStairs = (fpRef.current.stairs ?? []).findLast(st => {
-                                    const dx2 = wx - (st.x + st.width / 2), dz2 = wz - (st.z + st.depth / 2)
-                                    const cosR2 = Math.cos(-st.rotation), sinR2 = Math.sin(-st.rotation)
-                                    const lx2 = dx2 * cosR2 - dz2 * sinR2, lz2 = dx2 * sinR2 + dz2 * cosR2
-                                    return Math.abs(lx2) < st.width / 2 + 0.05 && Math.abs(lz2) < st.depth / 2 + 0.05
+            if (hovDecor) {
+                newHoverId = hovDecor.id
+            } else {
+                const hoveredOpening = hitOpening(wx, wz)
+                if (hoveredOpening) {
+                    newHoverId = hoveredOpening.id
+                } else {
+                    const wallHit = hitRoomWall(wx, wz)
+                    if (wallHit) {
+                        newHoverId = `${wallHit.room.id}::wall::${wallHit.wall}`
+                    } else {
+                        const segHit = hitLineSegment(wx, wz)
+                        if (segHit) {
+                            newHoverId = segHit.seg.id
+                        } else {
+                            const hovShape = hitClosedShape(wx, wz)
+                            if (hovShape) {
+                                newHoverId = hovShape.id
+                            } else {
+                                const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
+                                    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                                    const dx = wx - f.x, dz = wz - f.z
+                                    const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                                    const lx = dx * cosR - dz * sinR
+                                    const lz = dx * sinR + dz * cosR
+                                    return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
                                 })
-                                if (hovStairs) { newHoverId = hovStairs.id }
-                                else {
-                                    const room = hitRoom(wx, wz)
-                                    newHoverId = room?.id ?? null
+                                if (hovFurniture) {
+                                    newHoverId = hovFurniture.id
+                                } else {
+                                    const hovStairs = (fpRef.current.stairs ?? []).findLast(st => {
+                                        const dx2 = wx - (st.x + st.width / 2), dz2 = wz - (st.z + st.depth / 2)
+                                        const cosR2 = Math.cos(-st.rotation), sinR2 = Math.sin(-st.rotation)
+                                        const lx2 = dx2 * cosR2 - dz2 * sinR2, lz2 = dx2 * sinR2 + dz2 * cosR2
+                                        return Math.abs(lx2) < st.width / 2 + 0.05 && Math.abs(lz2) < st.depth / 2 + 0.05
+                                    })
+                                    if (hovStairs) {
+                                        newHoverId = hovStairs.id
+                                    } else {
+                                        const room = hitRoom(wx, wz)
+                                        newHoverId = room?.id ?? null
+                                    }
                                 }
                             }
                         }
@@ -1470,6 +1542,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 }
             }
         }
+
         if (hoveredIdRef.current !== newHoverId) {
             hoveredIdRef.current = newHoverId
             setHoveredId(newHoverId)
@@ -1479,7 +1552,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             if (!newHoverId) return prev === null ? prev : null
             const next = { text: labelForHover(newHoverId, fpRef.current), x: e.clientX, y: e.clientY }
             if (prev && prev.text === next.text && Math.abs(prev.x - next.x) < 2 && Math.abs(prev.y - next.y) < 2) {
-                return prev // same reference — React skips the re-render entirely
+                return prev
             }
             return next
         })
@@ -1518,11 +1591,11 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                         lights: (prev.lights ?? []).map(l => l.id === ld.id ? { ...l, segmentT: t, position: t * segLen } : l)
                     }))
                 }
-            } // <── FIXED: Removed stray block and semicolon here
+            }
             return
         }
 
-    }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, scheduleRedraw])
+    }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, hitWallDecor, scheduleRedraw])
 
     const handleMouseUp = useCallback(() => {
         isMouseDownRef.current = false
@@ -1548,7 +1621,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
         wallDecorDragRef.current = null
         resizeHandleRef.current = null
         wallDragRef.current = null   // ← Cleared so cursor doesn't stick
-
+        outdoorDragRef.current = null
         // 2. CLEAR lightDragRef.current here so dragging stops immediately on release
         if (lightDragRef) (lightDragRef as any).current = null // ← Added here
 

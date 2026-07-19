@@ -145,13 +145,24 @@ import {
 // multi-component outer-face detection before confirming it's needed in
 // practice.
 
+let _lastLineNodes: LineNode[] | null = null;
+let _lastLineSegments: LineSegment[] | null = null;
+let _cachedFaces: string[][] | null = null;
+
 export function deriveClosedPolygons(
   lineNodes: LineNode[],
   lineSegments: LineSegment[],
 ): string[][] {
+  if (
+    lineNodes === _lastLineNodes &&
+    lineSegments === _lastLineSegments &&
+    _cachedFaces
+  ) {
+    return _cachedFaces;
+  }
+
   const nodeMap = new Map(lineNodes.map((n) => [n.id, n]));
 
-  // Undirected adjacency (unique neighbor ids per node)
   const adj = new Map<string, Set<string>>();
   for (const seg of lineSegments) {
     for (let i = 0; i < seg.nodeIds.length - 1; i++) {
@@ -166,9 +177,13 @@ export function deriveClosedPolygons(
     }
   }
 
-  if (adj.size === 0) return [];
+  if (adj.size === 0) {
+    _lastLineNodes = lineNodes;
+    _lastLineSegments = lineSegments;
+    _cachedFaces = [];
+    return _cachedFaces;
+  }
 
-  // Sort each vertex's neighbors by angle around it (ascending, CCW)
   const sortedNeighbors = new Map<string, string[]>();
   for (const [id, neighbors] of adj) {
     const p = nodeMap.get(id)!;
@@ -186,8 +201,6 @@ export function deriveClosedPolygons(
   function nextInFace(u: string, v: string): string {
     const list = sortedNeighbors.get(v)!;
     const idx = list.indexOf(u);
-    // Previous entry in the CCW-sorted list = next edge clockwise —
-    // traces the face lying to the right of directed edge u->v.
     const prevIdx = (idx - 1 + list.length) % list.length;
     return list[prevIdx]!;
   }
@@ -204,7 +217,7 @@ export function deriveClosedPolygons(
       let u = a,
         v = b;
       let steps = 0;
-      const maxSteps = lineNodes.length * 4 + 8; // generous safety cap
+      const maxSteps = lineNodes.length * 4 + 8;
 
       while (steps++ < maxSteps) {
         const key = `${u}->${v}`;
@@ -218,7 +231,7 @@ export function deriveClosedPolygons(
       }
 
       if (face.length >= 4) {
-        face.pop(); // drop duplicate closing node (== face[0])
+        face.pop();
         rawFaces.push(face);
       }
     }
@@ -234,8 +247,6 @@ export function deriveClosedPolygons(
     return a / 2;
   }
 
-  // Dedup faces that are the same node set traced from different
-  // starting directed edges.
   const seenKeys = new Set<string>();
   const uniqueFaces: { ids: string[]; signedArea: number }[] = [];
   for (const f of rawFaces) {
@@ -245,22 +256,29 @@ export function deriveClosedPolygons(
     uniqueFaces.push({ ids: f, signedArea: signedArea(f) });
   }
 
-  if (uniqueFaces.length === 0) return [];
+  if (uniqueFaces.length === 0) {
+    _lastLineNodes = lineNodes;
+    _lastLineSegments = lineSegments;
+    _cachedFaces = [];
+    return _cachedFaces;
+  }
 
   const positive = uniqueFaces.filter((f) => f.signedArea > 0.05);
   const negative = uniqueFaces.filter((f) => f.signedArea < -0.05);
   const interiorFaces =
     positive.length >= negative.length ? positive : negative;
-  console.log("[deriveClosedPolygons]", {
-    totalFacesFound: uniqueFaces.length,
-    signs: uniqueFaces.map((f) => ({
-      count: f.ids.length,
-      signedArea: f.signedArea.toFixed(2),
-    })),
-    interiorCount: interiorFaces.length,
-  });
-  return interiorFaces.map((f) => f.ids);
-  return interiorFaces.map((f) => f.ids);
+
+  // REMOVED — console.log(...) here was serializing every face's data on
+  // every call (2x per redraw frame, from draw2D and LineWalls3D both),
+  // which was a significant chunk of the console spam and CPU cost.
+  // REMOVED — duplicate `return interiorFaces.map((f) => f.ids)` line that
+  // followed the real return (dead/unreachable code).
+
+  const result = interiorFaces.map((f) => f.ids);
+  _lastLineNodes = lineNodes;
+  _lastLineSegments = lineSegments;
+  _cachedFaces = result;
+  return result;
 }
 
 export const T_BASE = "/textures";

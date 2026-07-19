@@ -15,16 +15,20 @@ import {
   FloorPlanState,
   LineNode,
   LineSegment,
+  PlacedFurniture,
+  PlacedStairs,
 } from "@/components/workspace/Tools/constants";
 import {
   normalizeDoorMaterialOverride,
   normalizeDoorStyle,
 } from "@/components/workspace/Tools/door-style-migration";
+import { PlacedOutdoorObject } from "@/components/workspace/Tools/outdoor-constants";
 import type {
   SceneJSON,
   SceneRoom,
   RoomDoor,
   RoomWindow,
+  SceneOutdoorObject,
 } from "@/types/workspace";
 
 export function floorPlanStateToSceneJSON(
@@ -100,12 +104,6 @@ export function floorPlanStateToSceneJSON(
     wall_overrides: s.wallOverrides,
   }));
 
-  // ── Lights ────────────────────────────────────────────────────────────
-  // room_id is remapped through roomIdMap — NOT a direct passthrough of
-  // light.roomId — because editor room ids don't survive serialization
-  // unchanged (see comment on SceneLight.room_id in types/workspace.ts).
-  // segment_node_ids reference line-node ids, which DO survive unchanged,
-  // so those pass through directly.
   const lights: SceneLight[] = (fp.lights ?? []).map((l) => ({
     id: l.id,
     type: l.type,
@@ -123,6 +121,39 @@ export function floorPlanStateToSceneJSON(
     scale: l.scale,
     facing_inward: l.facingInward,
   }));
+
+  const furniture = (fp.furniture ?? []).map((f) => ({
+    id: f.id,
+    type: f.type,
+    x: f.x,
+    z: f.z,
+    rotation: f.rotation,
+    scale: f.scale,
+    material_id: f.materialId,
+  }));
+
+  const stairs = (fp.stairs ?? []).map((s) => ({
+    id: s.id,
+    type: s.type,
+    x: s.x,
+    z: s.z,
+    width: s.width,
+    depth: s.depth,
+    rotation: s.rotation,
+  }));
+
+  const outdoor_objects: SceneOutdoorObject[] = (fp.outdoorObjects ?? []).map(
+    (o) => ({
+      id: o.id,
+      type: o.type,
+      x: o.x,
+      z: o.z,
+      rotation: o.rotation,
+      scale: o.scale,
+      material_id: o.materialId,
+    }),
+  );
+
   return {
     rooms: [...rooms, ...lineRooms],
     furniture: (fp.furniture ?? []).map((f) => ({
@@ -132,7 +163,9 @@ export function floorPlanStateToSceneJSON(
       z: f.z,
       rotation: f.rotation,
       scale: f.scale,
+      material_id: f.materialId,
     })),
+    stairs: fp.stairs ?? [],
     lights,
     door_style: cfg.doorStyle ?? ("glass_clear" as DoorStyle),
     global_wall_material: cfg.globalWallMaterial ?? "paint",
@@ -142,6 +175,8 @@ export function floorPlanStateToSceneJSON(
     closed_shapes,
     extracted_at: new Date().toISOString(),
     floorplan_url: "",
+    outdoor_objects: outdoor_objects,
+    ground_material: cfg.groundMaterial,
   };
 }
 
@@ -260,18 +295,52 @@ export function sceneJSONToFloorPlanState(
     // existing saved plans don't visually flip on load.
     facingInward: l.facing_inward ?? true,
   }));
+
+  const furniture: PlacedFurniture[] = (json.furniture ?? []).map((f) => ({
+    id: f.id,
+    type: f.type,
+    x: f.x,
+    z: f.z,
+    rotation: f.rotation,
+    scale: f.scale,
+    materialId: f.materialId,
+  }));
+
+  const stairs: PlacedStairs[] = (json.stairs ?? []).map((s) => ({
+    id: s.id,
+    type: s.type,
+    x: s.x,
+    z: s.z,
+    width: s.width,
+    depth: s.depth,
+    rotation: s.rotation,
+  }));
+
+  const outdoorObjects: PlacedOutdoorObject[] = (
+    json.outdoor_objects ?? []
+  ).map((o) => ({
+    id: o.id,
+    type: o.type,
+    x: o.x,
+    z: o.z,
+    rotation: o.rotation,
+    scale: o.scale,
+    materialId: o.material_id,
+  }));
+
   const fp: FloorPlanState = {
     rooms,
     lineNodes,
     lineSegments,
     closedShapes,
     openings,
-    furniture: [],
-    stairs: [],
+    furniture: json.furniture ?? [],
+    stairs: json.stairs ?? [],
     annotations: [],
     roomHeight,
     wallDecor: [],
     lights,
+    outdoorObjects,
   };
 
   const sceneConfig: SceneConfig = {
@@ -281,12 +350,11 @@ export function sceneJSONToFloorPlanState(
     showFurniture: true,
     showLabels: true,
     fogEnabled: false,
-    doorStyle: json.door_style
-      ? normalizeDoorStyle(json.door_style)
-      : ("glass_clear" as DoorStyle),
+    doorStyle: (json.door_style ?? "glass_clear") as DoorStyle,
     globalFloorMaterial: (json.global_floor_material ??
       "plain") as FloorMaterial,
     globalWallMaterial: json.global_wall_material ?? "paint",
+    groundMaterial: json.ground_material, // NEW
     rooms: roomConfigs,
     lights,
   };

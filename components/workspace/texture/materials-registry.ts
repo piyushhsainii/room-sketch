@@ -17,7 +17,8 @@ export type MaterialCategory =
   | "wallpaper"
   | "pvc-panel"
   | "glass"
-  | "leather";
+  | "leather"
+  | "outdoor";
 
 export type MaterialDomain = "wall" | "floor" | "door" | "furniture";
 

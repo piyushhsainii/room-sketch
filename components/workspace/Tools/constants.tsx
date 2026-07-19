@@ -2,9 +2,10 @@ import { SceneConfig } from "../FloorPlanEditor"
 import { PlacedLight } from "../lights-constant"
 import { MaterialCategory } from "../texture/materials-registry"
 import { UniversalMaterial } from "../texture/universalMaterials"
+import { PlacedOutdoorObject } from "./outdoor-constants"
 
 
-export type MaterialDomain = 'wall' | 'floor' | 'door' | 'furniture'
+export type MaterialDomain = 'wall' | 'floor' | 'door' | 'furniture' | "outdoor"
 
 export type MaterialDef = {
     color: string
@@ -131,6 +132,19 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     glass_frosted: { color: '#C8D8E4', roughness: 0.3, metalness: 0, repeatScale: 1, category: 'glass', domains: ['door'] },
     glass_clear: { color: '#B8D0E0', roughness: 0.05, metalness: 0, repeatScale: 1, category: 'glass', domains: ['door'] },
     plaster: { color: '#D8D0C8', roughness: 0.88, metalness: 0, repeatScale: 8, category: 'solid', domains: ['floor'], textureUrl: '/textures/Plaster001_1K-JPG_Color.jpg', normalMapUrl: '/textures/Plaster001_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Plaster001_1K-JPG_Roughness.jpg' },
+
+    grass: {
+        color: '#B8A878', roughness: 0.98, metalness: 0, repeatScale: 1, category: 'outdoor',
+        domains: ['floor', 'furniture', 'door', 'outdoor'], textureUrl: '/textures/outdoor/Grass005_1K-JPG/Grass005_1K-JPG_Color.jpg', normalMapUrl: '/textures/outdoor/Grass005_1K-JPG/Grass005_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/outdoor/Grass005_1K-JPG/Grass005_1K-JPG_Roughness.jpg'
+    },
+    'pave-stone': {
+        color: '#B8A898', roughness: 0.98, metalness: 0, repeatScale: 1, category: 'outdoor',
+        domains: ['floor', 'furniture', 'door', 'outdoor'], textureUrl: '/textures/outdoor/PavingStones149_1K-JPG/PavingStones149_1K-JPG_Color.jpg', normalMapUrl: '/textures/outdoor/PavingStones149_1K-JPG/PavingStones149_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/outdoor/PavingStones149_1K-JPG/PavingStones149_1K-JPG_Roughness.jpg'
+    },
+    'bamboo': {
+        color: '#B8A898', roughness: 0.98, metalness: 0, repeatScale: 1, category: 'outdoor',
+        domains: ['floor', 'furniture', 'door', 'outdoor'], textureUrl: '/textures/outdoor/Bamboo001C_1K-JPG/Bamboo001C_1K-JPG_Color.jpg', normalMapUrl: '/textures/outdoor/Bamboo001C_1K-JPG/Bamboo001C_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/outdoor/Bamboo001C_1K-JPG/Bamboo001C_1K-JPG_Roughness.jpg'
+    },
 }
 
 export function getMaterialsForDomain(domain: MaterialDomain): { key: string; def: MaterialDef }[] {
@@ -207,7 +221,9 @@ export type FloorPlanState = {
     annotations: Annotation[]
     furniture: PlacedFurniture[]
     stairs: PlacedStairs[]   // ← new
-    wallDecor: PlacedWallDecor[], lights: PlacedLight[]
+    wallDecor: PlacedWallDecor[],
+    lights: PlacedLight[],
+    outdoorObjects: PlacedOutdoorObject[]
 }
 
 export const DEFAULT_FP: FloorPlanState = {
@@ -217,7 +233,8 @@ export const DEFAULT_FP: FloorPlanState = {
     furniture: [],
     stairs: [],   // ← new
     wallDecor: [],
-    lights: []
+    lights: [],
+    outdoorObjects: []
 }
 
 export const STAIRS_FOOTPRINTS: Record<StairsType, { w: number; d: number }> = {
@@ -320,17 +337,16 @@ export const FLOOR_MATERIALS: { id: FloorMaterial; label: string; preview: strin
 
 
 export type EditorTool =
-    | 'select' | 'pan'
-    | 'room' | 'pencil' | 'line' | 'bend'
-    | 'door-swing-single' | 'door-swing-double' | 'door-sliding'
-    | 'door-pocket' | 'door-folding' | 'door-garage'
-    | 'window-fixed' | 'window-sliding' | 'window-casement'
-    | 'window-bay' | 'window-skylight'
+    | 'select' | 'pan' | 'room' | 'pencil' | 'line' | 'bend'
+    | 'door-swing-single' | 'door-swing-double' | 'door-sliding' | 'door-pocket' | 'door-folding' | 'door-garage'
+    | 'window-fixed' | 'window-sliding' | 'window-casement' | 'window-bay' | 'window-skylight'
     | 'opening-archway' | 'opening-passage'
     | 'stairs-straight' | 'stairs-l' | 'stairs-u' | 'stairs-spiral' | 'stairs-ramp'
     | 'elevator'
-    | 'wall-decor-led' | 'wall-decor-pvc' | 'wall-decor-painting'   // ← new
-    | 'annotate' | 'furniture' | 'delete' | 'light-wall-sconce' | 'light-ceiling-pendant' | 'light-floor-lamp' | 'light-ceiling-recessed' | 'led_tv'
+    | 'delete' | 'annotate' | 'furniture'
+    | 'wall-decor-led' | 'wall-decor-pvc' | 'wall-decor-painting' | 'led_tv'
+    | 'light-ceiling-pendant' | 'light-ceiling-recessed' | 'light-floor-lamp' | 'light-wall-sconce'
+    | 'outdoor-crosswalk' | 'outdoor-dustbin' | 'outdoor-bench' | 'outdoor-mailbox'   // NEW
 
 export interface ToolLeaf {
     id: EditorTool
@@ -523,83 +539,30 @@ export const ICONS: Record<EditorTool, React.ReactNode> = {
         <line x1="8" y1="21" x2="16" y2="21" />
         <line x1="12" y1="18" x2="12" y2="21" />
     </>),
+    'outdoor-crosswalk': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 20L8 4M10 20L14 4M16 20L20 4" strokeLinecap="round" />
+        </svg>
+    ),
+    'outdoor-dustbin': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-9 0l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    ),
+    'outdoor-bench': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 11h18M5 11v7M19 11v7M8 11V6h8v5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    ),
+    'outdoor-mailbox': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 12a5 5 0 015-5h9a4 4 0 010 8H8a5 5 0 01-5-5z" />
+            <path d="M8 7v10M4 17h16" strokeLinecap="round" />
+        </svg>
+    ),
 }
 
-// ── Tool groups (drives the toolbar layout) ─────────────────────────────────
-
-export const TOOL_GROUPS: ToolGroup[] = [
-    { id: 'select', label: 'Select', leaves: [{ id: 'select', label: 'Select / Move', key: 'V', icon: ICONS.select }] },
-    { id: 'pan', label: 'Pan', leaves: [{ id: 'pan', label: 'Pan Canvas', key: 'H', icon: ICONS.pan }] },
-
-    {
-        id: 'draw', label: 'Draw Walls', leaves: [
-            { id: 'room', label: 'Draw Room', key: 'R', icon: ICONS.room },
-            { id: 'pencil', label: 'Freeform', key: 'P', icon: ICONS.pencil },
-            { id: 'line', label: 'Line Wall', key: 'L', icon: ICONS.line },
-            { id: 'bend', label: 'Bend Wall', key: 'B', icon: ICONS.bend },
-        ]
-    },
-
-    {
-        id: 'doors', label: 'Doors', leaves: [
-            { id: 'door-swing-single', label: 'Single Swing Door', key: 'D', icon: ICONS['door-swing-single'] },
-            { id: 'door-swing-double', label: 'Double Swing Door', icon: ICONS['door-swing-double'] },
-            { id: 'door-sliding', label: 'Sliding Door', icon: ICONS['door-sliding'] },
-            { id: 'door-pocket', label: 'Pocket Door', icon: ICONS['door-pocket'] },
-            { id: 'door-folding', label: 'Bi-fold Door', icon: ICONS['door-folding'] },
-            { id: 'door-garage', label: 'Garage Door', icon: ICONS['door-garage'] },
-        ]
-    },
-
-    {
-        id: 'windows', label: 'Windows', leaves: [
-            { id: 'window-fixed', label: 'Fixed Window', key: 'N', icon: ICONS['window-fixed'] },
-            { id: 'window-sliding', label: 'Sliding Window', icon: ICONS['window-sliding'] },
-            { id: 'window-casement', label: 'Casement Window', icon: ICONS['window-casement'] },
-            { id: 'window-bay', label: 'Bay Window', icon: ICONS['window-bay'] },
-            { id: 'window-skylight', label: 'Skylight', icon: ICONS['window-skylight'] },
-        ]
-    },
-
-    {
-        id: 'openings', label: 'Openings', leaves: [
-            { id: 'opening-archway', label: 'Archway', icon: ICONS['opening-archway'] },
-            { id: 'opening-passage', label: 'Open Passage', icon: ICONS['opening-passage'] },
-        ]
-    },
-
-    {
-        id: 'vertical', label: 'Stairs & Vertical', leaves: [
-            { id: 'stairs-straight', label: 'Straight Stairs', key: 'S', icon: ICONS['stairs-straight'] },
-            { id: 'stairs-l', label: 'L-Shaped Stairs', icon: ICONS['stairs-l'] },
-            { id: 'stairs-u', label: 'U-Shaped Stairs', icon: ICONS['stairs-u'] },
-            { id: 'stairs-spiral', label: 'Spiral Stairs', icon: ICONS['stairs-spiral'] },
-            { id: 'stairs-ramp', label: 'Ramp', icon: ICONS['stairs-ramp'] },
-            { id: 'elevator', label: 'Elevator', icon: ICONS.elevator },
-        ]
-    },
-
-    { id: 'annotate', label: 'Annotate', leaves: [{ id: 'annotate', label: 'Add Label', key: 'A', icon: ICONS.annotate }] },
-    { id: 'furniture', label: 'Furniture', leaves: [{ id: 'furniture', label: 'Place Furniture', key: 'F', icon: ICONS.furniture }] },
-    { id: 'delete', label: 'Delete', leaves: [{ id: 'delete', label: 'Delete', key: '⌫', icon: ICONS.delete }] },
-    {
-        id: 'wall-decor', label: 'Wall Decor', leaves: [
-            { id: 'wall-decor-led', label: 'LED Strip', icon: ICONS['wall-decor-led'] },
-            { id: 'wall-decor-pvc', label: 'PVC Wall Panel', icon: ICONS['wall-decor-pvc'] },
-            { id: 'wall-decor-painting', label: 'Painting', icon: ICONS['wall-decor-painting'] },
-            { id: 'led_tv', label: 'Led TV', icon: ICONS['bend'] },
-        ]
-    },
-    {
-        id: 'lights', label: 'Lights', leaves: [
-            { id: 'light-wall-sconce', label: 'Wall Sconce', icon: ICONS['light-wall-sconce'] },
-            { id: 'light-ceiling-pendant', label: 'Pendant Light', icon: ICONS['light-ceiling-pendant'] },
-            { id: 'light-ceiling-recessed', label: 'Recessed Light', icon: ICONS['light-ceiling-recessed'] },
-            { id: 'light-floor-lamp', label: 'Floor Lamp', icon: ICONS['light-floor-lamp'] },
-        ]
-    },
-]
-
+// ── Tool groups (drives the toolbar layout) ────────────────────────────────
 
 export const DEFAULT_SCENE_CONFIG: SceneConfig = {
     ambientIntensity: 1.5,

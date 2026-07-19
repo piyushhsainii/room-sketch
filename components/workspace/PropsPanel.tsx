@@ -4,6 +4,7 @@ import { EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanSta
 import { getMaterialsFor } from "./texture/universalMaterials"
 import { MaterialTexturePicker } from "./texture/MaterialPicker"
 import { getMaterialsForDomain } from './Tools/constants'
+import { OUTDOOR_OBJECT_LABELS, PlacedOutdoorObject } from "./Tools/outdoor-constants"
 
 export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, onChangeSceneConfig }: {
     fp: FloorPlanState
@@ -83,6 +84,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
     const patchNode = (patch: Partial<LineNode>) =>
         onChange({ ...fp, lineNodes: fp.lineNodes.map(n => n.id === node?.id ? { ...n, ...patch } : n) })
+    const outdoorObj = (fp.outdoorObjects ?? []).find(o => o.id === selectedId)
 
     const roomConfig = sceneConfig.rooms.find(r => r.roomId === wallRoom?.id)
     const specificWallColor = wallSel ? roomConfig?.wallOverrides?.[wallSel.wall]?.color : undefined
@@ -110,6 +112,21 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         onChange({ ...fp, lineSegments: fp.lineSegments.map(s => s.id === seg?.id ? { ...s, ...patch } : s) })
 
     const segSceneConfig = seg ? sceneConfig.rooms.find(r => r.roomId === seg.id) : undefined
+
+    if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape && !wallDecor && !outdoorObj) return (
+        <div style={{ padding: 16, fontSize: 11, color: 'rgba(100,116,139,0.5)', textAlign: 'center' }}>
+            Select a room, wall, node or opening to edit properties
+        </div>
+    )
+
+    const patchOutdoor = (patch: Partial<PlacedOutdoorObject>) => {
+        if (!outdoorObj) return
+        onChange({
+            ...fp,
+            outdoorObjects: (fp.outdoorObjects ?? []).map(o => o.id === outdoorObj.id ? { ...o, ...patch } : o)
+        })
+    }
+
     return (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
@@ -397,6 +414,57 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     </button>
                 </div>
             </>}
+
+            {outdoorObj && <>
+                <PropField label="Type">
+                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
+                        {OUTDOOR_OBJECT_LABELS[outdoorObj.type]}
+                    </span>
+                </PropField>
+                <PropField label="X pos (m)">
+                    <NumInput value={outdoorObj.x} min={-50} max={50} step={0.5} onChange={v => patchOutdoor({ x: snapM(v) })} />
+                </PropField>
+                <PropField label="Z pos (m)">
+                    <NumInput value={outdoorObj.z} min={-50} max={50} step={0.5} onChange={v => patchOutdoor({ z: snapM(v) })} />
+                </PropField>
+                <PropField label="Rotation">
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input type="range" min={0} max={360} step={15}
+                            value={Math.round((outdoorObj.rotation * 180) / Math.PI)}
+                            onChange={e => patchOutdoor({ rotation: (parseFloat(e.target.value) * Math.PI) / 180 })}
+                            style={{ flex: 1, accentColor: '#6366F1' }} />
+                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 30, flexShrink: 0 }}>
+                            {Math.round((outdoorObj.rotation * 180) / Math.PI)}°
+                        </span>
+                    </div>
+                </PropField>
+                <PropField label="Scale">
+                    <input type="range" min={50} max={150} step={5}
+                        value={Math.round((outdoorObj.scale ?? 1) * 100)}
+                        onChange={e => patchOutdoor({ scale: parseFloat(e.target.value) / 100 })}
+                        style={{ flex: 1, accentColor: '#6366F1' }} />
+                    <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', marginLeft: 4 }}>
+                        {Math.round((outdoorObj.scale ?? 1) * 100)}%
+                    </span>
+                </PropField>
+                {outdoorObj.type === 'bench' && (
+                    <>
+                        <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>MATERIAL</div>
+                        <MaterialTexturePicker
+                            items={getMaterialsForDomain('outdoor').map(({ key, def }) => ({
+                                id: key, label: def.label ?? key, swatch: def.color, thumbnail: def.textureUrl,
+                                category: def.category as any, appliesTo: ['outdoor'],
+                            }))}
+                            currentId={outdoorObj.materialId}
+                            onSelect={(id) => patchOutdoor({ materialId: id })}
+                            onClear={() => patchOutdoor({ materialId: undefined })}
+                            theme={pickerTheme}
+                        />
+                    </>
+                )}
+            </>}
+
 
             {wallDecor && <>
                 <PropField label="Type">

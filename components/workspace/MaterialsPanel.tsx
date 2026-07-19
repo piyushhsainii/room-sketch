@@ -46,6 +46,7 @@ const CATEGORY_META: Record<MaterialCategory, { label: string; icon: string; ord
     'pvc-panel': { label: 'PVC Panel', icon: '🪟', order: 8 },
     glass: { label: 'Glass', icon: '🔷', order: 9 },
     solid: { label: 'Solid Colors', icon: '🎨', order: 10 },
+    leather: { label: 'Leather', icon: '', order: 11 }
 }
 
 function Swatch({
@@ -144,7 +145,7 @@ function CategoryRow({
     columns: number
 }) {
     const [open, setOpen] = useState(defaultOpen)
-    const meta = CATEGORY_META[category]
+    const meta = CATEGORY_META[category] ?? { label: labelize(category), icon: '📦', order: 999 }
     const hasActive = items.some(i => i.key === currentVal)
 
     return (
@@ -199,7 +200,7 @@ function CategorizedMaterialGrid({
     const grouped = useMemo(() => getMaterialsByCategory(domain), [domain])
     const sortedCategories = useMemo(
         () => (Object.keys(grouped) as MaterialCategory[]).sort(
-            (a, b) => CATEGORY_META[a].order - CATEGORY_META[b].order
+            (a, b) => (CATEGORY_META[a]?.order ?? 999) - (CATEGORY_META[b]?.order ?? 999)
         ),
         [grouped]
     )

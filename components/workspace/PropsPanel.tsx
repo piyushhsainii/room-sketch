@@ -122,9 +122,17 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         </span>
                     </PropField>
                     <PropField label="Side">
-                        <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600, textTransform: 'capitalize' }}>
-                            {wallSel.wall}
-                        </span>
+                        <button
+                            onClick={() => onChange({
+                                ...fp,
+                                wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor?.id
+                                    ? { ...d, facingInward: !(d.facingInward ?? true) }
+                                    : d)
+                            })}
+                            style={{ height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600 }}
+                        >
+                            {(wallDecor?.facingInward ?? true) ? 'Interior side' : 'Exterior side'}
+                        </button>
                     </PropField>
 
                     <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
@@ -282,7 +290,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
             </>
             }
 
-            {/* --- FURNITURE SELECTION INTERFACE --- */}
             {furniture && <>
                 <PropField label="Type">
                     <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
@@ -297,17 +304,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     <NumInput value={furniture.z} min={-50} max={50} step={0.5}
                         onChange={v => patchFurniture({ z: snapFurniture(v) })} />
                 </PropField>
-                <PropField label="Rotation">
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <input type="range" min={0} max={360} step={15}
-                            value={Math.round((furniture.rotation * 180) / Math.PI)}
-                            onChange={e => patchFurniture({ rotation: (parseFloat(e.target.value) * Math.PI) / 180 })}
-                            style={{ flex: 1, accentColor: '#6366F1' }} />
-                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 30, flexShrink: 0 }}>
-                            {Math.round((furniture.rotation * 180) / Math.PI)}°
-                        </span>
-                    </div>
-                </PropField>
+
                 <PropField label="Scale">
                     <input type="range" min={50} max={150} step={5}
                         value={Math.round((furniture.scale ?? 1) * 100)}
@@ -410,6 +407,44 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 <PropField label="Width (m)">
                     <NumInput value={wallDecor.width} min={0.2} max={4} step={0.1}
                         onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, width: v } : d) })} />
+                </PropField>
+                {/* NEW — which face of the wall this mounts on. Lets two items share
+        the same wall/position without overlapping (e.g. one per side of a
+        wall shared between two rooms), and lets exterior-facing decor be
+        placed at all. Defaults to true (interior side) to match all prior
+        placements, which never set this field. */}
+                <PropField label="Side">
+                    <button
+                        onClick={() => onChange({
+                            ...fp,
+                            wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id
+                                ? { ...d, facingInward: !(d.facingInward ?? true) }
+                                : d)
+                        })}
+                        style={{
+                            height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer',
+                            border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)',
+                            color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600,
+                        }}
+                    >
+                        {(wallDecor.facingInward ?? true) ? 'Interior side' : 'Exterior side'}
+                    </button>
+                </PropField>
+                <PropField label="Rotation">
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        <input type="range" min={-180} max={180} step={5}
+                            value={Math.round(((wallDecor.rotation ?? 0) * 180) / Math.PI)}
+                            onChange={e => onChange({
+                                ...fp,
+                                wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id
+                                    ? { ...d, rotation: (parseFloat(e.target.value) * Math.PI) / 180 }
+                                    : d)
+                            })}
+                            style={{ flex: 1, accentColor: '#6366F1' }} />
+                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 34, flexShrink: 0 }}>
+                            {Math.round(((wallDecor.rotation ?? 0) * 180) / Math.PI)}°
+                        </span>
+                    </div>
                 </PropField>
             </>}
 

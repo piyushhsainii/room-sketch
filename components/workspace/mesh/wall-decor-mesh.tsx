@@ -1,14 +1,6 @@
 import * as THREE from 'three'
 import { PlacedWallDecor } from "../Tools/constants"
 
-/**
- * Renders a wall-mounted decor item (LED strip, PVC panel, painting).
- * Follows the same basePos/angle convention as DoorVariant3D/WindowVariant3D
- * so it renders identically whether attached to a room wall or a line wall.
- *
- * basePos = world position of the item's center, at heightOffset above floor.
- * angle = wall direction (radians, Math.atan2(dz, dx) convention).
- */
 export function WallDecorMesh({ decor, angle, basePos }: {
     decor: PlacedWallDecor
     angle: number
@@ -85,35 +77,94 @@ export function WallDecorMesh({ decor, angle, basePos }: {
             )
         }
 
+        case 'led_tv': {
+            const h = w * 0.58 // roughly 16:9-ish proportions relative to width
+            const bodyT = 0.035
+            const bezelT = 0.012
+
+            return (
+                <group position={basePos} rotation={groupRot}>
+                    {/* Slim body/back panel */}
+                    <mesh castShadow>
+                        <boxGeometry args={[w, h, bodyT]} />
+                        <meshStandardMaterial color="#1A1A1E" roughness={0.4} metalness={0.3} />
+                    </mesh>
+                    {/* Screen — glossy black, slightly recessed with thin bezel */}
+                    <mesh position={[0, 0, bodyT / 2 + 0.003]}>
+                        <boxGeometry args={[w - bezelT * 2, h - bezelT * 2, 0.006]} />
+                        <meshStandardMaterial color="#050506" roughness={0.08} metalness={0.1} />
+                    </mesh>
+                    {/* Faint screen reflection highlight */}
+                    <mesh position={[-w * 0.18, h * 0.15, bodyT / 2 + 0.008]}>
+                        <planeGeometry args={[w * 0.3, h * 0.5]} />
+                        <meshStandardMaterial
+                            color="#8AA0C8"
+                            transparent
+                            opacity={0.06}
+                            depthWrite={false}
+                            roughness={0.1}
+                        />
+                    </mesh>
+                    {/* Small standby LED */}
+                    <mesh position={[w * 0.46, -h * 0.44, bodyT / 2 + 0.008]}>
+                        <circleGeometry args={[0.006, 12]} />
+                        <meshStandardMaterial color="#4ADE80" emissive="#4ADE80" emissiveIntensity={1.5} toneMapped={false} />
+                    </mesh>
+                    {/* Wall mount bracket, small, centered behind */}
+                    <mesh position={[0, 0, -bodyT / 2 - 0.01]}>
+                        <boxGeometry args={[w * 0.25, h * 0.3, 0.02]} />
+                        <meshStandardMaterial color="#2A2A2E" roughness={0.6} metalness={0.4} />
+                    </mesh>
+                </group>
+            )
+        }
+
         case 'painting':
         default: {
             const h = 0.7 * (decor.scale ?? 1)
             const frameT = 0.04
+            const frameW = 0.035 // NEW — visible frame border width, distinct from canvas inset
             const canvasInset = 0.05
+
             return (
                 <group position={basePos} rotation={groupRot}>
-                    {/* Frame */}
+                    {/* Outer frame — slightly deeper, warm wood tone */}
                     <mesh castShadow>
                         <boxGeometry args={[w, h, frameT]} />
                         <meshStandardMaterial color="#4A3C2C" roughness={0.5} metalness={0.05} />
                     </mesh>
+                    {/* NEW — inner frame lip/molding detail, thin raised edge just inside the outer frame */}
+                    <mesh position={[0, 0, frameT / 2 + 0.001]}>
+                        <boxGeometry args={[w - frameW, h - frameW, 0.006]} />
+                        <meshStandardMaterial color="#6B5842" roughness={0.4} metalness={0.1} />
+                    </mesh>
                     {/* Canvas */}
-                    <mesh position={[0, 0, frameT / 2 + 0.002]}>
+                    <mesh position={[0, 0, frameT / 2 + 0.008]}>
                         <boxGeometry args={[w - canvasInset * 2, h - canvasInset * 2, 0.008]} />
                         <meshStandardMaterial color="#F2EDE4" roughness={0.85} />
                     </mesh>
                     {/* Abstract color blocks */}
-                    <mesh position={[-w * 0.15, h * 0.12, frameT / 2 + 0.012]}>
+                    <mesh position={[-w * 0.15, h * 0.12, frameT / 2 + 0.018]}>
                         <boxGeometry args={[w * 0.35, h * 0.4, 0.004]} />
                         <meshStandardMaterial color="#C97B5F" roughness={0.9} />
                     </mesh>
-                    <mesh position={[w * 0.18, -h * 0.15, frameT / 2 + 0.012]}>
+                    <mesh position={[w * 0.18, -h * 0.15, frameT / 2 + 0.018]}>
                         <boxGeometry args={[w * 0.4, h * 0.3, 0.004]} />
                         <meshStandardMaterial color="#6B8F7A" roughness={0.9} />
                     </mesh>
-                    <mesh position={[w * 0.05, h * 0.25, frameT / 2 + 0.014]}>
+                    <mesh position={[w * 0.05, h * 0.25, frameT / 2 + 0.02]}>
                         <circleGeometry args={[h * 0.14, 20]} />
                         <meshStandardMaterial color="#D9B166" roughness={0.9} side={THREE.DoubleSide} />
+                    </mesh>
+                    {/* NEW — thin accent line detail across canvas for extra visual interest */}
+                    <mesh position={[0, -h * 0.32, frameT / 2 + 0.02]}>
+                        <boxGeometry args={[w - canvasInset * 2 - 0.04, 0.008, 0.003]} />
+                        <meshStandardMaterial color="#2A2A2A" roughness={0.7} />
+                    </mesh>
+                    {/* NEW — small picture-hanging wire hint at top */}
+                    <mesh position={[0, h / 2 + 0.015, -frameT / 4]} rotation={[0, 0, 0]}>
+                        <torusGeometry args={[0.04, 0.003, 8, 16, Math.PI]} />
+                        <meshStandardMaterial color="#8A8A8A" metalness={0.6} roughness={0.3} />
                     </mesh>
                 </group>
             )

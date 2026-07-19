@@ -2,11 +2,11 @@ import { OrbitControls } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./Tools/constants"
 import { Room3D } from "./3dRoom"
 import { LineWalls3D } from "./objects/line-walls-3d"
-import { StairsMesh } from "./furniture/stairsMesh"
+import { StairsMesh } from "./mesh/stairsMesh"
 import { WalkModeControls } from "./WalkModeControls"
-import { FurnitureMesh } from "./furniture/furnitureMesh"
+import { FurnitureMesh } from "./mesh/furnitureMesh"
 import { SceneConfig } from "./FloorPlanEditor"
-import { LightFixtureMesh } from "./objects/lights-mesh"
+import { LightFixtureMesh } from "./mesh/lights-mesh"
 
 function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen }: {
     fp: FloorPlanState
@@ -119,6 +119,7 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                 interactive={interactiveMode}
                 selectedId={selectedId}
                 onSelect={onSelect}
+                onToggleDoorOpen={onToggleDoorOpen}
             />
             {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
                 <group

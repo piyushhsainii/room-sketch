@@ -26,17 +26,24 @@ function buildSceneGraph(fp: FloorPlanState) {
         id: o.id, label: OPENING_VARIANT_LABELS[o.variant ?? o.type] ?? 'Opening', sub: `${o.width.toFixed(1)}m`,
     }))
 
-    const models: SceneGraphEntry[] = [
-        ...(fp.furniture ?? []).map(f => ({ id: f.id, label: FURNITURE_LABELS[f.type] ?? f.type })),
-        ...(fp.stairs ?? []).map(s => ({ id: s.id, label: STAIRS_LABELS[s.type] ?? s.type })),
-    ]
+    // Split out from the old combined "Models" bucket — furniture now gets
+    // its own group so it's actually browsable/selectable by name instead
+    // of being lumped in with stairs under a generic label.
+    const furniture: SceneGraphEntry[] = (fp.furniture ?? []).map(f => ({
+        id: f.id, label: FURNITURE_LABELS[f.type] ?? f.type,
+    }))
+    const stairs: SceneGraphEntry[] = (fp.stairs ?? []).map(s => ({
+        id: s.id, label: STAIRS_LABELS[s.type] ?? s.type,
+    }))
+
     const wallDecor: SceneGraphEntry[] = (fp.wallDecor ?? []).map(d => ({
         id: d.id, label: WALL_DECOR_LABELS[d.type],
     }))
     const annotations: SceneGraphEntry[] = (fp.annotations ?? []).filter(a => a.text).map(a => ({ id: a.id, label: a.text }))
 
     return [
-        { key: 'models', label: 'Models', entries: models },
+        { key: 'furniture', label: 'Furniture', entries: furniture },
+        { key: 'stairs', label: 'Stairs / Elevators', entries: stairs },
         { key: 'walls', label: 'Walls', entries: walls },
         { key: 'doors', label: 'Doors', entries: doors },
         { key: 'windows', label: 'Windows', entries: windows },

@@ -9,7 +9,7 @@ const ELEVATOR_COLOR = '#888888'
 const ELEVATOR_DOOR_COLOR = '#A0A0A0'
 const LANDING_COLOR = '#B8A888'
 
-export function StairsMesh({ s, roomHeight }: { s: PlacedStairs; roomHeight: number }) {
+function StairsMeshImpl({ s, roomHeight }: { s: PlacedStairs; roomHeight: number }) {
     const cx = s.x + s.width / 2
     const cz = s.z + s.depth / 2
     const H = roomHeight
@@ -26,12 +26,16 @@ export function StairsMesh({ s, roomHeight }: { s: PlacedStairs; roomHeight: num
     )
 }
 
+// Memoized export — StairsMesh does real geometry work (spiral stairs build
+// custom ExtrudeGeometry, elevators render ~15+ meshes) that has zero reason
+// to re-run on every 2D-editor-only state change (hover, pan, tooltip). See
+// the same fix applied to FurnitureMesh for the full explanation.
+export const StairsMesh = React.memo(StairsMeshImpl)
+
 const RISER = 0.18   // realistic step height
 const RUN = 0.28      // realistic tread depth
 
 function StraightStairs({ w, d, h }: { w: number; d: number; h: number }) {
-    // Cap the flight to what's realistically achievable in both dimensions —
-    // never force-climb the full room height across too-shallow a footprint.
     const maxTreadsByHeight = Math.round(h / RISER)
     const maxTreadsByDepth = Math.floor(d / RUN)
     const numTreads = Math.max(3, Math.min(maxTreadsByHeight, maxTreadsByDepth))
@@ -91,7 +95,6 @@ function Railing({ x, d, h }: { x: number; d: number; h: number }) {
                     </mesh>
                 )
             })}
-            {/* Top rail */}
             <mesh
                 position={[x, h / 2 + railH, 0]}
                 rotation={[-Math.atan2(h, d), 0, 0]}
@@ -106,8 +109,6 @@ function Railing({ x, d, h }: { x: number; d: number; h: number }) {
 
 /* ── L-Shaped Stairs ──────────────────────────────────────────────────── */
 function LStairs({ w, d, h }: { w: number; d: number; h: number }) {
-    // First run: from bottom-front to landing at corner (half height)
-    // Second run: from landing, perpendicular (to full height)
     const halfH = h / 2
     const landingSize = Math.min(w, d) * 0.4
     const run1Treads = Math.max(4, Math.round(halfH / 0.18))
@@ -123,7 +124,6 @@ function LStairs({ w, d, h }: { w: number; d: number; h: number }) {
 
     return (
         <group>
-            {/* First run — along Z axis (front to landing) */}
             {Array.from({ length: run1Treads }, (_, i) => (
                 <mesh
                     key={`r1_${i}`}
@@ -139,13 +139,11 @@ function LStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 </mesh>
             ))}
 
-            {/* Landing platform */}
             <mesh position={[0, halfH - treadH1 * 0.4, 0]} castShadow receiveShadow>
                 <boxGeometry args={[landingSize * 1.2, treadH1 * 0.9, landingSize * 1.2]} />
                 <meshStandardMaterial color={LANDING_COLOR} roughness={0.65} />
             </mesh>
 
-            {/* Second run — along X axis (landing to top) */}
             {Array.from({ length: run2Treads }, (_, i) => (
                 <mesh
                     key={`r2_${i}`}
@@ -167,7 +165,7 @@ function LStairs({ w, d, h }: { w: number; d: number; h: number }) {
 /* ── U-Shaped Stairs ──────────────────────────────────────────────────── */
 function UStairs({ w, d, h }: { w: number; d: number; h: number }) {
     const halfH = h / 2
-    const runW = (w - 0.2) / 2 // each run's width
+    const runW = (w - 0.2) / 2
     const landingD = d * 0.25
     const runD = d - landingD
     const run1Treads = Math.max(4, Math.round(halfH / 0.18))
@@ -179,7 +177,6 @@ function UStairs({ w, d, h }: { w: number; d: number; h: number }) {
 
     return (
         <group>
-            {/* First run — left side, going up along +Z */}
             {Array.from({ length: run1Treads }, (_, i) => (
                 <mesh
                     key={`r1_${i}`}
@@ -195,13 +192,11 @@ function UStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 </mesh>
             ))}
 
-            {/* Landing */}
             <mesh position={[0, halfH - treadH1 * 0.4, d / 2 - landingD / 2]} castShadow receiveShadow>
                 <boxGeometry args={[w * 0.9, treadH1 * 0.9, landingD * 0.9]} />
                 <meshStandardMaterial color={LANDING_COLOR} roughness={0.65} />
             </mesh>
 
-            {/* Second run — right side, going up along -Z (reversed) */}
             {Array.from({ length: run2Treads }, (_, i) => (
                 <mesh
                     key={`r2_${i}`}
@@ -217,7 +212,6 @@ function UStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 </mesh>
             ))}
 
-            {/* Center divider wall */}
             <mesh position={[0, h / 2, -landingD / 2]} castShadow>
                 <boxGeometry args={[0.06, h, runD * 0.85]} />
                 <meshStandardMaterial color={STAIR_SIDE_COLOR} roughness={0.6} />
@@ -232,16 +226,14 @@ function SpiralStairs({ w, d, h }: { w: number; d: number; h: number }) {
     const treadH = h / numTreads
     const radius = Math.min(w, d) / 2 - 0.05
     const poleRadius = 0.06
-    const totalAngle = Math.PI * 2 // one full rotation
+    const totalAngle = Math.PI * 2
     const angleStep = totalAngle / numTreads
 
-    // Pre-compute wedge shape for treads
     const treadGeo = useMemo(() => {
         const shape = new THREE.Shape()
         const innerR = poleRadius + 0.02
         const outerR = radius - 0.02
         const halfAngle = angleStep * 0.42
-        // Wedge from inner radius to outer radius
         shape.moveTo(innerR * Math.cos(-halfAngle), innerR * Math.sin(-halfAngle))
         shape.lineTo(outerR * Math.cos(-halfAngle), outerR * Math.sin(-halfAngle))
         shape.lineTo(outerR * Math.cos(halfAngle), outerR * Math.sin(halfAngle))
@@ -254,13 +246,11 @@ function SpiralStairs({ w, d, h }: { w: number; d: number; h: number }) {
 
     return (
         <group>
-            {/* Central pole */}
             <mesh position={[0, h / 2, 0]} castShadow>
                 <cylinderGeometry args={[poleRadius, poleRadius, h, 16]} />
                 <meshStandardMaterial color={RAILING_COLOR} roughness={0.4} metalness={0.4} />
             </mesh>
 
-            {/* Treads */}
             {Array.from({ length: numTreads }, (_, i) => {
                 const angle = i * angleStep
                 const y = treadH * i
@@ -278,7 +268,6 @@ function SpiralStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 )
             })}
 
-            {/* Outer railing posts */}
             {Array.from({ length: Math.min(numTreads, 16) }, (_, i) => {
                 const angle = (i / Math.min(numTreads, 16)) * totalAngle
                 const y = (i / Math.min(numTreads, 16)) * h
@@ -302,7 +291,6 @@ function RampStairs({ w, d, h }: { w: number; d: number; h: number }) {
 
     return (
         <group>
-            {/* Ramp surface */}
             <mesh
                 position={[0, h / 2, 0]}
                 rotation={[-angle, 0, 0]}
@@ -313,7 +301,6 @@ function RampStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 <meshStandardMaterial color={STAIR_COLOR} roughness={0.75} />
             </mesh>
 
-            {/* Side walls */}
             {[-1, 1].map(side => (
                 <mesh
                     key={side}
@@ -326,7 +313,6 @@ function RampStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 </mesh>
             ))}
 
-            {/* Railing posts */}
             {[-1, 1].map(side =>
                 Array.from({ length: 5 }, (_, i) => {
                     const t = i / 4
@@ -341,7 +327,6 @@ function RampStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 })
             )}
 
-            {/* Handrails */}
             {[-1, 1].map(side => (
                 <mesh
                     key={`rail_${side}`}
@@ -354,7 +339,6 @@ function RampStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 </mesh>
             ))}
 
-            {/* Non-slip lines on ramp surface */}
             {Array.from({ length: 8 }, (_, i) => {
                 const t = (i + 1) / 9
                 const py = t * h + 0.05
@@ -378,43 +362,36 @@ function ElevatorMesh({ w, d, h }: { w: number; d: number; h: number }) {
 
     return (
         <group>
-            {/* Floor */}
             <mesh position={[0, 0.01, 0]} receiveShadow>
                 <boxGeometry args={[w, 0.02, d]} />
                 <meshStandardMaterial color="#D0D0D0" roughness={0.3} metalness={0.1} />
             </mesh>
 
-            {/* Back wall */}
             <mesh position={[0, h / 2, d / 2 - wallT / 2]} castShadow receiveShadow>
                 <boxGeometry args={[w, h, wallT]} />
                 <meshStandardMaterial color={ELEVATOR_COLOR} roughness={0.3} metalness={0.4} />
             </mesh>
 
-            {/* Left wall */}
             <mesh position={[-w / 2 + wallT / 2, h / 2, 0]} castShadow receiveShadow>
                 <boxGeometry args={[wallT, h, d]} />
                 <meshStandardMaterial color={ELEVATOR_COLOR} roughness={0.3} metalness={0.4} />
             </mesh>
 
-            {/* Right wall */}
             <mesh position={[w / 2 - wallT / 2, h / 2, 0]} castShadow receiveShadow>
                 <boxGeometry args={[wallT, h, d]} />
                 <meshStandardMaterial color={ELEVATOR_COLOR} roughness={0.3} metalness={0.4} />
             </mesh>
 
-            {/* Ceiling */}
             <mesh position={[0, h - wallT / 2, 0]} castShadow>
                 <boxGeometry args={[w, wallT, d]} />
                 <meshStandardMaterial color="#707070" roughness={0.4} metalness={0.3} />
             </mesh>
 
-            {/* Door frame — header above door */}
             <mesh position={[0, doorH + (h - doorH) / 2, -d / 2 + wallT / 2]} castShadow>
                 <boxGeometry args={[w, h - doorH, wallT]} />
                 <meshStandardMaterial color={ELEVATOR_COLOR} roughness={0.3} metalness={0.4} />
             </mesh>
 
-            {/* Door panels — side sections flanking the door */}
             {[-1, 1].map(side => {
                 const sideW = (w - doorW) / 2
                 if (sideW < 0.01) return null
@@ -426,7 +403,6 @@ function ElevatorMesh({ w, d, h }: { w: number; d: number; h: number }) {
                 )
             })}
 
-            {/* Sliding door leaves (slightly ajar) */}
             <mesh position={[-doorW / 4 - 0.04, doorH / 2, -d / 2 + 0.01]} castShadow>
                 <boxGeometry args={[doorW / 2 - 0.06, doorH - 0.04, 0.03]} />
                 <meshStandardMaterial color={ELEVATOR_DOOR_COLOR} roughness={0.15} metalness={0.6} />
@@ -436,12 +412,10 @@ function ElevatorMesh({ w, d, h }: { w: number; d: number; h: number }) {
                 <meshStandardMaterial color={ELEVATOR_DOOR_COLOR} roughness={0.15} metalness={0.6} />
             </mesh>
 
-            {/* Interior control panel on right wall */}
             <mesh position={[w / 2 - wallT - 0.005, h * 0.45, -d / 4]}>
                 <boxGeometry args={[0.01, 0.35, 0.12]} />
                 <meshStandardMaterial color="#2A2A2A" roughness={0.3} />
             </mesh>
-            {/* Panel buttons */}
             {Array.from({ length: 6 }, (_, i) => (
                 <mesh key={i} position={[w / 2 - wallT - 0.01, h * 0.35 + i * 0.05, -d / 4]}>
                     <sphereGeometry args={[0.008, 8, 8]} />
@@ -449,7 +423,6 @@ function ElevatorMesh({ w, d, h }: { w: number; d: number; h: number }) {
                 </mesh>
             ))}
 
-            {/* Guide rails on back wall */}
             {[-1, 1].map(side => (
                 <mesh key={`rail_${side}`} position={[side * (w / 2 - wallT - 0.04), h / 2, d / 2 - wallT - 0.02]} castShadow>
                     <boxGeometry args={[0.04, h - 0.1, 0.04]} />
@@ -457,7 +430,6 @@ function ElevatorMesh({ w, d, h }: { w: number; d: number; h: number }) {
                 </mesh>
             ))}
 
-            {/* Ceiling light */}
             <mesh position={[0, h - wallT - 0.02, 0]}>
                 <boxGeometry args={[w * 0.5, 0.015, d * 0.3]} />
                 <meshStandardMaterial

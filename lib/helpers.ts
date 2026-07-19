@@ -11,12 +11,16 @@ export function deriveClosedPolygons(
   lineNodes: LineNode[],
   lineSegments: LineSegment[],
 ): string[][] {
-  // Build adjacency list from all segments
+  const nodeMap = new Map(lineNodes.map((n) => [n.id, n]));
+
+  // Undirected adjacency (unique neighbor ids per node)
   const adj = new Map<string, Set<string>>();
   for (const seg of lineSegments) {
     for (let i = 0; i < seg.nodeIds.length - 1; i++) {
       const a = seg.nodeIds[i]!,
         b = seg.nodeIds[i + 1]!;
+      if (a === b) continue;
+      if (!nodeMap.has(a) || !nodeMap.has(b)) continue;
       if (!adj.has(a)) adj.set(a, new Set());
       if (!adj.has(b)) adj.set(b, new Set());
       adj.get(a)!.add(b);
@@ -24,49 +28,94 @@ export function deriveClosedPolygons(
     }
   }
 
-  // Only consider nodes with 2+ connections (part of a potential cycle)
-  const candidates = new Set(
-    [...adj.entries()]
-      .filter(([, neighbors]) => neighbors.size >= 2)
-      .map(([id]) => id),
-  );
+  if (adj.size === 0) return [];
 
-  const foundCycles: string[][] = [];
-  const usedSets: Array<Set<string>> = [];
-
-  for (const startId of candidates) {
-    // DFS to find shortest cycle starting from this node
-    function dfs(path: string[]): string[] | null {
-      const current = path[path.length - 1]!;
-      for (const next of adj.get(current) ?? []) {
-        if (next === startId && path.length >= 3) {
-          return [...path]; // found cycle back to start
-        }
-        if (path.includes(next)) continue;
-        if (!candidates.has(next)) continue;
-        const result = dfs([...path, next]);
-        if (result) return result;
-      }
-      return null;
-    }
-
-    const cycle = dfs([startId]);
-    if (!cycle || cycle.length < 3) continue;
-
-    // Check this isn't a duplicate of an already-found cycle
-    const cycleSet = new Set(cycle);
-    const isDuplicate = usedSets.some(
-      (existing) =>
-        existing.size === cycleSet.size &&
-        [...existing].every((id) => cycleSet.has(id)),
-    );
-    if (isDuplicate) continue;
-
-    usedSets.push(cycleSet);
-    foundCycles.push(cycle);
+  // Sort each vertex's neighbors by angle around it (ascending, CCW)
+  const sortedNeighbors = new Map<string, string[]>();
+  for (const [id, neighbors] of adj) {
+    const p = nodeMap.get(id)!;
+    const list = [...neighbors];
+    list.sort((a, b) => {
+      const pa = nodeMap.get(a)!,
+        pb = nodeMap.get(b)!;
+      const angleA = Math.atan2(pa.z - p.z, pa.x - p.x);
+      const angleB = Math.atan2(pb.z - p.z, pb.x - p.x);
+      return angleA - angleB;
+    });
+    sortedNeighbors.set(id, list);
   }
 
-  return foundCycles;
+  function nextInFace(u: string, v: string): string {
+    const list = sortedNeighbors.get(v)!;
+    const idx = list.indexOf(u);
+    // Previous entry in the CCW-sorted list = next edge clockwise —
+    // traces the face lying to the right of directed edge u->v.
+    const prevIdx = (idx - 1 + list.length) % list.length;
+    return list[prevIdx]!;
+  }
+
+  const visitedDirected = new Set<string>();
+  const rawFaces: string[][] = [];
+
+  for (const [a, neighbors] of adj) {
+    for (const b of neighbors) {
+      const startKey = `${a}->${b}`;
+      if (visitedDirected.has(startKey)) continue;
+
+      const face: string[] = [a];
+      let u = a,
+        v = b;
+      let steps = 0;
+      const maxSteps = lineNodes.length * 4 + 8; // generous safety cap
+
+      while (steps++ < maxSteps) {
+        const key = `${u}->${v}`;
+        if (visitedDirected.has(key)) break;
+        visitedDirected.add(key);
+        face.push(v);
+        const w = nextInFace(u, v);
+        u = v;
+        v = w;
+        if (u === a && v === b) break;
+      }
+
+      if (face.length >= 4) {
+        face.pop(); // drop duplicate closing node (== face[0])
+        rawFaces.push(face);
+      }
+    }
+  }
+
+  function signedArea(ids: string[]): number {
+    let a = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const p1 = nodeMap.get(ids[i]!)!,
+        p2 = nodeMap.get(ids[(i + 1) % ids.length]!)!;
+      a += p1.x * p2.z - p2.x * p1.z;
+    }
+    return a / 2;
+  }
+
+  // Dedup faces that are the same node set traced from different
+  // starting directed edges.
+  const seenKeys = new Set<string>();
+  const uniqueFaces: { ids: string[]; area: number }[] = [];
+  for (const f of rawFaces) {
+    const key = [...f].sort().join(",");
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    uniqueFaces.push({ ids: f, area: Math.abs(signedArea(f)) });
+  }
+
+  if (uniqueFaces.length === 0) return [];
+
+  // Drop the single largest-area face — the outer/unbounded boundary of
+  // the wall network — keeping every genuinely enclosed sub-region,
+  // including ones created by a partition wall.
+  uniqueFaces.sort((a, b) => b.area - a.area);
+  const interiorFaces = uniqueFaces.slice(1).filter((f) => f.area > 0.05);
+
+  return interiorFaces.map((f) => f.ids);
 }
 export const T_BASE = "/textures";
 

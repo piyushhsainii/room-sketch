@@ -225,9 +225,12 @@ export function draw2D(
         const isHov = hoveredId === d.id
         const dw = d.width * scale
 
-        // Flip text right-side-up regardless of wall direction (same fix used for
-        // wall-segment length labels elsewhere in draw2D)
-        const displayAngle = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle
+        // NEW — which face this decor mounts on. Drives both the little side
+        // indicator tick below and the label offset direction, so items on
+        // opposite faces of the same wall/position don't render their labels
+        // on top of each other.
+        const inward = d.facingInward ?? true
+        const faceDir = inward ? 1 : -1
 
         ctx.save()
         ctx.translate(cx(dx), cy(dz))
@@ -237,12 +240,22 @@ export function draw2D(
         ctx.lineWidth = isSel ? 1.5 : 1
         ctx.fillRect(-dw / 2, -3, dw, 6)
         ctx.strokeRect(-dw / 2, -3, dw, 6)
+
+        // NEW — small tick pointing toward the mounted face, so which side an
+        // item is on is visible directly in the 2D editor, not just in 3D.
+        ctx.beginPath()
+        ctx.moveTo(0, 3 * faceDir)
+        ctx.lineTo(0, 3 * faceDir + 8 * faceDir)
+        ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.9)' : 'rgba(120,100,70,0.7)'
+        ctx.lineWidth = 2
+        ctx.stroke()
         ctx.restore()
 
         // Label drawn in a SEPARATE, un-rotated-by-wall-angle pass so text is
-        // always upright and legible, offset outward from the wall on its
-        // normal so overlapping items don't stack directly on top of each other
-        const normalX = Math.sin(angle), normalZ = -Math.cos(angle)
+        // always upright and legible, offset outward on the wall's normal —
+        // now also flipped by `faceDir` so labels for opposite-face items don't
+        // stack on top of each other.
+        const normalX = Math.sin(angle) * faceDir, normalZ = -Math.cos(angle) * faceDir
         const labelOffset = 14
         const label = WALL_DECOR_LABELS[d.type]
         ctx.save()
@@ -262,17 +275,9 @@ export function draw2D(
         ctx.textBaseline = 'middle'
         ctx.fillText(label, lx, ly)
         ctx.restore()
-        ctx.save()
-        ctx.fillStyle = 'rgba(80,60,40,0.85)'
-        ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(
-            WALL_DECOR_LABELS[d.type],
-            cx(dx) + normalX * labelOffset,
-            cy(dz) + normalZ * labelOffset
-        )
-        ctx.restore()
+        // REMOVED — duplicate un-boxed ctx.fillText(...) block that previously
+        // followed here, rendering the same label a second time at the same
+        // position. Left over from before the pill-background version existed.
     }
     // ── Lights ─────────────────────────────────────────────────────────────
     for (const l of fp.lights ?? []) {

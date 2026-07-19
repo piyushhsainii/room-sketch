@@ -826,7 +826,10 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             }
         }
         if (isWallDecorTool) {
-            const decorType: WallDecorType = tool === 'wall-decor-led' ? 'led_strip' : tool === 'wall-decor-pvc' ? 'wall_panel_pvc' : 'painting'
+            const decorType: WallDecorType = tool === 'wall-decor-led' ? 'led_strip'
+                : tool === 'wall-decor-pvc' ? 'wall_panel_pvc'
+                    : tool === 'led_tv' ? 'led_tv'
+                        : 'painting'
             const defaults = WALL_DECOR_DEFAULTS[decorType]
 
             const room = hitRoom(wx, wz)
@@ -841,6 +844,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                     id: uid(), type: decorType, roomId: room.id, wall: wallDir,
                     position: parseFloat(clampedPos.toFixed(2)), width: defaults.width,
                     heightOffset: defaults.heightOffset, scale: 1,
+                    facingInward: true, // NEW — explicit default, flip via PropsPanel after placing
                 }
                 pushHistory()
                 setFp(prev => ({ ...prev, wallDecor: [...(prev.wallDecor ?? []), newDecor] }))
@@ -1215,6 +1219,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                 "light-ceiling-recessed": 'default',
                 "light-floor-lamp": 'default',
                 "light-wall-sconce": 'default',
+                "led_tv": "defaultt"
             }
             newCursor = toolCursors[tool] ?? 'default'
         }
@@ -1429,32 +1434,32 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
             if (hovDecor) { newHoverId = hovDecor.id }
             if (hoveredOpening) { newHoverId = hoveredOpening.id }
             else {
-                const hovShape = hitClosedShape(wx, wz)
-                if (hovShape) { newHoverId = hovShape.id }
+                const wallHit = hitRoomWall(wx, wz)
+                if (wallHit) { newHoverId = `${wallHit.room.id}::wall::${wallHit.wall}` }
                 else {
                     const segHit = hitLineSegment(wx, wz)
                     if (segHit) { newHoverId = segHit.seg.id }
                     else {
-                        const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
-                            const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
-                            const dx = wx - f.x, dz = wz - f.z
-                            const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
-                            const lx = dx * cosR - dz * sinR
-                            const lz = dx * sinR + dz * cosR
-                            return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
-                        })
-                        if (hovFurniture) { newHoverId = hovFurniture.id }
+                        const hovShape = hitClosedShape(wx, wz)
+                        if (hovShape) { newHoverId = hovShape.id }
                         else {
-                            const hovStairs = (fpRef.current.stairs ?? []).findLast(st => {
-                                const dx2 = wx - (st.x + st.width / 2), dz2 = wz - (st.z + st.depth / 2)
-                                const cosR2 = Math.cos(-st.rotation), sinR2 = Math.sin(-st.rotation)
-                                const lx2 = dx2 * cosR2 - dz2 * sinR2, lz2 = dx2 * sinR2 + dz2 * cosR2
-                                return Math.abs(lx2) < st.width / 2 + 0.05 && Math.abs(lz2) < st.depth / 2 + 0.05
+                            const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
+                                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                                const dx = wx - f.x, dz = wz - f.z
+                                const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                                const lx = dx * cosR - dz * sinR
+                                const lz = dx * sinR + dz * cosR
+                                return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
                             })
-                            if (hovStairs) { newHoverId = hovStairs.id }
+                            if (hovFurniture) { newHoverId = hovFurniture.id }
                             else {
-                                const wallHit = hitRoomWall(wx, wz)
-                                if (wallHit) { newHoverId = `${wallHit.room.id}::wall::${wallHit.wall}` }
+                                const hovStairs = (fpRef.current.stairs ?? []).findLast(st => {
+                                    const dx2 = wx - (st.x + st.width / 2), dz2 = wz - (st.z + st.depth / 2)
+                                    const cosR2 = Math.cos(-st.rotation), sinR2 = Math.sin(-st.rotation)
+                                    const lx2 = dx2 * cosR2 - dz2 * sinR2, lz2 = dx2 * sinR2 + dz2 * cosR2
+                                    return Math.abs(lx2) < st.width / 2 + 0.05 && Math.abs(lz2) < st.depth / 2 + 0.05
+                                })
+                                if (hovStairs) { newHoverId = hovStairs.id }
                                 else {
                                     const room = hitRoom(wx, wz)
                                     newHoverId = room?.id ?? null

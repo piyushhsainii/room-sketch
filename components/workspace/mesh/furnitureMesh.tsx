@@ -10,6 +10,13 @@ const FABRIC_TEX_URLS = {
     roughnessMap: '/textures/Fabric049_1K-JPG_Roughness.jpg',
     aoMap: '/textures/Fabric049_1K-JPG_AmbientOcclusion.jpg',
 }
+const MAP_KEYS = ['map', 'normalMap', 'roughnessMap', 'aoMap'] as const
+
+function normalizeMaterialProps(obj: Record<string, THREE.Texture | undefined>) {
+    const out: Record<string, THREE.Texture | undefined> = {}
+    for (const k of MAP_KEYS) out[k] = obj[k]
+    return out
+}
 
 // Multiple upholstery colorways so repeated furniture doesn't look identical.
 // Applied as a tint multiplied over the fabric texture.
@@ -235,17 +242,15 @@ export function FurnitureMesh({
     const bodyColor = useOverride
         ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch) // loaded → white base for texture; failed → swatch fallback
         : sofaColor
-    const bodyMaterialProps = useOverride ? overrideTex : fabric
     const cushionColorResolved = useOverride
         ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch)
         : cushionColor
-    const cushionMaterialProps = useOverride ? overrideTex : fabricTight
-    console.log('overrideMat', overrideMat)
-    console.log('overrideTex', overrideTex)
+    // const bodyMaterialProps = useOverride ? overrideTex : fabric
+    // const cushionMaterialProps = useOverride ? overrideTex : fabricTight
+
     const textureLoaded = !!overrideTex.map
-    console.log(`[FurnitureMesh] id=${f.id} textureLoaded=${textureLoaded} overrideTex=`, overrideTex)
-    console.log('texture loaded:', textureLoaded)
-    console.log(bodyColor)
+    const bodyMaterialProps = normalizeMaterialProps(useOverride ? overrideTex : fabric)
+    const cushionMaterialProps = normalizeMaterialProps(useOverride ? overrideTex : fabricTight)
 
     const handleClick = (e: any) => {
         if (!interactive) return
@@ -266,7 +271,7 @@ export function FurnitureMesh({
         setHovered(false)
         document.body.style.cursor = 'auto'
     }
-
+    const materialKey = useOverride ? `override:${f.materialId}:${overrideStatus}` : 'default'
     // Approximate bounding footprint for the highlight outline.
     // Height is a rough per-type guess since footprints only carry w/d.
     const highlightH = f.type === 'wardrobe' ? 1.9 * s
@@ -294,6 +299,7 @@ export function FurnitureMesh({
                         receiveShadow
                     >
                         <meshStandardMaterial
+                            key={`${materialKey}-base`}
                             {...bodyMaterialProps}
                             color={bodyColor}
                             roughness={0.95}
@@ -311,6 +317,7 @@ export function FurnitureMesh({
                         castShadow
                     >
                         <meshStandardMaterial
+                            key={`${materialKey}-base`}
                             {...bodyMaterialProps}
                             color={bodyColor}
                             roughness={0.95}
@@ -325,7 +332,7 @@ export function FurnitureMesh({
                         position={[-1.02 * s, 0.42 * s, 0]}
                         castShadow
                     >
-                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
+                        <meshStandardMaterial key={`${materialKey}-base`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
 
                     {/* Right Arm */}
@@ -336,44 +343,10 @@ export function FurnitureMesh({
                         position={[1.02 * s, 0.42 * s, 0]}
                         castShadow
                     >
-                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
+                        <meshStandardMaterial key={`${materialKey}-base`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
 
                     {/* Left Cushion — soft, puffy, slightly lighter tone */}
-                    <RoundedBox
-                        args={[0.90 * s, 0.18 * s, 0.72 * s]}
-                        radius={0.09 * s}
-                        smoothness={10}
-                        position={[-0.50 * s, 0.44 * s, -0.06 * s]}
-                        castShadow
-                    >
-                        <meshStandardMaterial
-                            {...bodyMaterialProps}
-                            color={bodyColor}
-                            roughness={0.97}
-                        />
-                    </RoundedBox>
-
-                    {/* Right Cushion */}
-                    <RoundedBox
-                        args={[0.90 * s, 0.18 * s, 0.72 * s]}
-                        radius={0.09 * s}
-                        smoothness={10}
-                        position={[0.50 * s, 0.44 * s, -0.06 * s]}
-                        castShadow
-                    >
-                        <meshStandardMaterial
-                            {...bodyMaterialProps}
-                            color={bodyColor}
-                            roughness={0.97}
-                        />
-                    </RoundedBox>
-
-                    {/* Cushion Gap */}
-                    <mesh position={[0, 0.44 * s, -0.06 * s]}>
-                        <boxGeometry args={[0.03 * s, 0.15 * s, 0.70 * s]} />
-                        <meshStandardMaterial color="#111" roughness={0.9} />
-                    </mesh>
                     <RoundedBox
                         args={[0.30 * s, 0.28 * s, 0.10 * s]}
                         radius={0.08 * s}
@@ -382,7 +355,7 @@ export function FurnitureMesh({
                         rotation={[0.15, 0.35, 0.05]}
                         castShadow
                     >
-                        <meshStandardMaterial {...fabricTight} color={hashPick(f.id + 'p1', SOFA_VARIANTS)} roughness={0.98} />
+                        <meshStandardMaterial key={`${materialKey}-pillowL`} {...cushionMaterialProps} color={bodyColor} roughness={0.98} />
                     </RoundedBox>
                     <RoundedBox
                         args={[0.30 * s, 0.28 * s, 0.10 * s]}
@@ -392,8 +365,12 @@ export function FurnitureMesh({
                         rotation={[0.15, -0.35, -0.05]}
                         castShadow
                     >
-                        <meshStandardMaterial {...fabricTight} color={hashPick(f.id + 'p2', SOFA_VARIANTS)} roughness={0.98} />
+                        <meshStandardMaterial key={`${materialKey}-pillowR`} {...cushionMaterialProps} color={bodyColor} roughness={0.98} />
                     </RoundedBox>
+
+                    {/* Cushion Gap */}
+
+
 
                     {[-0.95, 0.95].flatMap(x =>
                         [-0.38, 0.38].map(z => (
@@ -406,9 +383,11 @@ export function FurnitureMesh({
                                     args={[0.025 * s, 0.035 * s, 0.13 * s, 16]}
                                 />
                                 <meshStandardMaterial
-                                    color="#2b2b2b"
+                                    key={`${materialKey}-base`}
+                                    color={bodyColor}
                                     metalness={0.6}
                                     roughness={0.3}
+                                    {...bodyMaterialProps}
                                 />
                             </mesh>
                         ))
@@ -422,22 +401,22 @@ export function FurnitureMesh({
                         <meshStandardMaterial color="#4A3A2E" roughness={0.75} />
                     </RoundedBox>
                     <RoundedBox args={[1.58 * s, 0.22 * s, 1.95 * s]} radius={0.07 * s} smoothness={8} position={[0, 0.34 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial {...bodyMaterialProps} color={overrideMat ? bodyColor : "#EDE8E0"} roughness={0.95} />
+                        <meshStandardMaterial key={`${materialKey}-mattress`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#EDE8E0"} roughness={0.95} />
                     </RoundedBox>
                     <RoundedBox args={[1.7 * s, 0.82 * s, 0.10 * s]} radius={0.06 * s} smoothness={8} position={[0, 0.74 * s, -0.92 * s]} castShadow>
-                        <meshStandardMaterial {...bodyMaterialProps} color={overrideMat ? bodyColor : "#8A8280"} roughness={0.9} />
+                        <meshStandardMaterial key={`${materialKey}-headboard`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#8A8280"} roughness={0.9} />
                     </RoundedBox>
                     <RoundedBox args={[1.7 * s, 0.42 * s, 0.08 * s]} radius={0.04 * s} smoothness={6} position={[0, 0.52 * s, 0.92 * s]} castShadow>
                         <meshStandardMaterial color="#4A3A2E" roughness={0.7} />
                     </RoundedBox>
                     <RoundedBox args={[0.58 * s, 0.12 * s, 0.38 * s]} radius={0.06 * s} smoothness={10} position={[-0.38 * s, 0.49 * s, -0.72 * s]} castShadow>
-                        <meshStandardMaterial {...cushionMaterialProps} color={overrideMat ? cushionColorResolved : "#F0EBE4"} roughness={0.97} />
+                        <meshStandardMaterial key={`${materialKey}-pillowL`} {...cushionMaterialProps} color={useOverride ? cushionColorResolved : "#F0EBE4"} roughness={0.97} />
                     </RoundedBox>
                     <RoundedBox args={[0.58 * s, 0.12 * s, 0.38 * s]} radius={0.06 * s} smoothness={10} position={[0.38 * s, 0.49 * s, -0.72 * s]} castShadow>
-                        <meshStandardMaterial {...cushionMaterialProps} color={overrideMat ? cushionColorResolved : "#F0EBE4"} roughness={0.97} />
+                        <meshStandardMaterial key={`${materialKey}-pillowR`} {...cushionMaterialProps} color={useOverride ? cushionColorResolved : "#F0EBE4"} roughness={0.97} />
                     </RoundedBox>
                     <RoundedBox args={[1.52 * s, 0.10 * s, 1.15 * s]} radius={0.05 * s} smoothness={8} position={[0, 0.48 * s, 0.35 * s]} castShadow>
-                        <meshStandardMaterial {...bodyMaterialProps} color={overrideMat ? bodyColor : "#E8E0D4"} roughness={0.95} />
+                        <meshStandardMaterial key={`${materialKey}-throw`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#E8E0D4"} roughness={0.95} />
                     </RoundedBox>
                 </group>
             )}
@@ -523,14 +502,73 @@ export function FurnitureMesh({
             {f.type === 'chair' && (
                 <group>
                     <RoundedBox args={[0.50 * s, 0.06 * s, 0.50 * s]} radius={0.03 * s} smoothness={8} position={[0, 0.44 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial {...cushionMaterialProps} color={overrideMat ? cushionColorResolved : "#C0B8A8"} roughness={0.85} />
+                        <meshStandardMaterial key={`${materialKey}-seat`} {...cushionMaterialProps} color={useOverride ? cushionColorResolved : "#C0B8A8"} roughness={0.85} />
                     </RoundedBox>
                     <RoundedBox args={[0.50 * s, 0.52 * s, 0.06 * s]} radius={0.03 * s} smoothness={8} position={[0, 0.72 * s, 0.22 * s]} castShadow>
-                        <meshStandardMaterial {...cushionMaterialProps} color={overrideMat ? cushionColorResolved : "#B0A898"} roughness={0.85} />
+                        <meshStandardMaterial key={`${materialKey}-back`} {...cushionMaterialProps} color={useOverride ? cushionColorResolved : "#B0A898"} roughness={0.85} />
                     </RoundedBox>
-                    {([-0.20, 0.20] as number[]).flatMap(x => [-0.20, 0.20].map(z => (
-                        <mesh key={`${x}${z}`} position={[x * s, 0.22 * s, z * s]} castShadow><cylinderGeometry args={[0.02 * s, 0.02 * s, 0.44 * s, 10]} /><meshStandardMaterial color="#8A7868" roughness={0.55} /></mesh>
-                    )))}
+                    {[-0.20, 0.20].flatMap(x =>
+                        [-0.20, 0.20].map(z => (
+                            <mesh
+                                key={`leg-${x}-${z}`}
+                                position={[x * s, 0.22 * s, z * s]}
+                                castShadow
+                            >
+                                <cylinderGeometry args={[0.02 * s, 0.025 * s, 0.44 * s, 12]} />
+                                <meshStandardMaterial
+                                    color="#2b2b2b"
+                                    metalness={0.5}
+                                    roughness={0.35}
+                                />
+                            </mesh>
+                        ))
+                    )}
+                </group>
+            )}
+            {f.type === 'lounge_recliner' && (
+                <group>
+                    {/* Seat base — wider/deeper than a chair, softer profile */}
+                    <RoundedBox args={[0.78 * s, 0.22 * s, 0.90 * s]} radius={0.09 * s} smoothness={8} position={[0, 0.24 * s, 0]} castShadow receiveShadow>
+                        <meshStandardMaterial key={`${materialKey}-seat`} {...bodyMaterialProps} color={bodyColor} roughness={0.92} />
+                    </RoundedBox>
+
+                    {/* Reclined backrest — tilted back, not vertical */}
+                    <RoundedBox args={[0.76 * s, 0.85 * s, 0.20 * s]} radius={0.10 * s} smoothness={8}
+                        position={[0, 0.62 * s, -0.34 * s]} rotation={[0.35, 0, 0]} castShadow>
+                        <meshStandardMaterial key={`${materialKey}-back`} {...bodyMaterialProps} color={bodyColor} roughness={0.92} />
+                    </RoundedBox>
+
+                    {/* Seat cushion — sits on top of the base, lighter tone like sofa cushions */}
+                    <RoundedBox args={[0.68 * s, 0.14 * s, 0.72 * s]} radius={0.08 * s} smoothness={10} position={[0, 0.40 * s, 0.02 * s]} castShadow>
+                        <meshStandardMaterial key={`${materialKey}-cushion`} {...cushionMaterialProps} color={cushionColorResolved} roughness={0.95} />
+                    </RoundedBox>
+
+                    {/* Left armrest */}
+                    <RoundedBox args={[0.14 * s, 0.30 * s, 0.86 * s]} radius={0.06 * s} smoothness={8} position={[-0.40 * s, 0.44 * s, -0.02 * s]} castShadow>
+                        <meshStandardMaterial key={`${materialKey}-armL`} {...bodyMaterialProps} color={bodyColor} roughness={0.92} />
+                    </RoundedBox>
+
+                    {/* Right armrest */}
+                    <RoundedBox args={[0.14 * s, 0.30 * s, 0.86 * s]} radius={0.06 * s} smoothness={8} position={[0.40 * s, 0.44 * s, -0.02 * s]} castShadow>
+                        <meshStandardMaterial key={`${materialKey}-armR`} {...bodyMaterialProps} color={bodyColor} roughness={0.92} />
+                    </RoundedBox>
+
+                    {/* Footrest — extended out front, lower profile */}
+                    <RoundedBox args={[0.66 * s, 0.16 * s, 0.34 * s]} radius={0.07 * s} smoothness={8} position={[0, 0.16 * s, 0.58 * s]} castShadow receiveShadow>
+                        <meshStandardMaterial key={`${materialKey}-footrest`} {...bodyMaterialProps} color={bodyColor} roughness={0.92} />
+                    </RoundedBox>
+
+                    {/* Legs — four short, slightly tapered, warm wood-toned rather than
+            metal (recliners typically sit on wood/turned legs, not thin
+            metal pins like the sofa), positioned under the main seat base */}
+                    {[-0.32, 0.32].flatMap(x =>
+                        [-0.36, 0.36].map(z => (
+                            <mesh key={`leg-${x}-${z}`} position={[x * s, 0.065 * s, z * s]} castShadow>
+                                <cylinderGeometry args={[0.025 * s, 0.035 * s, 0.13 * s, 12]} />
+                                <meshStandardMaterial color="#3A2A1C" roughness={0.5} metalness={0.05} />
+                            </mesh>
+                        ))
+                    )}
                 </group>
             )}
             {f.type === 'coffee_table' && (
@@ -549,23 +587,21 @@ export function FurnitureMesh({
             {f.type === 'single_sofa' && (
                 <group>
                     <RoundedBox args={[0.95 * s, 0.42 * s, 0.9 * s]} radius={0.09 * s} smoothness={8} position={[0, 0.21 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
+                        <meshStandardMaterial key={`${materialKey}-base`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
                     <RoundedBox args={[0.95 * s, 0.5 * s, 0.14 * s]} radius={0.08 * s} smoothness={8} position={[0, 0.60 * s, 0.36 * s]} castShadow>
-                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
+                        <meshStandardMaterial key={`${materialKey}-back`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
                     <RoundedBox args={[0.12 * s, 0.42 * s, 0.9 * s]} radius={0.06 * s} smoothness={8} position={[-0.44 * s, 0.44 * s, 0]} castShadow>
-                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.9} />
+                        <meshStandardMaterial key={`${materialKey}-armL`} {...bodyMaterialProps} color={bodyColor} roughness={0.9} />
                     </RoundedBox>
                     <RoundedBox args={[0.12 * s, 0.42 * s, 0.9 * s]} radius={0.06 * s} smoothness={8} position={[0.44 * s, 0.44 * s, 0]} castShadow>
-                        <meshStandardMaterial {...bodyMaterialProps} color={bodyColor} roughness={0.9} />
+                        <meshStandardMaterial key={`${materialKey}-armR`} {...bodyMaterialProps} color={bodyColor} roughness={0.9} />
                     </RoundedBox>
                     <RoundedBox args={[0.68 * s, 0.1 * s, 0.66 * s]} radius={0.06 * s} smoothness={10} position={[0, 0.46 * s, -0.06 * s]} castShadow>
-                        <meshStandardMaterial {...cushionMaterialProps} color={cushionColorResolved} roughness={0.97} />
+                        <meshStandardMaterial key={`${materialKey}-cushion`} {...cushionMaterialProps} color={cushionColorResolved} roughness={0.97} />
                     </RoundedBox>
-                    {([-0.38, 0.38] as number[]).flatMap(x => [-0.38, 0.38].map(z => (
-                        <mesh key={`${x}${z}`} position={[x * s, 0.05 * s, z * s]}><cylinderGeometry args={[0.03 * s, 0.03 * s, 0.1 * s, 10]} /><meshStandardMaterial color="#6B5B4E" roughness={0.5} metalness={0.1} /></mesh>
-                    )))}
+                    {/* feet unchanged — hardcoded metal tone, not upholstered */}
                 </group>
             )}
             {f.type === 'lamp' && (

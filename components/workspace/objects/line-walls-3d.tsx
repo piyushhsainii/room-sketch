@@ -1,15 +1,15 @@
 import React from 'react'
-import { ClosedShape, FloorMaterial, FloorPlanState, LineNode, WallMaterial } from '../Tools/constants';
+import { ClosedShape, EditorRoom, FloorMaterial, FloorPlanState, LineNode, WallMaterial } from '../Tools/constants';
 import { deriveClosedPolygons } from '@/lib/helpers';
 import * as THREE from 'three'
 import { FloorMat } from './floormat';
 import { WallMat } from './wallmat';
 import { DoorVariant3D } from './door-variants';
 import { WindowVariant3D } from './window-variant3d';
-import { WallDecorMesh } from './wall-decor-mesh';
+import { WallDecorMesh } from '../mesh/wall-decor-mesh';
 
 
-export function LineWalls3D({
+function LineWalls3DImpl({
     fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural', closedShapes, wallColor = '#FFFFFF',
     wallMaterial = 'paint',
     interactive = false, selectedId, onSelect, onToggleDoorOpen,
@@ -17,13 +17,12 @@ export function LineWalls3D({
     fp: FloorPlanState; wallRoughness?: number; floorMaterial?: string; doorStyle?: string; closedShapes?: ClosedShape[]; wallColor?: string;
     wallMaterial?: WallMaterial;
     interactive?: boolean; selectedId?: string | null; onSelect?: (id: string) => void
-    onToggleDoorOpen?: (openingId: string) => void   // NEW
+    onToggleDoorOpen?: (openingId: string) => void
 }) {
     const H = fp.roomHeight
     const T = 0.15
     const [hovered, setHovered] = React.useState(false)
 
-    // Per-room click/hover handlers. Room id === seg.id for line-wall loops.
     const makeRoomHandlers = (roomId: string, hovered: boolean, setHovered: (v: boolean) => void) => ({
         onClick: (e: any) => {
             if (!interactive) return
@@ -64,9 +63,6 @@ export function LineWalls3D({
 
                 const isRoomSelected = interactive && selectedId === seg.id
                 const panels: React.ReactNode[] = []
-                //             const segMat = matchedShape?.wallOverrides?.[`${seg.id}_${i}`]?.material
-                // ?? segWallMaterial.get(seg.id)
-                // ?? wallMaterial
                 const segMat = segWallMaterial.get(seg.id) ?? wallMaterial
 
                 for (let i = 0; i < nodes.length - 1; i++) {
@@ -252,6 +248,8 @@ export function LineWalls3D({
                 const minZ = Math.min(...zs), maxZ = Math.max(...zs)
                 const worldW = maxX - minX
                 const worldD = maxZ - minZ
+                if (polygonOverlapsRoom(minX, maxX, minZ, maxZ, fp.rooms)) return null
+
                 const nodeIdSet = new Set(nodeIds)
 
                 const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
@@ -285,7 +283,6 @@ export function LineWalls3D({
                 )
             })}
             {(fp.lineNodes ?? []).map(node => {
-
                 const owningSeg = (fp.lineSegments ?? []).find(seg => seg.nodeIds.includes(node.id))
                 const nodeMat = owningSeg ? (segWallMaterial.get(owningSeg.id) ?? wallMaterial) : wallMaterial
 
@@ -297,7 +294,6 @@ export function LineWalls3D({
                 )
             })}
 
-            {/* Wall decor on line-wall segments — click passes through to parent room */}
             {(fp.wallDecor ?? []).filter(d => d.segmentNodeIds).map(d => {
                 const a = fp.lineNodes.find(n => n.id === d.segmentNodeIds![0])
                 const b = fp.lineNodes.find(n => n.id === d.segmentNodeIds![1])
@@ -327,6 +323,12 @@ export function LineWalls3D({
     )
 }
 
+// Memoized export — LineWalls3D rebuilds every wall panel, opening cutout,
+// and floor shape geometry on every render. None of that needs to re-run
+// just because the 2D editor's hover/pan/tooltip state changed elsewhere in
+// FloorPlanEditor — same fix as FurnitureMesh/StairsMesh.
+export const LineWalls3D = React.memo(LineWalls3DImpl)
+
 // Separate component so the floor mesh can carry its own hover state cleanly.
 function FloorPiece({
     geometry, shapeMat, worldW, worldD, interactive, roomId, selected, onSelect,
@@ -347,7 +349,20 @@ function FloorPiece({
         <group>
             <mesh
                 rotation={[-Math.PI / 2, 0, 0]}
-                position={[0, 0.002, 0]}
+                // NOTE: Room3D's room floor mesh also renders at y≈0.002.
+                // If a line-wall closed polygon (rendered here) spatially
+                // overlaps a fp.rooms room's own footprint — which happens
+                // whenever line-walls are drawn adjacent to or inside an
+                // existing room — the two floor meshes end up coplanar,
+                // and the GPU can't reliably decide which to draw on top:
+                // z-fighting, which shows up as flickering/overlapping
+                // texture exactly like what's being reported. Bumping this
+                // one slightly higher than Room3D's floor removes the
+                // ambiguity regardless of whether the shapes actually
+                // overlap. This is a mitigation, not a fix for the root
+                // cause (two floor systems rendering the same area) — see
+                // the accompanying note about deduping overlapping regions.
+                position={[0, 0.006, 0]}
                 receiveShadow
                 onClick={(e: any) => {
                     if (!clickable) return
@@ -371,7 +386,7 @@ function FloorPiece({
                 <FloorMat mat={shapeMat} width={worldW} depth={worldD} />
             </mesh>
             {clickable && (selected || hovered) && (
-                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0]} renderOrder={999}>
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, 0]} renderOrder={999}>
                     <primitive object={geometry} attach="geometry" />
                     <meshBasicMaterial
                         color={selected ? '#3B82F6' : '#93C5FD'}
@@ -387,7 +402,6 @@ function FloorPiece({
 }
 
 
-// New component — place above FloorPiece, below LineWalls3D
 function DerivedFloorShape({
     nodeIds, nodes, minX, minZ, worldW, worldD,
     shapeMat, interactive, roomId, selected, onSelect,
@@ -435,5 +449,16 @@ function DerivedFloorShape({
             selected={selected}
             onSelect={onSelect}
         />
+    )
+}
+
+
+function polygonOverlapsRoom(
+    minX: number, maxX: number, minZ: number, maxZ: number,
+    rooms: EditorRoom[], tolerance = 0.2,
+) {
+    return rooms.some(room =>
+        minX >= room.x - tolerance && maxX <= room.x + room.width + tolerance &&
+        minZ >= room.z - tolerance && maxZ <= room.z + room.depth + tolerance
     )
 }

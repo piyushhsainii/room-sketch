@@ -1,7 +1,7 @@
 import { ArchHeader3D } from "./objects/arch-header";
 import { DoorVariant3D } from "./objects/door-variants";
 import { FloorMat } from "./objects/floormat";
-import { WallDecorMesh } from "./objects/wall-decor-mesh";
+import { WallDecorMesh } from "./mesh/wall-decor-mesh";
 import { WallMat } from "./objects/wallmat";
 import { WindowVariant3D } from "./objects/window-variant3d";
 import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial } from "./Tools/constants";
@@ -223,12 +223,17 @@ function Room3D({
             {(wallDecor ?? []).filter(d => d.roomId === room.id && !d.segmentNodeIds).map(d => {
                 if (!d.wall) return null
                 const isH = d.wall === 'north' || d.wall === 'south'
-                const angle = isH ? 0 : Math.PI / 2
+                const inward = d.facingInward ?? true
+                // NEW — flipping the face also flips the direction the item should
+                // face, otherwise a painting mounted on the outer face would render
+                // backwards (front pressed against the wall).
+                const angle = (isH ? 0 : Math.PI / 2) + (inward ? 0 : Math.PI)
                 let dx: number, dz: number
-                if (d.wall === 'north') { dx = room.x + d.position; dz = room.z + T / 2 }
-                else if (d.wall === 'south') { dx = room.x + d.position; dz = room.z + D - T / 2 }
-                else if (d.wall === 'west') { dx = room.x + T / 2; dz = room.z + d.position }
-                else { dx = room.x + W - T / 2; dz = room.z + d.position }
+                const off = inward ? 1 : -1
+                if (d.wall === 'north') { dx = room.x + d.position; dz = room.z + T / 2 * off }
+                else if (d.wall === 'south') { dx = room.x + d.position; dz = room.z + D - T / 2 * off }
+                else if (d.wall === 'west') { dx = room.x + T / 2 * off; dz = room.z + d.position }
+                else { dx = room.x + W - T / 2 * off; dz = room.z + d.position }
                 return (
                     <group
                         key={d.id}
@@ -236,8 +241,7 @@ function Room3D({
                         onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
                         onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
                     >
-                        <WallDecorMesh decor={d} angle={angle} basePos={[dx, d.heightOffset, dz]} />
-                    </group>
+                        <WallDecorMesh decor={d} angle={angle + (d.rotation ?? 0)} basePos={[dx, d.heightOffset, dz]} />                    </group>
                 )
             })}
         </group>

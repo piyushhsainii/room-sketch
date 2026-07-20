@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FloorPlanState, FURNITURE_LABELS, OPENING_VARIANT_LABELS, STAIRS_LABELS, WALL_DECOR_LABELS } from "../Tools/constants";
+import { FloorPlanState, FURNITURE_LABELS, OPENING_VARIANT_LABELS, STAIRS_LABELS, WALL_DECOR_LABELS } from "../lib/constants";
 import { THEME } from "../FloorPlanEditor";
 
 type SceneGraphEntry = { id: string; label: string; sub?: string }

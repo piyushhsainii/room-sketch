@@ -1,10 +1,12 @@
-import { snapFurniture, snapM } from "@/lib/helpers"
+import { deriveClosedPolygons, snapFurniture, snapM } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
-import { EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_LABELS, FURNITURE_MATERIALS, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./Tools/constants"
+import { ClosedShape, EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_LABELS, FURNITURE_MATERIALS, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
 import { MaterialTexturePicker } from "./texture/MaterialPicker"
-import { getMaterialsForDomain } from './Tools/constants'
-import { OUTDOOR_OBJECT_LABELS, PlacedOutdoorObject } from "./Tools/outdoor-constants"
+import { OUTDOOR_OBJECT_LABELS, PlacedOutdoorObject } from "./lib/outdoor-constants"
+import { matchClosedShape } from "./MaterialsPanel"
+import { useMemo } from "react"
+import { getMaterialsForDomain } from "./texture/materials-registry"
 
 export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, onChangeSceneConfig }: {
     fp: FloorPlanState
@@ -34,7 +36,18 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         : null
     const wallRoom = wallSel ? fp.rooms.find(r => r.id === wallSel.roomId) : null
 
-    const shape = fp.closedShapes?.find(s => s.id === selectedId)
+    const derivedPolygonForSelection = useMemo(
+        () => deriveClosedPolygons(fp.lineNodes, fp.lineSegments).find(nodeIds => {
+            const sorted = [...nodeIds].sort().join(',')
+            return selectedId === `unconfigured::${sorted}` ||
+                matchClosedShape(nodeIds, fp.lineNodes, fp.closedShapes ?? [])?.id === selectedId
+        }),
+        [fp.lineNodes, fp.lineSegments, fp.closedShapes, selectedId]
+    )
+    const shape: ClosedShape | undefined = derivedPolygonForSelection
+        ? (matchClosedShape(derivedPolygonForSelection, fp.lineNodes, fp.closedShapes ?? [])
+            ?? { id: selectedId!, nodeIds: derivedPolygonForSelection, label: undefined })
+        : undefined
     const room = fp.rooms.find(r => r.id === selectedId)
     const opening = fp.openings.find(o => o.id === selectedId)
     const node = fp.lineNodes.find(n => n.id === selectedId)
@@ -119,6 +132,15 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         </div>
     )
 
+    const patchShape = (patch: Partial<ClosedShape>) => {
+        if (!shape) return
+        const existing = (fp.closedShapes ?? []).find(s => s.id === shape.id)
+        const shapes = existing
+            ? (fp.closedShapes ?? []).map(s => s.id === shape.id ? { ...s, ...patch } : s)
+            : [...(fp.closedShapes ?? []), { ...shape, ...patch }]
+        onChange({ ...fp, closedShapes: shapes })
+    }
+
     const patchOutdoor = (patch: Partial<PlacedOutdoorObject>) => {
         if (!outdoorObj) return
         onChange({
@@ -183,11 +205,27 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
             {shape && <>
                 <PropField label="Label">
-                    <input value={shape.label ?? ''} onChange={e => onChange({
-                        ...fp,
-                        closedShapes: (fp.closedShapes ?? []).map(s => s.id === shape.id ? { ...s, label: e.target.value } : s)
-                    })} style={inputStyle} />
+                    <input value={shape.label ?? ''} onChange={e => patchShape({ label: e.target.value })} style={inputStyle} />
                 </PropField>
+
+                <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>WALL TEXTURE</div>
+                <MaterialTexturePicker
+                    items={wallMaterials}
+                    currentId={shape.wallMaterial}
+                    onSelect={(id) => patchShape({ wallMaterial: id as WallMaterial })}
+                    onClear={() => patchShape({ wallMaterial: undefined })}
+                    theme={pickerTheme}
+                />
+
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 8 }}>FLOOR TEXTURE</div>
+                <MaterialTexturePicker
+                    items={floorMaterials}
+                    currentId={shape.floorMaterial}
+                    onSelect={(id) => patchShape({ floorMaterial: id as FloorMaterial })}
+                    onClear={() => patchShape({ floorMaterial: undefined })}
+                    theme={pickerTheme}
+                />
             </>}
 
             {room && <>

@@ -8,16 +8,13 @@ import {
     WallMaterial,
     DoorStyle,
     ClosedShape,
-    MaterialDomain,
-    getMaterialsForDomain,
-    getMaterialsByCategory,
     LineNode,
-} from './Tools/constants'
+} from './lib/constants'
 import { SceneConfig, RoomSceneConfig } from './FloorPlanEditor'
 import { deriveClosedPolygons } from '@/lib/helpers'
 import { ScrollableList } from '../ui/ScrollableList'
 import { labelize } from './MaterialPicker'
-import { MaterialCategory } from './texture/materials-registry'
+import { getMaterialsByCategory, MaterialCategory, MaterialDomain } from './texture/materials-registry'
 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 
@@ -47,7 +44,8 @@ const CATEGORY_META: Record<MaterialCategory, { label: string; icon: string; ord
     'pvc-panel': { label: 'PVC Panel', icon: '🪟', order: 8 },
     glass: { label: 'Glass', icon: '🔷', order: 9 },
     solid: { label: 'Solid Colors', icon: '🎨', order: 10 },
-    leather: { label: 'Leather', icon: '', order: 11 }
+    leather: { label: 'Leather', icon: '', order: 11 },
+    outdoor: { label: 'Outdoor', icon: '', order: 11 }
 }
 
 function Swatch({

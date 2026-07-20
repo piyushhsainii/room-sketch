@@ -1,4 +1,4 @@
-import { FloorMaterial } from "@/components/workspace/Tools/constants";
+import { FloorMaterial } from "@/components/workspace/lib/constants";
 import type {
   RoomDoor,
   RoomWindow,

@@ -5,7 +5,7 @@ import {
   MATERIAL_REGISTRY,
   WALL_MAT_DEFS,
   WALL_MATERIALS,
-} from "../Tools/constants";
+} from "../lib/constants";
 import { MaterialCategory } from "./materials-registry";
 import { categoryFromThumbnail, thumbnailFromDef } from "./textureCategorize";
 

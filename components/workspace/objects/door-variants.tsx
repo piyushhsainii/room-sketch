@@ -1,7 +1,7 @@
 import { useRef } from "react"
 import { useFrame } from "@react-three/fiber"
 import * as THREE from "three"
-import { EditorOpening } from "../Tools/constants"
+import { EditorOpening } from "../lib/constants"
 import { DoorMat } from "./doormat"
 
 export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = false, onToggleOpen }: {

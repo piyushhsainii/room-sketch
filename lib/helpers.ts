@@ -5,7 +5,7 @@ import {
   LineNode,
   LineSegment,
   PX_PER_M,
-} from "@/components/workspace/Tools/constants";
+} from "@/components/workspace/lib/constants";
 
 // export function deriveClosedPolygons(
 //   lineNodes: LineNode[],

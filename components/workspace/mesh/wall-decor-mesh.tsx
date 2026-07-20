@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { PlacedWallDecor } from "../Tools/constants"
+import { PlacedWallDecor } from "../lib/constants"
 
 export function WallDecorMesh({ decor, angle, basePos }: {
     decor: PlacedWallDecor

@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { Suspense, useMemo, useRef } from 'react'
-import { WallMaterial, WALL_MAT_DEFS, MaterialDef } from '../Tools/constants'
+import { WALL_MAT_DEFS, WallMaterial, } from '../lib/constants'
 import { useFrame, useLoader } from '@react-three/fiber'
+import { getMaterialsForDomain, MaterialDef, } from '../texture/materials-registry'
 
 interface WallMatProps {
     color?: string
@@ -142,6 +143,7 @@ export function RealTextureWallMat({ width, height, depth, def }: { width: numbe
         />
     )
 }
+
 
 
 export function WallMat({ color, roughness, textured = false, mat = 'paint', width = 1, height = 2.7, depth = 0.15 }: WallMatProps) {

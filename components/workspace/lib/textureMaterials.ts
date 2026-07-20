@@ -1,6 +1,6 @@
 // components/workspace/Tools/textureMaterials.ts
 import * as THREE from "three";
-import { DOOR_MATERIALS, DoorStyle, WallMaterial } from "./constants";
+import { DOOR_MATERIALS, DoorStyle, WallMaterial } from "../lib/constants";
 import { createProceduralTexture } from "../objects/wallmat";
 
 export interface TextureMaterialDef {

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import * as THREE from 'three'
-import { PlacedStairs } from '../Tools/constants'
+import { PlacedStairs } from '../lib/constants'
 
 const STAIR_COLOR = '#C8B898'
 const STAIR_SIDE_COLOR = '#A09078'

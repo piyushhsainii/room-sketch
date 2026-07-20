@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import { OUTDOOR_FLAT_TYPES, OutdoorObjectType, PlacedOutdoorObject } from '../Tools/outdoor-constants'
-import { MATERIAL_REGISTRY } from '../Tools/constants';
+import { OUTDOOR_FLAT_TYPES, OutdoorObjectType, PlacedOutdoorObject } from '../lib/outdoor-constants'
+import { MATERIAL_REGISTRY } from '../lib/constants';
 
 function ObjectBody({ type, materialId }: { type: OutdoorObjectType; materialId?: string }) {
     switch (type) {

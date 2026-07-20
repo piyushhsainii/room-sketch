@@ -1,5 +1,5 @@
 import { OrbitControls } from "@react-three/drei"
-import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./Tools/constants"
+import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./lib/constants"
 import { Room3D } from "./3dRoom"
 import { LineWalls3D } from "./objects/line-walls-3d"
 import { StairsMesh } from "./mesh/stairsMesh"
@@ -66,6 +66,7 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                         wallMaterial={roomCfg?.wallMaterial ?? cfg.globalWallMaterial ?? 'paint'}
                         onSelectRoom={(roomId) => onSelect?.(roomId)}
                         onToggleDoorOpen={onToggleDoorOpen}
+                        roomWallOverrides={roomCfg?.wallOverrides}
                     />
                 )
             })}
@@ -121,6 +122,7 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                 selectedId={selectedId}
                 onSelect={onSelect}
                 onToggleDoorOpen={onToggleDoorOpen}
+                roomSceneConfigs={cfg.rooms}
             />
             {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
                 <group

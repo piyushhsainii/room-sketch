@@ -4,7 +4,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
 import type { SceneConfig } from "@/components/workspace/FloorPlanEditor";
-import type { FloorPlanState } from "@/components/workspace/Tools/constants";
+import type { FloorPlanState } from "@/components/workspace/lib/constants";
 
 export const runtime = "nodejs";
 

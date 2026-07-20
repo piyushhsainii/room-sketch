@@ -3,12 +3,12 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import ResilientCanvas from './ResilientCanvas'
 import { Toolbar } from './Tools/ToolBar'
-import { Annotation, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './Tools/constants'
-import { getSegmentOpeningWorldPos, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
+import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
+import { deriveClosedPolygons, getSegmentOpeningWorldPos, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import { Dock } from '../ui/Dock'
 import { SceneGraphPanel } from './objects/scene-graph'
 import { ScrollableList } from '../ui/ScrollableList'
-import { MaterialsPanel } from './MaterialsPanel'
+import { matchClosedShape, MaterialsPanel } from './MaterialsPanel'
 import Scene3D from './3DScene'
 import { PropsPanel } from './PropsPanel'
 import { draw2D } from './2dDraw'
@@ -18,7 +18,7 @@ import { createPortal } from 'react-dom'
 import { useGizmoApiRef } from './three/NavigationGizmo'
 import * as THREE from "three"
 import { LIGHT_FIXTURE_DEFAULTS, LightFixtureType, PlacedLight } from './lights-constant'
-import { OUTDOOR_OBJECT_FOOTPRINTS, OutdoorObjectType, PlacedOutdoorObject } from './Tools/outdoor-constants'
+import { OUTDOOR_OBJECT_FOOTPRINTS, OutdoorObjectType, PlacedOutdoorObject } from './lib/outdoor-constants'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -480,15 +480,25 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
     }, [])
 
     const hitClosedShape = useCallback((wx: number, wz: number) => {
-        for (const shape of fpRef.current.closedShapes ?? []) {
-            const nodes = shape.nodeIds.map(nid => fpRef.current.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
+        const polygons = deriveClosedPolygons(fpRef.current.lineNodes, fpRef.current.lineSegments)
+        for (const nodeIds of polygons) {
+            const nodes = nodeIds.map(nid => fpRef.current.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
             if (nodes.length < 3) continue
             let inside = false
             for (let i = 0, j = nodes.length - 1; i < nodes.length; j = i++) {
                 const xi = nodes[i]!.x, zi = nodes[i]!.z, xj = nodes[j]!.x, zj = nodes[j]!.z
                 if ((zi > wz) !== (zj > wz) && wx < ((xj - xi) * (wz - zi)) / (zj - zi) + xi) inside = !inside
             }
-            if (inside) return shape
+            if (inside) {
+                // Prefer a real saved override record if one matches (via the
+                // resilient centroid/area matcher, not raw exact-match, so it
+                // survives incidental node-id churn). Otherwise return a
+                // synthetic, unpersisted stub — this area is still selectable
+                // and editable even though nothing's been saved for it yet.
+                const existing = matchClosedShape(nodeIds, fpRef.current.lineNodes, fpRef.current.closedShapes ?? [])
+                if (existing) return existing
+                return { id: `unconfigured::${[...nodeIds].sort().join(',')}`, nodeIds, label: undefined } as ClosedShape
+            }
         }
         return null
     }, [])

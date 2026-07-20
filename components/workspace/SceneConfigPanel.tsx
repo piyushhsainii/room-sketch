@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
-import { DEFAULT_SCENE_CONFIG, DOOR_STYLES, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, WALL_COLORS } from "./Tools/constants"
+import { DEFAULT_SCENE_CONFIG, DOOR_STYLES, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, WALL_COLORS } from "./lib/constants"
 import { deriveClosedPolygons } from "@/lib/helpers"
 import { MaterialCategory, toMaterialItems } from "./MaterialPicker"
 

@@ -17,12 +17,9 @@ import {
   LineSegment,
   PlacedFurniture,
   PlacedStairs,
-} from "@/components/workspace/Tools/constants";
-import {
-  normalizeDoorMaterialOverride,
-  normalizeDoorStyle,
-} from "@/components/workspace/Tools/door-style-migration";
-import { PlacedOutdoorObject } from "@/components/workspace/Tools/outdoor-constants";
+} from "@/components/workspace/lib/constants";
+
+import { PlacedOutdoorObject } from "@/components/workspace/lib/outdoor-constants";
 import type {
   SceneJSON,
   SceneRoom,
@@ -30,6 +27,7 @@ import type {
   RoomWindow,
   SceneOutdoorObject,
 } from "@/types/workspace";
+import { normalizeDoorMaterialOverride } from "@/components/workspace/mesh/door-style-migration";
 
 export function floorPlanStateToSceneJSON(
   fp: FloorPlanState,

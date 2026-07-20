@@ -1,7 +1,7 @@
 import { Suspense, useMemo } from 'react'
 import * as THREE from 'three'
 import { useTexture } from '@react-three/drei'
-import { MATERIAL_REGISTRY } from '../Tools/constants' // adjust path to wherever MATERIAL_REGISTRY actually lives
+import { MATERIAL_REGISTRY } from '../lib/constants' // adjust path to wherever MATERIAL_REGISTRY actually lives
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
 

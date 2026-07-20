@@ -3,7 +3,7 @@ import {
   FLOOR_MAT_DEFS,
   WALL_MAT_DEFS,
   WALL_MATERIALS,
-} from "../Tools/constants";
+} from "../lib/constants";
 
 export type MaterialCategory =
   | "solid"
@@ -20,7 +20,12 @@ export type MaterialCategory =
   | "leather"
   | "outdoor";
 
-export type MaterialDomain = "wall" | "floor" | "door" | "furniture";
+export type MaterialDomain =
+  | "wall"
+  | "floor"
+  | "door"
+  | "furniture"
+  | "outdoor";
 
 export type MaterialDef = {
   color: string;

@@ -1,4 +1,4 @@
-import { ICONS, ToolGroup } from "./constants";
+import { ICONS, ToolGroup } from "../lib/constants";
 
 export const TOOL_GROUPS: ToolGroup[] = [
   {

@@ -1,5 +1,5 @@
 import type { SceneConfig } from "@/components/workspace/FloorPlanEditor";
-import { DoorStyle } from "@/components/workspace/Tools/constants";
+import { DoorStyle } from "@/components/workspace/lib/constants";
 import type { WorkspaceConfig, RoomConfig } from "@/types/workspace";
 
 const DEFAULT_WALL_COLOR = "#FFFFFF";

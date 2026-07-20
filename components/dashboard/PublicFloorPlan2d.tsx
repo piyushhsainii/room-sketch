@@ -1,6 +1,6 @@
 // components/workspace/PublicFloorPlan2D.tsx
 import { useEffect, useRef, useState } from 'react'
-import { FloorPlanState } from '../workspace/Tools/constants'
+import { FloorPlanState } from '../workspace/lib/constants'
 import { draw2D } from '../workspace/2dDraw'
 
 export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {

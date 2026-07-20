@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useId } from "react"
 import { createPortal } from "react-dom"
-import { EditorTool, ToolGroup } from "./constants"
+import { EditorTool, ToolGroup } from "../lib/constants"
 
 // ── Hook: track a ref's bounding rect, recompute on open ────────────────────
 

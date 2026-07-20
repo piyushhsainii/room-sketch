@@ -4,7 +4,7 @@ import { FloorMat } from "./objects/floormat";
 import { WallDecorMesh } from "./mesh/wall-decor-mesh";
 import { WallMat } from "./objects/wallmat";
 import { WindowVariant3D } from "./objects/window-variant3d";
-import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial } from "./Tools/constants";
+import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial } from "./lib/constants";
 
 function Room3D({
     room,
@@ -21,7 +21,9 @@ function Room3D({
     interactive = false,
     selectedId,
     onSelect,
-    onToggleDoorOpen
+    onToggleDoorOpen,
+    roomWallOverrides,   // NEW
+
 }: {
     room: EditorRoom;
     openings?: EditorOpening[];
@@ -38,6 +40,8 @@ function Room3D({
     selectedId?: string | null
     onSelect?: (id: string | null) => void
     onToggleDoorOpen?: (openingId: string) => void
+    roomWallOverrides?: Partial<Record<'north' | 'south' | 'east' | 'west', { color?: string; material?: WallMaterial }>>
+
 
 }) {
     const cx = room.x + room.width / 2
@@ -83,7 +87,9 @@ function Room3D({
                 const wPos = wallWorldPos(wall.name)
                 const wallId = `${room.id}::wall::${wall.name}`
                 const isWallSelected = interactive && selectedId === wallId
-
+                const wallOverride = roomWallOverrides?.[wall.name]
+                const resolvedWallMaterial = wallOverride?.material ?? wallMaterial
+                const resolvedWallColor = wallOverride?.color ?? wallColor
                 const wallClickHandlers = interactive ? {
                     onClick: (e: any) => { e.stopPropagation(); onSelect?.(wallId) },
                     onPointerOver: (e: any) => { e.stopPropagation(); document.body.style.cursor = 'pointer' },
@@ -95,8 +101,8 @@ function Room3D({
                         <mesh key={wall.name} position={wPos} castShadow receiveShadow {...wallClickHandlers}>
                             <boxGeometry args={wallSize(wall.axis)} />
                             <WallMat
-                                mat={wallMaterial}
-                                color={isWallSelected ? '#A5A6F5' : wallColor}
+                                mat={resolvedWallMaterial}
+                                color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
                                 roughness={wallRoughness}
                                 textured={wallTextured}
                                 width={wallSize(wall.axis)[0]}
@@ -125,7 +131,7 @@ function Room3D({
                         panels.push(
                             <mesh key={`l${i}`} position={pos} castShadow receiveShadow {...wallClickHandlers}>
                                 <boxGeometry args={size} />
-                                <WallMat mat={wallMaterial} color={isWallSelected ? '#A5A6F5' : wallColor} roughness={wallRoughness} textured={wallTextured} width={size[0]} height={size[1]} depth={size[2]} />
+                                <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor} roughness={wallRoughness} textured={wallTextured} width={size[0]} height={size[1]} depth={size[2]} />
                             </mesh>
                         )
                     }
@@ -152,7 +158,7 @@ function Room3D({
                                 panels.push(
                                     <mesh key={`h${i}`} position={[basePos[0], op.height + headerH / 2, basePos[2]]} castShadow receiveShadow {...wallClickHandlers}>
                                         <boxGeometry args={hSize} />
-                                        <WallMat mat={wallMaterial} color={isWallSelected ? '#A5A6F5' : wallColor} roughness={wallRoughness} textured={wallTextured} width={hSize[0]} height={hSize[1]} depth={hSize[2]} />
+                                        <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor} roughness={wallRoughness} textured={wallTextured} width={hSize[0]} height={hSize[1]} depth={hSize[2]} />
                                     </mesh>
                                 )
                             }
@@ -165,7 +171,7 @@ function Room3D({
                             panels.push(
                                 <mesh key={`s${i}`} position={sPos} castShadow receiveShadow {...wallClickHandlers}>
                                     <boxGeometry args={sSize} />
-                                    <WallMat mat={wallMaterial} color={isWallSelected ? '#A5A6F5' : wallColor} roughness={wallRoughness} textured={wallTextured} width={sSize[0]} height={sSize[1]} depth={sSize[2]} />
+                                    <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor} roughness={wallRoughness} textured={wallTextured} width={sSize[0]} height={sSize[1]} depth={sSize[2]} />
                                 </mesh>
                             )
                         }

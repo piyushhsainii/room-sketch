@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { Suspense, useMemo, useRef } from 'react'
-import { FloorMaterial, FLOOR_MAT_DEFS, MaterialDef } from '../Tools/constants'
+import { FloorMaterial, FLOOR_MAT_DEFS, MaterialDef } from '../lib/constants'
 import { useFrame, useLoader } from '@react-three/fiber'
 
 // ── Procedural fallback for solids / anything without a real texture ──────

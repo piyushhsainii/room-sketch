@@ -7,7 +7,7 @@ import { useTexture } from '@react-three/drei'
 import { makeWallNormalTexture } from '@/components/workspace/three/RoomFloor'
 import type { RoomDoor } from '@/types/workspace'
 import type { WallSegment } from '@/lib/workspace/sceneBuilder'
-import { DoorStyle } from '../Tools/constants'
+import { DoorStyle } from '../lib/constants'
 
 type Props = {
   segment: WallSegment

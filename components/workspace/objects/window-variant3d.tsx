@@ -1,4 +1,4 @@
-import { EditorOpening } from "../Tools/constants"
+import { EditorOpening } from "../lib/constants"
 import * as THREE from 'three'
 
 /**

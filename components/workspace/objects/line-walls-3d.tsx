@@ -1,5 +1,5 @@
 import React from 'react'
-import { ClosedShape, EditorRoom, FloorMaterial, FloorPlanState, LineNode, WallMaterial } from '../Tools/constants';
+import { ClosedShape, FloorMaterial, FloorPlanState, LineNode, WallMaterial } from '../lib/constants';
 import { deriveClosedPolygons } from '@/lib/helpers';
 import * as THREE from 'three'
 import { FloorMat } from './floormat';
@@ -7,21 +7,24 @@ import { WallMat } from './wallmat';
 import { DoorVariant3D } from './door-variants';
 import { WindowVariant3D } from './window-variant3d';
 import { WallDecorMesh } from '../mesh/wall-decor-mesh';
-import { matchClosedShape } from '../MaterialsPanel';
+import { RoomSceneConfig } from '../FloorPlanEditor';
+
 
 function LineWalls3DImpl({
     fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural', closedShapes, wallColor = '#FFFFFF',
     wallMaterial = 'paint',
     interactive = false, selectedId, onSelect, onToggleDoorOpen,
+    roomSceneConfigs,
 }: {
     fp: FloorPlanState; wallRoughness?: number; floorMaterial?: string; doorStyle?: string; closedShapes?: ClosedShape[]; wallColor?: string;
     wallMaterial?: WallMaterial;
     interactive?: boolean; selectedId?: string | null; onSelect?: (id: string) => void
     onToggleDoorOpen?: (openingId: string) => void
+    roomSceneConfigs?: RoomSceneConfig[]
+
 }) {
     const H = fp.roomHeight
-    const DEFAULT_T = 0.15 // fallback for segments/nodes with no thickness set
-
+    const T = 0.15
     const [hovered, setHovered] = React.useState(false)
 
     const makeRoomHandlers = (roomId: string, hovered: boolean, setHovered: (v: boolean) => void) => ({
@@ -45,17 +48,18 @@ function LineWalls3DImpl({
     })
 
     const segWallMaterial = new Map<string, WallMaterial>()
-    // NEW — per-segment thickness, falling back to 0.15 for any segment
-    // created before this field existed.
-    const segThickness = new Map<string, number>()
+    const segWallColor = new Map<string, string>()   // NEW — same treatment for color, same bug applied there too
     for (const seg of fp.lineSegments ?? []) {
         const nodeIdSet = new Set(seg.nodeIds)
         const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
             s.nodeIds.length === seg.nodeIds.length &&
             s.nodeIds.every(id => nodeIdSet.has(id))
         )
-        segWallMaterial.set(seg.id, matchedShape?.wallMaterial ?? wallMaterial)
-        segThickness.set(seg.id, seg.thickness ?? 0.15)
+        // Precedence: this-exact-segment override (from the PropsPanel whole-
+        // segment picker) > shape-level Area Override > global default.
+        const segCfg = roomSceneConfigs?.find(r => r.roomId === seg.id)
+        segWallMaterial.set(seg.id, segCfg?.wallMaterial ?? matchedShape?.wallMaterial ?? wallMaterial)
+        segWallColor.set(seg.id, segCfg?.wallColor ?? wallColor)
     }
 
     return (
@@ -68,8 +72,10 @@ function LineWalls3DImpl({
 
                 const isRoomSelected = interactive && selectedId === seg.id
                 const panels: React.ReactNode[] = []
-                const segMat = segWallMaterial.get(seg.id) ?? wallMaterial
-                const T = segThickness.get(seg.id) ?? 0.15
+                const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
+                    s.nodeIds.length === seg.nodeIds.length &&
+                    s.nodeIds.every(id => new Set(seg.nodeIds).has(id))
+                )
 
                 for (let i = 0; i < nodes.length - 1; i++) {
                     const a = nodes[i]!, b = nodes[i + 1]!
@@ -87,9 +93,33 @@ function LineWalls3DImpl({
                         op.segmentNodeIds?.[1] === b.id
                     )
 
-                    // eslint-disable-next-line react-hooks/rules-of-hooks
-                    const handlers = interactive ? makeRoomHandlers(seg.id, hovered, setHovered) : {}
-                    const showOutline = interactive && (isRoomSelected || hovered)
+                    // Per-piece override — checked BEFORE the segment-level
+                    // fallback. Computed here, inside the per-node-pair loop,
+                    // rather than once per segment, since different pieces of
+                    // the same segment can each carry their own override.
+                    // Key format (`${seg.id}_${i}`) must match exactly what
+                    // the selection/PropsPanel UI writes when setting a
+                    // per-piece override — see patchSpecificSegmentPiece in
+                    // PropsPanel.tsx.
+                    const pieceKey = `${seg.id}_${i}`
+                    const pieceOverride = matchedShape?.wallOverrides?.[pieceKey]
+                    const pieceMat = pieceOverride?.material ?? segWallMaterial.get(seg.id) ?? wallMaterial
+                    const pieceColor = pieceOverride?.color ?? segWallColor.get(seg.id) ?? wallColor
+                    const pieceId = `${seg.id}::piece::${i}`
+                    const isPieceSelected = interactive && selectedId === pieceId
+
+                    // Per-piece click selects the specific piece (enabling a
+                    // per-piece material override via PropsPanel) instead of
+                    // the whole segment. Falls back to whole-segment select
+                    // (makeRoomHandlers) when not interactive or as a base —
+                    // the piece-specific onClick below takes priority since
+                    // it's attached directly to each piece's own mesh.
+                    const handlers = interactive ? {
+                        onClick: (e: any) => { e.stopPropagation(); onSelect?.(pieceId) },
+                        onPointerOver: (e: any) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' },
+                        onPointerOut: (e: any) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = 'auto' },
+                    } : {}
+                    const showOutline = interactive && (isPieceSelected || isRoomSelected || hovered)
 
                     if (segOpenings.length === 0) {
                         panels.push(
@@ -102,16 +132,16 @@ function LineWalls3DImpl({
                                     {...handlers}
                                 >
                                     <boxGeometry args={[len, H, T]} />
-                                    <WallMat mat={segMat} color={wallColor} roughness={wallRoughness} width={len} height={H} depth={T} />
+                                    <WallMat mat={pieceMat} color={pieceColor} roughness={wallRoughness} width={len} height={H} depth={T} />
                                 </mesh>
                                 {showOutline && (
                                     <mesh position={[mcx, H / 2, mcz]} rotation={[0, -angle, 0]} renderOrder={999}>
                                         <boxGeometry args={[len * 1.01, H * 1.01, T * 1.4]} />
                                         <meshBasicMaterial
-                                            color={isRoomSelected ? '#3B82F6' : '#93C5FD'}
+                                            color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
                                             wireframe
                                             transparent
-                                            opacity={isRoomSelected ? 0.9 : 0.5}
+                                            opacity={isPieceSelected || isRoomSelected ? 0.9 : 0.5}
                                             depthTest={false}
                                         />
                                     </mesh>
@@ -142,16 +172,16 @@ function LineWalls3DImpl({
                                             {...handlers}
                                         >
                                             <boxGeometry args={[segLen, H, T]} />
-                                            <WallMat mat={segMat} color={wallColor} roughness={wallRoughness} width={segLen} height={H} depth={T} />
+                                            <WallMat mat={pieceMat} color={pieceColor} roughness={wallRoughness} width={segLen} height={H} depth={T} />
                                         </mesh>
                                         {showOutline && (
                                             <mesh position={[wx, H / 2, wz]} rotation={[0, -angle, 0]} renderOrder={999}>
                                                 <boxGeometry args={[segLen * 1.01, H * 1.01, T * 1.4]} />
                                                 <meshBasicMaterial
-                                                    color={isRoomSelected ? '#3B82F6' : '#93C5FD'}
+                                                    color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
                                                     wireframe
                                                     transparent
-                                                    opacity={isRoomSelected ? 0.9 : 0.5}
+                                                    opacity={isPieceSelected || isRoomSelected ? 0.9 : 0.5}
                                                     depthTest={false}
                                                 />
                                             </mesh>
@@ -163,6 +193,13 @@ function LineWalls3DImpl({
                             if (op) {
                                 const opPos2 = (op.segmentT ?? 0) * len
 
+                                // Header/sill panels flanking a door/window on
+                                // this piece — per Step 2's documented gap,
+                                // these must ALSO use the piece override, not
+                                // just the plain-wall (no-opening) case above,
+                                // or a wall with a door shows the override on
+                                // part of itself and the global material on
+                                // the rest.
                                 const headerH = H - op.height
                                 if (headerH > 0.02) {
                                     const hx = a.x + (dx / len) * opPos2
@@ -177,7 +214,7 @@ function LineWalls3DImpl({
                                             {...handlers}
                                         >
                                             <boxGeometry args={[op.width, headerH, T]} />
-                                            <WallMat mat={segMat} color={wallColor} roughness={wallRoughness} width={op.width} height={headerH} depth={T} />
+                                            <WallMat mat={pieceMat} color={pieceColor} roughness={wallRoughness} width={op.width} height={headerH} depth={T} />
                                         </mesh>
                                     )
                                 }
@@ -195,7 +232,7 @@ function LineWalls3DImpl({
                                             {...handlers}
                                         >
                                             <boxGeometry args={[op.width, op.sillHeight, T]} />
-                                            <WallMat mat={segMat} color={wallColor} roughness={wallRoughness} width={op.width} height={op.sillHeight} depth={T} />
+                                            <WallMat mat={pieceMat} color={pieceColor} roughness={wallRoughness} width={op.width} height={op.sillHeight} depth={T} />
                                         </mesh>
                                     )
                                 }
@@ -254,12 +291,12 @@ function LineWalls3DImpl({
                 const minZ = Math.min(...zs), maxZ = Math.max(...zs)
                 const worldW = maxX - minX
                 const worldD = maxZ - minZ
-                if (polygonOverlapsRoom(minX, maxX, minZ, maxZ, fp.rooms)) return null
-
                 const nodeIdSet = new Set(nodeIds)
 
-                const matchedShape = matchClosedShape(nodeIds, fp.lineNodes, closedShapes ?? fp.closedShapes ?? [])
-
+                const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
+                    s.nodeIds.length === nodeIds.length &&
+                    s.nodeIds.every(id => nodeIdSet.has(id))
+                )
                 const shapeMat = matchedShape?.floorMaterial ?? floorMaterial
 
                 const matchedSeg = (fp.lineSegments ?? []).find(s =>
@@ -289,12 +326,11 @@ function LineWalls3DImpl({
             {(fp.lineNodes ?? []).map(node => {
                 const owningSeg = (fp.lineSegments ?? []).find(seg => seg.nodeIds.includes(node.id))
                 const nodeMat = owningSeg ? (segWallMaterial.get(owningSeg.id) ?? wallMaterial) : wallMaterial
-                const nodeT = owningSeg ? (segThickness.get(owningSeg.id) ?? DEFAULT_T) : DEFAULT_T
 
                 return (
                     <mesh key={node.id} position={[node.x, H / 2, node.z]} castShadow receiveShadow>
-                        <cylinderGeometry args={[nodeT / 2, nodeT / 2, H, 8]} />
-                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={nodeT} height={H} depth={nodeT} />
+                        <cylinderGeometry args={[T / 2, T / 2, H, 8]} />
+                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={T} height={H} depth={T} />
                     </mesh>
                 )
             })}
@@ -328,8 +364,13 @@ function LineWalls3DImpl({
     )
 }
 
+// Memoized export — LineWalls3D rebuilds every wall panel, opening cutout,
+// and floor shape geometry on every render. None of that needs to re-run
+// just because the 2D editor's hover/pan/tooltip state changed elsewhere in
+// FloorPlanEditor — same fix as FurnitureMesh/StairsMesh.
 export const LineWalls3D = React.memo(LineWalls3DImpl)
 
+// Separate component so the floor mesh can carry its own hover state cleanly.
 function FloorPiece({
     geometry, shapeMat, worldW, worldD, interactive, roomId, selected, onSelect,
 }: {
@@ -401,6 +442,7 @@ function FloorPiece({
     )
 }
 
+
 function DerivedFloorShape({
     nodeIds, nodes, minX, minZ, worldW, worldD,
     shapeMat, interactive, roomId, selected, onSelect,
@@ -448,15 +490,5 @@ function DerivedFloorShape({
             selected={selected}
             onSelect={onSelect}
         />
-    )
-}
-
-function polygonOverlapsRoom(
-    minX: number, maxX: number, minZ: number, maxZ: number,
-    rooms: EditorRoom[], tolerance = 0.2,
-) {
-    return rooms.some(room =>
-        minX >= room.x - tolerance && maxX <= room.x + room.width + tolerance &&
-        minZ >= room.z - tolerance && maxZ <= room.z + room.depth + tolerance
     )
 }

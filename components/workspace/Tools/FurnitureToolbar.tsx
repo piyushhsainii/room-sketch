@@ -5,7 +5,7 @@ import {
     isFurnitureNew,
     FurnitureType,
     FurnitureCategory,
-} from '../Tools/constants'
+} from '../lib/constants'
 
 const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
     seating: 'Seating',

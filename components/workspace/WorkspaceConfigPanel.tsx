@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import type { RoomConfig, SceneRoom, WorkspaceConfig } from '@/types/workspace'
 import { DEFAULT_WORKSPACE_CONFIG } from '@/types/workspace'
-import { DOOR_STYLES, DoorStyle, FloorMaterial } from './Tools/constants'
+import { DOOR_STYLES, DoorStyle, FloorMaterial } from './lib/constants'
 
 type Props = {
     projectId: string

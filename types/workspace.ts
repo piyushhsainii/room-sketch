@@ -5,7 +5,7 @@ import {
   PlacedFurniture,
   PlacedStairs,
   WallMaterial,
-} from "@/components/workspace/Tools/constants";
+} from "@/components/workspace/lib/constants";
 
 export interface WallPoint {
   x: number;

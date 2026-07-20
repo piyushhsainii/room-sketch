@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { THEME } from '../workspace/FloorPlanEditor';
-import { DEFAULT_FP } from '../workspace/Tools/constants';
+import { DEFAULT_FP } from '../workspace/lib/constants';
 import { ShareDialog } from './ExportShareable';
 import { useRouter } from 'next/navigation';
 

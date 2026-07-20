@@ -60,20 +60,20 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
 
     // ── Tile ─────────────────────────────────────────────────────────────
     tiles: {
-        color: '#D4D0C8', roughness: 0.3, metalness: 0, repeatScale: 6, category: 'tile', domains: ['floor', 'door'], // was 20 — lower repeat count = larger, more visible tile squares
+        color: '#D4D0C8', roughness: 0.3, metalness: 0, repeatScale: 1, category: 'tile', domains: ['floor', 'door'], // was 20 — lower repeat count = larger, more visible tile squares
         textureUrl: '/textures/tiles/Tiles075_1K-JPG/Tiles075_1K-JPG_Color.jpg',
         normalMapUrl: '/textures/tiles/Tiles075_1K-JPG/Tiles075_1K-JPG_NormalGL.jpg',
         roughnessMapUrl: '/textures/tiles/Tiles075_1K-JPG/Tiles075_1K-JPG_Roughness.jpg',
     },
     'tile-ceramic': {
-        color: '#F2F1EC', roughness: 0.25, metalness: 0.05, repeatScale: 6, category: 'tile', domains: ['floor', 'wall'], // was 0.5 — for THIS entry, 0.5 was actually stretching one texture across the whole surface almost unrepeated; bumped up slightly toward a visible grid too, adjust to taste
+        color: '#F2F1EC', roughness: 0.25, metalness: 0.05, repeatScale: 1, category: 'tile', domains: ['floor', 'wall'], // was 0.5 — for THIS entry, 0.5 was actually stretching one texture across the whole surface almost unrepeated; bumped up slightly toward a visible grid too, adjust to taste
         textureUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_Color.jpg',
         normalMapUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_NormalGL.jpg',
         roughnessMapUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_Roughness.jpg',
     },
     'tile-travertine': {
         color: '#F2F1F0',
-        roughness: 0.25, metalness: 0.05, repeatScale: 6, category: 'tile', domains: ['floor', 'wall'], // was 0.5, same note as tile-ceramic
+        roughness: 0.25, metalness: 0.05, repeatScale: 1, category: 'tile', domains: ['floor', 'wall'], // was 0.5, same note as tile-ceramic
         textureUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_Color.jpg',
         normalMapUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_NormalGL.jpg',
         roughnessMapUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_Roughness.jpg',

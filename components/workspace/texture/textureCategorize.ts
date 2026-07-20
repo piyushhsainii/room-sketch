@@ -1,5 +1,5 @@
 import { labelize } from "../MaterialPicker";
-import { DOOR_STYLES, FLOOR_MAT_DEFS, WALL_MAT_DEFS } from "../Tools/constants";
+import { DOOR_STYLES, FLOOR_MAT_DEFS, WALL_MAT_DEFS } from "../lib/constants";
 import { DOOR_TEXTURE_MATERIALS } from "../Tools/textureMaterials";
 import { MaterialCategory, MaterialDomain } from "./materials-registry";
 

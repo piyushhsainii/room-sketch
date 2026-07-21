@@ -1871,6 +1871,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 key={1}
                 onClose={onClose}
                 onSave={onSave}
+                projectId={projectId}
             />
             {/* ── Body ─────────────────────────────────────────────────────────── */}
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>

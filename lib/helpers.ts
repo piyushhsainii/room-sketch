@@ -462,3 +462,21 @@ export function getSegmentOpeningWorldPos(
   const angle = Math.atan2(b.z - a.z, b.x - a.x);
   return { wx, wz, angle };
 }
+
+export function polygonAreaM2(
+  nodeIds: string[],
+  lineNodes: LineNode[],
+): number {
+  const nodeMap = new Map(lineNodes.map((n) => [n.id, n]));
+  const pts = nodeIds
+    .map((id) => nodeMap.get(id))
+    .filter(Boolean) as LineNode[];
+  if (pts.length < 3) return 0;
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p1 = pts[i]!,
+      p2 = pts[(i + 1) % pts.length]!;
+    a += p1.x * p2.z - p2.x * p1.z;
+  }
+  return Math.abs(a / 2);
+}

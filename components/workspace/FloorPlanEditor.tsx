@@ -19,6 +19,8 @@ import { LIGHT_FIXTURE_DEFAULTS, LightFixtureType, PlacedLight } from './lights-
 import { OUTDOOR_OBJECT_FOOTPRINTS, OutdoorObjectType, PlacedOutdoorObject } from './lib/outdoor-constants'
 import { CameraView, getBuiltInViews } from './lib/camera'
 import { CameraViewPicker } from './CameraViewPicker'
+import { duplicateClosedShape, duplicateRoom, MirrorAxis, mirrorRoom } from './lib/duplicate'
+import { duplicateFurniture, duplicateOpening, duplicateOutdoorObject, duplicateStairs, duplicateWallDecor } from './lib/duplicate-items'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -316,6 +318,10 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     const snapshot = historyRef.current[historyIndexRef.current]!
                     setFp(JSON.parse(JSON.stringify(snapshot)))
                 }
+            }
+            if (key === 'd' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault() // stop the browser's own Ctrl/CmdD (bookmark) from firing
+                handleDuplicateSelected()
             }
         }
         window.addEventListener('keydown', h)
@@ -1703,6 +1709,94 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         }
     }, [tool, pencilPoints, pushHistory])
 
+    const handleDuplicateSelected = useCallback(() => {
+        if (!selectedId) return
+        const currentFp = fpRef.current
+
+        // Room
+        const room = currentFp.rooms.find(r => r.id === selectedId)
+        if (room) {
+            const result = duplicateRoom(currentFp, sceneConfig, room.id, room.width + 0.5, 0)
+            if (!result) return
+            setFp(result.fp)
+            setSceneConfig(result.sceneConfig)
+            setSelectedId(result.newRoomId)
+            pushHistory()
+            return
+        }
+
+        // Furniture
+        const furniture = (currentFp.furniture ?? []).find(f => f.id === selectedId)
+        if (furniture) {
+            const result = duplicateFurniture(currentFp, furniture.id)
+            if (!result) return
+            setFp(result.fp)
+            setSelectedId(result.newId)
+            pushHistory()
+            return
+        }
+
+        // Stairs / elevator
+        const stairs = (currentFp.stairs ?? []).find(s => s.id === selectedId)
+        if (stairs) {
+            const result = duplicateStairs(currentFp, stairs.id)
+            if (!result) return
+            setFp(result.fp)
+            setSelectedId(result.newId)
+            pushHistory()
+            return
+        }
+
+        // Outdoor object
+        const outdoorObj = (currentFp.outdoorObjects ?? []).find(o => o.id === selectedId)
+        if (outdoorObj) {
+            const result = duplicateOutdoorObject(currentFp, outdoorObj.id)
+            if (!result) return
+            setFp(result.fp)
+            setSelectedId(result.newId)
+            pushHistory()
+            return
+        }
+
+        // Wall decor
+        const wallDecor = (currentFp.wallDecor ?? []).find(d => d.id === selectedId)
+        if (wallDecor) {
+            const result = duplicateWallDecor(currentFp, wallDecor.id)
+            if (!result) return
+            setFp(result.fp)
+            setSelectedId(result.newId)
+            pushHistory()
+            return
+        }
+
+        // Opening (door / window / archway)
+        const opening = currentFp.openings.find(o => o.id === selectedId)
+        if (opening) {
+            const result = duplicateOpening(currentFp, opening.id)
+            if (!result) return
+            setFp(result.fp)
+            setSelectedId(result.newId)
+            pushHistory()
+            return
+        }
+        const shapeId = selectedId
+        const result = duplicateClosedShape(currentFp, sceneConfig, shapeId, 1.0, 0)
+        if (result) {
+            setFp(result.fp)
+            setSceneConfig(result.sceneConfig)
+            setSelectedId(result.newRoomId)
+            pushHistory()
+        }
+    }, [selectedId, sceneConfig, pushHistory])
+
+    const handleMirrorSelected = useCallback((axis: MirrorAxis) => {
+        if (!selectedId) return
+        const room = fpRef.current.rooms.find(r => r.id === selectedId)
+        if (!room) return // mirror is currently rect-room only — see PropsPanel patch, button only shown for room selection
+        setFp(prev => mirrorRoom(prev, room.id, axis))
+        pushHistory()
+    }, [selectedId, pushHistory])
+
     // Native wheel handler
     useEffect(() => {
         const el = canvasDivRef.current
@@ -2193,6 +2287,9 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                 }}
                                 sceneConfig={sceneConfig}
                                 onChangeSceneConfig={setSceneConfig}
+                                onDuplicate={handleDuplicateSelected}
+                                onMirror={handleMirrorSelected}
+
                             />
                         </div>
                     )}

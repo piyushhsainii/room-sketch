@@ -8,13 +8,15 @@ import { matchClosedShape } from "./MaterialsPanel"
 import { useMemo } from "react"
 import { getMaterialsForDomain } from "./texture/materials-registry"
 
-export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, onChangeSceneConfig }: {
+export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, onChangeSceneConfig, onDuplicate, onMirror }: {
     fp: FloorPlanState
     selectedId: string | null
     onChange: (fp: FloorPlanState) => void
     onDelete: () => void
     sceneConfig: SceneConfig
     onChangeSceneConfig: (cfg: SceneConfig) => void
+    onDuplicate?: () => void
+    onMirror?: (axis: 'horizontal' | 'vertical') => void
 }) {
 
     const inputStyle: React.CSSProperties = {
@@ -148,11 +150,40 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
             outdoorObjects: (fp.outdoorObjects ?? []).map(o => o.id === outdoorObj.id ? { ...o, ...patch } : o)
         })
     }
+    const canDuplicate = !!(room || shape || furniture || stairs || outdoorObj || wallDecor || opening);
 
     return (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
                 {wallRoom ? 'WALL' : room || seg ? 'ROOM' : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type).toUpperCase() : node ? 'WALL NODE' : furniture ? 'FURNITURE' : stairs ? 'STAIRS / ELEVATOR' : wallDecor ? WALL_DECOR_LABELS[wallDecor.type].toUpperCase() : 'WALL SEGMENT'}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
+                    {wallRoom ? 'WALL' : room || seg ? 'ROOM' : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type).toUpperCase() : node ? 'WALL NODE' : furniture ? 'FURNITURE' : stairs ? 'STAIRS / ELEVATOR' : wallDecor ? WALL_DECOR_LABELS[wallDecor.type].toUpperCase() : 'WALL SEGMENT'}
+                </div>
+                {canDuplicate && onDuplicate && (
+                    <DuplicateIconButton onClick={onDuplicate} title="Duplicate (Ctrl/Cmd+D)" />
+                )}
+                {onMirror && <>
+                    <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>MIRROR</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                        <button
+                            onClick={() => onMirror('horizontal')}
+                            title="Flip contents left↔right within this room"
+                            style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
+                        >
+                            ⇋ Flip Horizontal
+                        </button>
+                        <button
+                            onClick={() => onMirror('vertical')}
+                            title="Flip contents top↔bottom within this room"
+                            style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
+                        >
+                            ⇅ Flip Vertical
+                        </button>
+                    </div>
+                </>}
             </div>
 
             {wallRoom && wallSel && (
@@ -202,7 +233,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     />
                 </>
             )}
-
             {shape && <>
                 <PropField label="Label">
                     <input value={shape.label ?? ''} onChange={e => patchShape({ label: e.target.value })} style={inputStyle} />
@@ -226,6 +256,16 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     onClear={() => patchShape({ floorMaterial: undefined })}
                     theme={pickerTheme}
                 />
+                {/* {onDuplicate && <>
+                    <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
+                    <button
+                        onClick={onDuplicate}
+                        title="Duplicate this area and its contents (Ctrl/CmdD)"
+                        style={{ height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
+                    >
+                        ⎘ Duplicate Area
+                    </button>
+                </>} */}
             </>}
 
             {room && <>
@@ -258,7 +298,41 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     onClear={() => patchRoomScene({ floorMaterial: undefined })}
                     theme={pickerTheme}
                 />
-            </>}
+
+                {/* {(onDuplicate || onMirror) && <>
+                    <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>DUPLICATE</div>
+                    {onDuplicate && (
+                        <button
+                            onClick={onDuplicate}
+                            title="Duplicate room and its contents (Ctrl/CmdD)"
+                            style={{ height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
+                        >
+                            ⎘ Duplicate Room
+                        </button>
+                    )}
+                    {onMirror && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                            <button
+                                onClick={() => onMirror('horizontal')}
+                                title="Flip contents left↔right within this room"
+                                style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
+                            >
+                                ⇋ Flip Horizontal
+                            </button>
+                            <button
+                                onClick={() => onMirror('vertical')}
+                                title="Flip contents top↔bottom within this room"
+                                style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
+                            >
+                                ⇅ Flip Vertical
+                            </button>
+                        </div>
+                    )}
+                </>} */}
+            </>
+
+            }
 
             {node && <>
                 <PropField label="X pos (m)"><NumInput value={node.x} min={-50} max={50} step={0.5} onChange={v => patchNode({ x: snapM(v) })} /></PropField>
@@ -594,3 +668,21 @@ function NumInput({ value, min, max, step, onChange }: { value: number; min: num
             style={{ ...inputStyle, width: 72 }} />
     )
 }
+
+function DuplicateIconButton({ onClick, title }: { onClick: () => void; title: string }) {
+    return (
+        <button
+            onClick={onClick}
+            title={title}
+            style={{
+                width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 5, border: '1px solid rgba(99,102,241,0.3)',
+                background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)',
+                fontSize: 12, cursor: 'pointer', flexShrink: 0,
+            }}
+        >
+            ⎘
+        </button>
+    )
+}
+

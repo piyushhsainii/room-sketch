@@ -51,7 +51,7 @@ export type SceneOutdoorObject = {
 
 export type SceneJSON = {
   rooms: SceneRoom[];
-  furniture: PlacedFurniture[]; // was unknown[] — silently dropped furniture on save before this was fixed once already; do not regress it back to unknown[]
+  furniture: PlacedFurniture[];
   door_style?: DoorStyle;
   stairs: PlacedStairs[];
   global_wall_material?: WallMaterial;
@@ -87,6 +87,12 @@ export type SceneJSON = {
     facing_inward?: boolean; // Added optional flag for inward orientation
   }[];
   outdoor_objects: SceneOutdoorObject[]; // NEW
+  saved_views?: {
+    id: string;
+    label: string;
+    position: [number, number, number];
+    target: [number, number, number];
+  }[];
   ground_material?: string;
   extracted_at: string;
   floorplan_url: string;

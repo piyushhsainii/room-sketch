@@ -124,10 +124,6 @@ function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
     return textures
 }
 
-// Generalized version of useFabricMaterialProps that takes an arbitrary url
-// set instead of the hardcoded FABRIC_TEX_URLS constant, so a user-chosen
-// material override can reuse the same async-load + cache + re-render
-// machinery. Pass `null` to skip loading entirely (no override selected).
 function useTextureMaterialProps(urls: Record<string, string> | null, repeatX = 2, repeatY = 2) {
     const [tick, forceTick] = React.useState(0)
     const key = urls ? Object.values(urls).join('|') : ''
@@ -145,14 +141,7 @@ function useTextureMaterialProps(urls: Record<string, string> | null, repeatX = 
         }
         const status = anyPending ? 'loading' : anyFailed ? 'failed' : 'loaded'
         return { textures: out, status }
-        // `tick` is intentionally a dependency here even though it's unused
-        // in the body — it exists solely to force this memo to actually
-        // recompute when a texture finishes loading. Without it, `key`
-        // alone never changes on load-completion, so this memo would keep
-        // returning its original "loading"/empty result forever, even
-        // though _texCache has since been populated and re-renders are
-        // happening (that was the actual bug — not the async load itself).
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [key, tick])
 
     React.useEffect(() => {
@@ -203,6 +192,7 @@ const _furnitureMatById = new Map(
         { swatch: def.color, textureUrl: def.textureUrl as string | undefined },
     ])
 )
+console.log('[FurnitureMesh] _furnitureMatById keys=', [..._furnitureMatById.keys()])
 
 export function FurnitureMesh({
     f,
@@ -232,7 +222,7 @@ export function FurnitureMesh({
         overrideMat?.textureUrl ? { map: overrideMat.textureUrl } : null,
         2.4, 2.4
     )
-
+    console.log('[FurnitureMesh] materialId=', f.materialId, 'overrideMat=', overrideMat)
     // Only actually apply the override once we KNOW something — while it's
     // still loading, keep rendering the default fabric look so nothing flashes
     // into a flat, texture-less swatch color prematurely.
@@ -248,7 +238,6 @@ export function FurnitureMesh({
     // const bodyMaterialProps = useOverride ? overrideTex : fabric
     // const cushionMaterialProps = useOverride ? overrideTex : fabricTight
 
-    const textureLoaded = !!overrideTex.map
     const bodyMaterialProps = normalizeMaterialProps(useOverride ? overrideTex : fabric)
     const cushionMaterialProps = normalizeMaterialProps(useOverride ? overrideTex : fabricTight)
 

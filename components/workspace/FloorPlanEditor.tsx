@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ResilientCanvas from './ResilientCanvas'
 import { Toolbar } from './Tools/ToolBar'
 import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedFurniture, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
@@ -9,16 +9,16 @@ import { Dock } from '../ui/Dock'
 import { SceneGraphPanel } from './objects/scene-graph'
 import { ScrollableList } from '../ui/ScrollableList'
 import { matchClosedShape, MaterialsPanel } from './MaterialsPanel'
-import Scene3D from './3DScene'
+import Scene3D, { Scene3DHandle } from './3DScene'
 import { PropsPanel } from './PropsPanel'
 import { draw2D } from './2dDraw'
 import WorkspaceNav from '../ui/WorkspaceNav'
 import ToolHintBar from '../ui/ToolHint'
 import { createPortal } from 'react-dom'
-import { useGizmoApiRef } from './three/NavigationGizmo'
-import * as THREE from "three"
 import { LIGHT_FIXTURE_DEFAULTS, LightFixtureType, PlacedLight } from './lights-constant'
 import { OUTDOOR_OBJECT_FOOTPRINTS, OutdoorObjectType, PlacedOutdoorObject } from './lib/outdoor-constants'
+import { CameraView, getBuiltInViews } from './lib/camera'
+import { CameraViewPicker } from './CameraViewPicker'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -94,6 +94,7 @@ function getWallHit(room: EditorRoom, wx: number, wz: number, thresholdM: number
 }
 
 type Props = {
+    projectId: string,
     onSave?: (fp: FloorPlanState, sceneConfig: SceneConfig) => void
     onClose?: () => void
     initialState?: FloorPlanState
@@ -101,7 +102,7 @@ type Props = {
     isSaving?: boolean
     isSaved?: boolean
 }
-export default function <FloorPlanEditor>({ onSave, onClose, initialState, initialSceneConfig, isSaving = false, isSaved = false }: Props) {
+export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialState, initialSceneConfig, isSaving = false, isSaved = false }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
     const [isFullscreen, setIsFullscreen] = useState(false)
@@ -201,6 +202,22 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
     const chevronRef = useRef<HTMLButtonElement | null>(null)
     const groupAnchorsRef = useRef<Record<string, HTMLDivElement | null>>({})
     const [furnitureAnchorRect, setFurnitureAnchorRect] = useState<DOMRect | null>(null)
+
+    const scene3DRef = useRef<Scene3DHandle>(null)
+    const [viewPickerOpen, setViewPickerOpen] = useState(false)
+
+    const builtInViews = useMemo(() => getBuiltInViews(fp), [fp.rooms, fp.lineNodes])
+    const allViews = [...builtInViews, ...(fp.savedViews ?? [])]
+
+    const handleSaveCurrentView = () => {
+        const current = scene3DRef.current?.getCurrentView()
+        if (!current) return
+        const name = prompt('Name this view:')
+        if (!name) return
+        const newView: CameraView = { id: uid(), label: name, ...current }
+        pushHistory()
+        setFp(prev => ({ ...prev, savedViews: [...(prev.savedViews ?? []), newView] }))
+    }
 
     // Re-measure whenever the furniture tool becomes active (mirrors the
     // pattern GroupButton already uses for its own flyouts).
@@ -2037,22 +2054,34 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                                         </svg>
                                         {interactiveMode ? 'Interactive: On' : 'Interactive: Off'}
                                     </button>
+                                    {
+                                        scene3DRef && onSave !== undefined &&
+                                        <CameraViewPicker
+                                            fp={fp}
+                                            setFp={setFp}
+                                            sceneConfig={sceneConfig}
+                                            pushHistory={pushHistory}
+                                            scene3DRef={scene3DRef}
+                                            onSave={onSave}
+                                        />
+                                    }
                                 </div>
 
-                                {walkMode && (
+                                {/* {walkMode && (
                                     <div style={{
                                         position: 'absolute', top: 44, left: 12, zIndex: 5,
                                         background: THEME.bgPanel, border: '1px solid rgba(16,185,129,0.3)',
                                         borderRadius: 8, padding: '8px 12px', fontSize: 10,
                                         color: '#059669', lineHeight: 1.8, boxShadow: THEME.shadowLg,
                                     }}>
-                                        <div style={{ fontWeight: 700, marginBottom: 2 }}>🚶 WALK MODE</div>
+                                        <div style={{ fontWeight: 700, marginBottom: 2 }}> WALK MODE</div>
                                         <div>Click canvas to lock cursor</div>
                                         <div><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>W A S D</kbd> Move</div>
                                         <div><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>Mouse</kbd> Look around</div>
                                         <div><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>ESC</kbd> Unlock cursor</div>
                                     </div>
-                                )}
+                                )} */}
+
                                 {/* <SceneErrorBoundary fallback={null} > */}
                                 {/* <Suspense fallback={null} > */}
                                 <ResilientCanvas
@@ -2072,6 +2101,7 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                                     resize={{ scroll: false, debounce: { scroll: 50, resize: 0 } }}
                                 >
                                     <Scene3D
+                                        ref={scene3DRef}
                                         fp={fp}
                                         sceneConfig={sceneConfig}
                                         walkMode={walkMode}
@@ -2088,7 +2118,6 @@ export default function <FloorPlanEditor>({ onSave, onClose, initialState, initi
                                     {/* <CameraOrientationReporter gizmoApiRef={gizmoApiRef} /> */}
                                 </ResilientCanvas>
 
-                                {/* <NavigationGizmo gizmoApiRef={gizmoApiRef} /> */}
                             </div>
                         </div>
                     )}

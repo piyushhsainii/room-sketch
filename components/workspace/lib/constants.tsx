@@ -2,6 +2,7 @@ import { SceneConfig } from "../FloorPlanEditor"
 import { PlacedLight } from "../lights-constant"
 import { MaterialCategory } from "../texture/materials-registry"
 import { UniversalMaterial } from "../texture/universalMaterials"
+import { CameraView } from "./camera"
 import { PlacedOutdoorObject } from "./outdoor-constants"
 
 
@@ -223,7 +224,9 @@ export type FloorPlanState = {
     stairs: PlacedStairs[]   // ← new
     wallDecor: PlacedWallDecor[],
     lights: PlacedLight[],
-    outdoorObjects: PlacedOutdoorObject[]
+    outdoorObjects: PlacedOutdoorObject[],
+    savedViews: CameraView[]
+
 }
 
 export const DEFAULT_FP: FloorPlanState = {
@@ -234,7 +237,8 @@ export const DEFAULT_FP: FloorPlanState = {
     stairs: [],   // ← new
     wallDecor: [],
     lights: [],
-    outdoorObjects: []
+    outdoorObjects: [],
+    savedViews: []
 }
 
 export const STAIRS_FOOTPRINTS: Record<StairsType, { w: number; d: number }> = {

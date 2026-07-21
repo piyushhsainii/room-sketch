@@ -83,6 +83,7 @@ export default function ProjectViewerPage() {
     if (!project.floorplan_editor_state && !project.floorplan_url) {
         return (
             <FloorPlanEditor
+                projectId={project.id}
                 onSave={async (fp, cfg) => {
                     try {
                         const res = await fetch("/api/workspace/floorplan-editor-state", {
@@ -114,7 +115,9 @@ export default function ProjectViewerPage() {
         };
 
         return (
+
             <FloorPlanEditor
+                projectId={project.id}
                 initialState={floorPlanState}
                 initialSceneConfig={sceneConfig}
                 onSave={async (fp, cfg) => {

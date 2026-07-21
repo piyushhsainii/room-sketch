@@ -1,6 +1,7 @@
 import {
   DOOR_MATERIALS,
   FLOOR_MAT_DEFS,
+  FURNITURE_MATERIALS,
   WALL_MAT_DEFS,
   WALL_MATERIALS,
 } from "../lib/constants";
@@ -45,6 +46,7 @@ function inferCategory(key: string, textureUrl?: string): MaterialCategory {
   if (key.startsWith("wallpaper")) return "wallpaper";
   if (key.startsWith("pvc-panel")) return "pvc-panel";
   if (key.startsWith("glass")) return "glass";
+  if (key.includes("leather")) return "leather"; // NEW — furniture ids like 'black-leather' need this or they fall through to inferred buckets below
 
   const filename = textureUrl?.split("/").pop() ?? "";
   const prefix = filename.match(/^([A-Za-z]+)/)?.[1]?.toLowerCase();
@@ -144,6 +146,26 @@ function buildRegistry(): Record<string, MaterialDef> {
       label: d.label,
       category: inferCategory(d.id),
       domains: ["door"],
+    };
+  }
+
+  for (const f of FURNITURE_MATERIALS as any[]) {
+    if (registry[f.id]) {
+      registry[f.id].domains.push("furniture");
+      continue;
+    }
+    registry[f.id] = {
+      color: f.swatch,
+      roughness: f.roughness ?? 0.7,
+      metalness: f.metalness ?? 0,
+      repeatScale: f.repeatScale ?? 2.4,
+      preview: f.thumbnail,
+      textureUrl: f.textureUrl,
+      normalMapUrl: f.normalMapUrl,
+      roughnessMapUrl: f.roughnessMapUrl,
+      label: f.label,
+      category: inferCategory(f.id, f.textureUrl),
+      domains: ["furniture"],
     };
   }
 

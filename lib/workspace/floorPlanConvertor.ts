@@ -154,16 +154,8 @@ export function floorPlanStateToSceneJSON(
 
   return {
     rooms: [...rooms, ...lineRooms],
-    furniture: (fp.furniture ?? []).map((f) => ({
-      id: f.id,
-      type: f.type,
-      x: f.x,
-      z: f.z,
-      rotation: f.rotation,
-      scale: f.scale,
-      material_id: f.materialId,
-    })),
-    stairs: fp.stairs ?? [],
+    furniture: furniture,
+    stairs: stairs ?? [],
     lights,
     door_style: cfg.doorStyle ?? ("glass_clear" as DoorStyle),
     global_wall_material: cfg.globalWallMaterial ?? "paint",
@@ -175,6 +167,12 @@ export function floorPlanStateToSceneJSON(
     floorplan_url: "",
     outdoor_objects: outdoor_objects,
     ground_material: cfg.groundMaterial,
+    saved_views: fp.savedViews?.map((v) => ({
+      id: v.id,
+      label: v.label,
+      position: v.position,
+      target: v.target,
+    })),
   };
 }
 
@@ -339,6 +337,12 @@ export function sceneJSONToFloorPlanState(
     wallDecor: [],
     lights,
     outdoorObjects,
+    savedViews: (json.saved_views ?? []).map((v) => ({
+      id: v.id,
+      label: v.label,
+      position: v.position,
+      target: v.target,
+    })),
   };
 
   const sceneConfig: SceneConfig = {

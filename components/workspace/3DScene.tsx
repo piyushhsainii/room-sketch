@@ -1,3 +1,4 @@
+import { forwardRef, useImperativeHandle, useRef } from "react"
 import { OrbitControls } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./lib/constants"
 import { Room3D } from "./3dRoom"
@@ -8,8 +9,14 @@ import { FurnitureMesh } from "./mesh/furnitureMesh"
 import { SceneConfig } from "./FloorPlanEditor"
 import { LightFixtureMesh } from "./mesh/lights-mesh"
 import { OutdoorObjectMesh } from "./mesh/outdoor-object-mesh"
+import { CameraView } from "./lib/camera"
 
-function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen }: {
+export type Scene3DHandle = {
+    flyTo: (view: CameraView) => void
+    getCurrentView: () => { position: [number, number, number]; target: [number, number, number] } | null
+}
+
+type Scene3DProps = {
     fp: FloorPlanState
     sceneConfig?: SceneConfig
     walkMode?: boolean
@@ -17,9 +24,32 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
     selectedId?: string | null
     onSelect?: (id: string | null) => void
     onToggleDoorOpen?: (openingId: string) => void
-}) {
-    const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
+}
 
+const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
+    { fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen },
+    ref
+) {
+    const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
+    const controlsRef = useRef<any>(null)
+
+    useImperativeHandle(ref, () => ({
+        flyTo: (view: CameraView) => {
+            const controls = controlsRef.current
+            if (!controls) return
+            controls.object.position.set(...view.position)
+            controls.target.set(...view.target)
+            controls.update()
+        },
+        getCurrentView: () => {
+            const controls = controlsRef.current
+            if (!controls) return null
+            return {
+                position: controls.object.position.toArray() as [number, number, number],
+                target: controls.target.toArray() as [number, number, number],
+            }
+        }
+    }), [])
 
     return (
         <>
@@ -158,6 +188,7 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
                 <WalkModeControls />
             ) : (
                 <OrbitControls
+                    ref={controlsRef}
                     makeDefault
                     enableDamping
                     dampingFactor={0.05}
@@ -170,6 +201,6 @@ function Scene3D({ fp, sceneConfig, walkMode = false, interactiveMode = false, s
             )}
         </>
     )
-}
+})
 
 export default Scene3D

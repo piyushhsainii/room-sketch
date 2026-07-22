@@ -24,10 +24,11 @@ type Scene3DProps = {
     selectedId?: string | null
     onSelect?: (id: string | null) => void
     onToggleDoorOpen?: (openingId: string) => void
+    overlappingIds?: Set<string>
 }
 
 const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
-    { fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen },
+    { fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen, overlappingIds },
     ref
 ) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
@@ -183,7 +184,15 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                     <StairsMesh s={s} roomHeight={fp.roomHeight} />
                 </group>
             ))}
-
+            {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
+                <group key={f.id} /* ...existing handlers */>
+                    <FurnitureMesh
+                        f={f}
+                        selected={interactiveMode && selectedId === f.id}
+                        overlapping={overlappingIds?.has(f.id) ?? false}
+                    />
+                </group>
+            ))}
             {walkMode ? (
                 <WalkModeControls />
             ) : (

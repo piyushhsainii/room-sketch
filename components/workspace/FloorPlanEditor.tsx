@@ -22,7 +22,7 @@ import { CameraViewPicker } from './CameraViewPicker'
 import { duplicateClosedShape, duplicateRoom, MirrorAxis, mirrorRoom } from './lib/duplicate'
 import { duplicateFurniture, duplicateOpening, duplicateOutdoorObject, duplicateStairs, duplicateWallDecor } from './lib/duplicate-items'
 import { FloatingDock } from '../ui/FloatingDock'
-import { HomeIcon } from 'lucide-react'
+import { useFurnitureCollisions } from './hooks/useFurnitureCollisions'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -156,7 +156,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const annotationInputRef = useRef<HTMLInputElement>(null)
     const outdoorDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
-    const [furnitureCategoryIdx, setFurnitureCategoryIdx] = useState(0)
     const wallDragRef = useRef<{ roomId: string; wall: 'north' | 'south' | 'east' | 'west'; startRoom: EditorRoom } | null>(null)
     const furnitureDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
     const shapeResizeRef = useRef<{ shapeId: string; handle: string; startNodes: Map<string, { x: number; z: number }>; bbox: { minX: number; maxX: number; minZ: number; maxZ: number } } | null>(null)
@@ -165,7 +164,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     // const mainCameraRef = useRef<THREE.Camera | null>(null)
     const [interactiveMode, setInteractiveMode] = useState(false)
     const justToggledRef = useRef(false)
-    // const gizmoApiRef = useGizmoApiRef()
+    const { checkCollisions, overlappingRef, hasChanged, clear } = useFurnitureCollisions()
+    const [overlappingIds, setOverlappingIds] = useState<Set<string>>(new Set())    // const gizmoApiRef = useGizmoApiRef()
 
     const handleToggleInteractive = () => {
         justToggledRef.current = true
@@ -255,7 +255,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 canvas.height = ch
                 lastCanvasSizeRef.current = { w: cw, h: ch }
             }
-            draw2D(ctx, fpRef.current, tool, selectedId, hoveredIdRef.current, drawRect, pencilPoints, zoom, pan, preview, lineActiveNodeRef.current)
+            draw2D(ctx, fpRef.current, tool, selectedId, hoveredIdRef.current, drawRect, pencilPoints, zoom, pan, preview, lineActiveNodeRef.current, overlappingIds)
         })
     }, [tool, selectedId, drawRect, pencilPoints, zoom, pan, preview])
 
@@ -1431,14 +1431,21 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             setPan({ x: midPan.px + cx - midPan.sx, y: midPan.py + cy - midPan.sy })
             return
         }
-
         if (furnitureDragRef.current) {
             const fd = furnitureDragRef.current
+            const nx = snapFurniture(wx - fd.ox), nz = snapFurniture(wz - fd.oz)
             setFp(prev => ({
                 ...prev,
-                furniture: (prev.furniture ?? []).map(f => f.id === fd.id ? { ...f, x: snapFurniture(wx - fd.ox), z: snapFurniture(wz - fd.oz) } : f),
-                stairs: (prev.stairs ?? []).map(s => s.id === fd.id ? { ...s, x: snapFurniture(wx - fd.ox), z: snapFurniture(wz - fd.oz) } : s),
+                furniture: (prev.furniture ?? []).map(f => f.id === fd.id ? { ...f, x: nx, z: nz } : f),
+                stairs: (prev.stairs ?? []).map(s => s.id === fd.id ? { ...s, x: nx, z: nz } : s),
             }))
+
+            const prevOverlap = overlappingRef.current   // read BEFORE checkCollisions mutates it
+            const newOverlap = checkCollisions(fpRef.current, fd.id, nx, nz)
+            if (hasChanged(newOverlap, prevOverlap)) {
+                setOverlappingIds(newOverlap)
+                scheduleRedraw()
+            }
             return
         }
 
@@ -1664,6 +1671,9 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         resizeHandleRef.current = null
         wallDragRef.current = null   // ← Cleared so cursor doesn't stick
         outdoorDragRef.current = null
+        furnitureDragRef.current = null
+        clear()
+        setOverlappingIds(new Set())
         // 2. CLEAR lightDragRef.current here so dragging stops immediately on release
         if (lightDragRef) (lightDragRef as any).current = null // ← Added here
 
@@ -2222,6 +2232,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                                 openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o)
                                             }))
                                         }
+                                        overlappingIds={overlappingIds}
                                     />
                                     {/* <CameraOrientationReporter gizmoApiRef={gizmoApiRef} /> */}
                                 </ResilientCanvas>

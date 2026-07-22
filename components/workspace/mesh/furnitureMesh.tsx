@@ -198,11 +198,13 @@ export function FurnitureMesh({
     f,
     selected = false,
     interactive = false,
+    overlapping = false,        // NEW
     onSelect,
 }: {
     f: PlacedFurniture
     selected?: boolean
     interactive?: boolean
+    overlapping?: boolean       // NEW
     onSelect?: (id: string) => void
 }) {
     const s = f.scale ?? 1
@@ -763,6 +765,21 @@ export function FurnitureMesh({
                         wireframe
                         transparent
                         opacity={selected ? 0.9 : 0.5}
+                        depthTest={false}
+                    />
+                </mesh>
+            )}
+
+            {/* Collision warning — visual-only, shows during a drag even if this
+                piece isn't selected/hovered right now */}
+            {overlapping && highlightH > 0 && (
+                <mesh position={[0, highlightH / 2, 0]} renderOrder={1000}>
+                    <boxGeometry args={[fp2.w * s * 1.12, highlightH * 1.1, fp2.d * s * 1.12]} />
+                    <meshBasicMaterial
+                        color="#EF4444"
+                        wireframe
+                        transparent
+                        opacity={0.9}
                         depthTest={false}
                     />
                 </mesh>

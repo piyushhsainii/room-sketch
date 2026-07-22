@@ -743,7 +743,7 @@ export const FURNITURE_FOOTPRINTS: Record<FurnitureType, { w: number; d: number 
     led_strip: { w: 1.25, d: 0.05 },
     wall_panel_pvc: { w: 1.2, d: 0.05 },
     painting: { w: 0.9, d: 0.05 },
-    lounge_recliner: { w: 0.9, d: 0.05 }
+    lounge_recliner: { w: 2, d: 2 }
 }
 export const FURNITURE_COLORS: Record<FurnitureType, string> = {
     sofa: 'rgba(160,148,130,0.88)',

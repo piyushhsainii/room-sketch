@@ -15,6 +15,7 @@ export function draw2D(
     pan: { x: number; y: number },
     preview: { x: number; z: number } | null,
     activeLineNodeId: string | null,
+    overlappingIds: Set<string>
 ) {
     const W = ctx.canvas.width
     const H = ctx.canvas.height
@@ -651,7 +652,16 @@ export function draw2D(
         ctx.strokeStyle = isSel ? 'rgba(165,168,255,0.9)' : 'rgba(255,255,255,0.35)'
         ctx.lineWidth = isSel ? 1.5 : 1
         ctx.stroke()
-
+        if (overlappingIds.has(f.id)) {
+            ctx.save()
+            ctx.beginPath()
+            ctx.rect(-fw / 2, -fd / 2, fw, fd)
+            ctx.strokeStyle = 'rgba(239,68,68,0.9)' // red-500
+            ctx.lineWidth = 2
+            ctx.setLineDash([5, 3])
+            ctx.stroke()
+            ctx.restore()
+        }
         // Direction indicator (small notch on "front" edge)
         ctx.beginPath()
         ctx.moveTo(-fw * 0.2, -fd / 2)

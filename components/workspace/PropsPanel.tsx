@@ -7,6 +7,8 @@ import { OUTDOOR_OBJECT_LABELS, PlacedOutdoorObject } from "./lib/outdoor-consta
 import { matchClosedShape } from "./MaterialsPanel"
 import { useMemo } from "react"
 import { getMaterialsForDomain } from "./texture/materials-registry"
+import { Button, Card, COLOR, ColorSwatchInput, Divider, EmptyState, IconButton, RangeRow, SectionLabel, SegmentedControl, SPACE } from "./texture/inspector-ui"
+
 
 export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, onChangeSceneConfig, onDuplicate, onMirror }: {
     fp: FloorPlanState
@@ -19,15 +21,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     onMirror?: (axis: 'horizontal' | 'vertical') => void
 }) {
 
-    const inputStyle: React.CSSProperties = {
-        height: 26, borderRadius: 5, width: '100%',
-        border: `1px solid ${THEME.borderStrong}`,
-        background: '#FAFAFA',
-        color: THEME.text, fontSize: 12,
-        padding: '0 8px', outline: 'none',
-    }
-
-    const pickerTheme = { border: THEME.border, borderStrong: THEME.borderStrong, textMuted: THEME.textMuted }
+    const pickerTheme = { border: COLOR.border, borderStrong: COLOR.borderStrong, textMuted: COLOR.textMuted }
     const wallMaterials = getMaterialsFor('wall')
     const floorMaterials = getMaterialsFor('floor')
     const furnitureMaterials = getMaterialsFor('furniture')
@@ -86,9 +80,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     }
 
     if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape && !wallDecor) return (
-        <div style={{ padding: 16, fontSize: 11, color: 'rgba(100,116,139,0.5)', textAlign: 'center' }}>
-            Select a room, wall, node or opening to edit properties
-        </div>
+        <EmptyState label="Select a room, wall, node or opening to edit properties" />
     )
 
     const patchRoom = (patch: Partial<EditorRoom>) =>
@@ -129,9 +121,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     const segSceneConfig = seg ? sceneConfig.rooms.find(r => r.roomId === seg.id) : undefined
 
     if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape && !wallDecor && !outdoorObj) return (
-        <div style={{ padding: 16, fontSize: 11, color: 'rgba(100,116,139,0.5)', textAlign: 'center' }}>
-            Select a room, wall, node or opening to edit properties
-        </div>
+        <EmptyState label="Select a room, wall, node or opening to edit properties" />
     )
 
     const patchShape = (patch: Partial<ClosedShape>) => {
@@ -152,260 +142,227 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     }
     const canDuplicate = !!(room || shape || furniture || stairs || outdoorObj || wallDecor || opening);
 
+    const title = wallRoom ? 'Wall' : room || seg ? 'Room' : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type) : node ? 'Wall Node' : furniture ? 'Furniture' : stairs ? 'Stairs / Elevator' : wallDecor ? WALL_DECOR_LABELS[wallDecor.type] : 'Wall Segment'
+
     return (
-        <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
-                {wallRoom ? 'WALL' : room || seg ? 'ROOM' : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type).toUpperCase() : node ? 'WALL NODE' : furniture ? 'FURNITURE' : stairs ? 'STAIRS / ELEVATOR' : wallDecor ? WALL_DECOR_LABELS[wallDecor.type].toUpperCase() : 'WALL SEGMENT'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(99,102,241,0.7)' }}>
-                    {wallRoom ? 'WALL' : room || seg ? 'ROOM' : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type).toUpperCase() : node ? 'WALL NODE' : furniture ? 'FURNITURE' : stairs ? 'STAIRS / ELEVATOR' : wallDecor ? WALL_DECOR_LABELS[wallDecor.type].toUpperCase() : 'WALL SEGMENT'}
+        <div style={{ padding: SPACE.md, display: 'flex', flexDirection: 'column', gap: SPACE.md, background: COLOR.bg }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.xs }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: COLOR.text }}>
+                    {title}
                 </div>
                 {canDuplicate && onDuplicate && (
-                    <DuplicateIconButton onClick={onDuplicate} title="Duplicate (Ctrl/Cmd+D)" />
+                    <IconButton onClick={onDuplicate} title="Duplicate (Ctrl/Cmd+D)">⎘</IconButton>
                 )}
-                {onMirror && <>
-                    <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>MIRROR</div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                        <button
-                            onClick={() => onMirror('horizontal')}
-                            title="Flip contents left↔right within this room"
-                            style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
-                        >
-                            ⇋ Flip Horizontal
-                        </button>
-                        <button
-                            onClick={() => onMirror('vertical')}
-                            title="Flip contents top↔bottom within this room"
-                            style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
-                        >
-                            ⇅ Flip Vertical
-                        </button>
-                    </div>
-                </>}
             </div>
+
+            {onMirror && (
+                <Card>
+                    <SectionLabel>Mirror</SectionLabel>
+                    <div style={{ display: 'flex', gap: SPACE.xxs }}>
+                        <Button flex variant="secondary" onClick={() => onMirror('horizontal')} title="Flip contents left↔right within this room">
+                            ⇋ Flip Horizontal
+                        </Button>
+                        <Button flex variant="secondary" onClick={() => onMirror('vertical')} title="Flip contents top↔bottom within this room">
+                            ⇅ Flip Vertical
+                        </Button>
+                    </div>
+                </Card>
+            )}
 
             {wallRoom && wallSel && (
                 <>
-                    <PropField label="Room">
-                        <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
-                            {wallRoom.label}
-                        </span>
-                    </PropField>
-                    <PropField label="Side">
-                        <button
-                            onClick={() => onChange({
-                                ...fp,
-                                wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor?.id
-                                    ? { ...d, facingInward: !(d.facingInward ?? true) }
-                                    : d)
-                            })}
-                            style={{ height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600 }}
-                        >
-                            {(wallDecor?.facingInward ?? true) ? 'Interior side' : 'Exterior side'}
-                        </button>
-                    </PropField>
+                    <Card>
+                        <PropField label="Room">
+                            <span style={{ fontSize: 12.5, color: COLOR.accent, fontWeight: 600 }}>
+                                {wallRoom.label}
+                            </span>
+                        </PropField>
+                        <PropField label="Side">
+                            <Button
+                                variant="secondary"
+                                onClick={() => onChange({
+                                    ...fp,
+                                    wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor?.id
+                                        ? { ...d, facingInward: !(d.facingInward ?? true) }
+                                        : d)
+                                })}
+                            >
+                                {(wallDecor?.facingInward ?? true) ? 'Interior side' : 'Exterior side'}
+                            </Button>
+                        </PropField>
+                    </Card>
 
-                    <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>
-                        WALL APPEARANCE
-                    </div>
-
-                    <PropField label="Paint Color">
-                        <input
-                            type="color"
-                            value={specificWallColor ?? roomConfig?.wallColor ?? '#FFFFFF'}
-                            onChange={e => patchSpecificWall({ color: e.target.value })}
-                            style={{ width: 40, height: 26, border: `1px solid ${THEME.borderStrong}`, borderRadius: 5, padding: 0, cursor: 'pointer' }}
+                    <Card>
+                        <SectionLabel>Wall Appearance</SectionLabel>
+                        <PropField label="Paint Color">
+                            <ColorSwatchInput
+                                value={specificWallColor ?? roomConfig?.wallColor ?? '#FFFFFF'}
+                                onChange={v => patchSpecificWall({ color: v })}
+                            />
+                        </PropField>
+                        <Divider />
+                        <SectionLabel>Texture</SectionLabel>
+                        <MaterialTexturePicker
+                            items={wallMaterials}
+                            currentId={specificWallTexture}
+                            onSelect={(id) => patchSpecificWall({ material: id as WallMaterial })}
+                            onClear={() => patchSpecificWall({ material: null })}
+                            theme={pickerTheme}
                         />
-                    </PropField>
-
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 4 }}>
-                        TEXTURE
-                    </div>
-                    <MaterialTexturePicker
-                        items={wallMaterials}
-                        currentId={specificWallTexture}
-                        onSelect={(id) => patchSpecificWall({ material: id as WallMaterial })}
-                        onClear={() => patchSpecificWall({ material: null })}
-                        theme={pickerTheme}
-                    />
+                    </Card>
                 </>
             )}
             {shape && <>
-                <PropField label="Label">
-                    <input value={shape.label ?? ''} onChange={e => patchShape({ label: e.target.value })} style={inputStyle} />
-                </PropField>
+                <Card>
+                    <PropField label="Label">
+                        <input value={shape.label ?? ''} onChange={e => patchShape({ label: e.target.value })}
+                            style={{ height: 34, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 13, padding: '0 10px', outline: 'none' }} />
+                    </PropField>
+                </Card>
 
-                <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>WALL TEXTURE</div>
-                <MaterialTexturePicker
-                    items={wallMaterials}
-                    currentId={shape.wallMaterial}
-                    onSelect={(id) => patchShape({ wallMaterial: id as WallMaterial })}
-                    onClear={() => patchShape({ wallMaterial: undefined })}
-                    theme={pickerTheme}
-                />
-
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 8 }}>FLOOR TEXTURE</div>
-                <MaterialTexturePicker
-                    items={floorMaterials}
-                    currentId={shape.floorMaterial}
-                    onSelect={(id) => patchShape({ floorMaterial: id as FloorMaterial })}
-                    onClear={() => patchShape({ floorMaterial: undefined })}
-                    theme={pickerTheme}
-                />
-                {/* {onDuplicate && <>
-                    <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
-                    <button
-                        onClick={onDuplicate}
-                        title="Duplicate this area and its contents (Ctrl/CmdD)"
-                        style={{ height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
-                    >
-                        ⎘ Duplicate Area
-                    </button>
-                </>} */}
+                <Card>
+                    <SectionLabel>Wall Texture</SectionLabel>
+                    <MaterialTexturePicker
+                        items={wallMaterials}
+                        currentId={shape.wallMaterial}
+                        onSelect={(id) => patchShape({ wallMaterial: id as WallMaterial })}
+                        onClear={() => patchShape({ wallMaterial: undefined })}
+                        theme={pickerTheme}
+                    />
+                    <Divider />
+                    <SectionLabel>Floor Texture</SectionLabel>
+                    <MaterialTexturePicker
+                        items={floorMaterials}
+                        currentId={shape.floorMaterial}
+                        onSelect={(id) => patchShape({ floorMaterial: id as FloorMaterial })}
+                        onClear={() => patchShape({ floorMaterial: undefined })}
+                        theme={pickerTheme}
+                    />
+                </Card>
             </>}
 
             {room && <>
-                <PropField label="Label"><input value={room.label} onChange={e => patchRoom({ label: e.target.value })} style={inputStyle} /></PropField>
-                <PropField label="Width (m)"><NumInput value={room.width} min={1} max={30} step={0.5} onChange={v => patchRoom({ width: v })} /></PropField>
-                <PropField label="Depth (m)"><NumInput value={room.depth} min={1} max={30} step={0.5} onChange={v => patchRoom({ depth: v })} /></PropField>
-                <PropField label="X pos (m)"><NumInput value={room.x} min={-50} max={50} step={0.5} onChange={v => patchRoom({ x: v })} /></PropField>
-                <PropField label="Z pos (m)"><NumInput value={room.z} min={-50} max={50} step={0.5} onChange={v => patchRoom({ z: v })} /></PropField>
-                <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>APPEARANCE</div>
-                <PropField label="Wall color">
-                    <input type="color"
-                        value={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallColor ?? '#FFFFFF'}
-                        onChange={e => patchRoomScene({ wallColor: e.target.value })}
-                        style={{ width: 40, height: 26, border: `1px solid ${THEME.borderStrong}`, borderRadius: 5, padding: 0, cursor: 'pointer' }} />
-                </PropField>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 4 }}>WALL TEXTURE</div>
-                <MaterialTexturePicker
-                    items={wallMaterials}
-                    currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallMaterial}
-                    onSelect={(id) => patchRoomScene({ wallMaterial: id as WallMaterial })}
-                    onClear={() => patchRoomScene({ wallMaterial: undefined })}
-                    theme={pickerTheme}
-                />
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 8 }}>FLOOR TEXTURE</div>
-                <MaterialTexturePicker
-                    items={floorMaterials}
-                    currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.floorMaterial}
-                    onSelect={(id) => patchRoomScene({ floorMaterial: id as FloorMaterial })}
-                    onClear={() => patchRoomScene({ floorMaterial: undefined })}
-                    theme={pickerTheme}
-                />
+                <Card>
+                    <PropField label="Label">
+                        <input value={room.label} onChange={e => patchRoom({ label: e.target.value })}
+                            style={{ height: 34, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 13, padding: '0 10px', outline: 'none' }} />
+                    </PropField>
+                    <PropField label="Width (m)"><NumInput value={room.width} min={1} max={30} step={0.5} onChange={v => patchRoom({ width: v })} /></PropField>
+                    <PropField label="Depth (m)"><NumInput value={room.depth} min={1} max={30} step={0.5} onChange={v => patchRoom({ depth: v })} /></PropField>
+                    <PropField label="X pos (m)"><NumInput value={room.x} min={-50} max={50} step={0.5} onChange={v => patchRoom({ x: v })} /></PropField>
+                    <PropField label="Z pos (m)"><NumInput value={room.z} min={-50} max={50} step={0.5} onChange={v => patchRoom({ z: v })} /></PropField>
+                </Card>
 
-                {/* {(onDuplicate || onMirror) && <>
-                    <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>DUPLICATE</div>
-                    {onDuplicate && (
-                        <button
-                            onClick={onDuplicate}
-                            title="Duplicate room and its contents (Ctrl/CmdD)"
-                            style={{ height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
-                        >
-                            ⎘ Duplicate Room
-                        </button>
-                    )}
-                    {onMirror && (
-                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                            <button
-                                onClick={() => onMirror('horizontal')}
-                                title="Flip contents left↔right within this room"
-                                style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
-                            >
-                                ⇋ Flip Horizontal
-                            </button>
-                            <button
-                                onClick={() => onMirror('vertical')}
-                                title="Flip contents top↔bottom within this room"
-                                style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}
-                            >
-                                ⇅ Flip Vertical
-                            </button>
-                        </div>
-                    )}
-                </>} */}
-            </>
-
-            }
-
-            {node && <>
-                <PropField label="X pos (m)"><NumInput value={node.x} min={-50} max={50} step={0.5} onChange={v => patchNode({ x: snapM(v) })} /></PropField>
-                <PropField label="Z pos (m)"><NumInput value={node.z} min={-50} max={50} step={0.5} onChange={v => patchNode({ z: snapM(v) })} /></PropField>
+                <Card>
+                    <SectionLabel>Appearance</SectionLabel>
+                    <PropField label="Wall color">
+                        <ColorSwatchInput
+                            value={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallColor ?? '#FFFFFF'}
+                            onChange={v => patchRoomScene({ wallColor: v })}
+                        />
+                    </PropField>
+                    <Divider />
+                    <SectionLabel>Wall Texture</SectionLabel>
+                    <MaterialTexturePicker
+                        items={wallMaterials}
+                        currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallMaterial}
+                        onSelect={(id) => patchRoomScene({ wallMaterial: id as WallMaterial })}
+                        onClear={() => patchRoomScene({ wallMaterial: undefined })}
+                        theme={pickerTheme}
+                    />
+                    <Divider />
+                    <SectionLabel>Floor Texture</SectionLabel>
+                    <MaterialTexturePicker
+                        items={floorMaterials}
+                        currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.floorMaterial}
+                        onSelect={(id) => patchRoomScene({ floorMaterial: id as FloorMaterial })}
+                        onClear={() => patchRoomScene({ floorMaterial: undefined })}
+                        theme={pickerTheme}
+                    />
+                </Card>
             </>}
 
+            {node && (
+                <Card>
+                    <PropField label="X pos (m)"><NumInput value={node.x} min={-50} max={50} step={0.5} onChange={v => patchNode({ x: snapM(v) })} /></PropField>
+                    <PropField label="Z pos (m)"><NumInput value={node.z} min={-50} max={50} step={0.5} onChange={v => patchNode({ z: snapM(v) })} /></PropField>
+                </Card>
+            )}
+
             {seg && <>
-                <div style={{ fontSize: 11, color: 'rgba(100,116,139,0.6)' }}>
+                <div style={{ fontSize: 12, color: COLOR.textMuted, lineHeight: 1.5 }}>
                     Wall/floor loop with {seg.nodeIds.length} nodes. Select individual nodes to reposition.
                 </div>
-                <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>APPEARANCE</div>
-                {/* NEW — was previously missing entirely; seg.thickness existed on the
-        data model (default 0.15 at creation) but had no UI to edit it. */}
-                <PropField label="Thickness (m)">
-                    <NumInput value={seg.thickness ?? 0.15} min={0.05} max={0.4} step={0.01}
-                        onChange={v => patchSegment({ thickness: v })} />
-                </PropField>
-                <PropField label="Wall color">
-                    <input type="color"
-                        value={segSceneConfig?.wallColor ?? '#FFFFFF'}
-                        onChange={e => patchRoomSceneById(seg.id, { wallColor: e.target.value })}
-                        style={{ width: 40, height: 26, border: `1px solid ${THEME.borderStrong}`, borderRadius: 5, padding: 0, cursor: 'pointer' }} />
-                </PropField>
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 4 }}>WALL TEXTURE</div>
-                <MaterialTexturePicker
-                    items={wallMaterials}
-                    currentId={segSceneConfig?.wallMaterial}
-                    onSelect={(id) => patchRoomSceneById(seg.id, { wallMaterial: id as WallMaterial })}
-                    onClear={() => patchRoomSceneById(seg.id, { wallMaterial: undefined })}
-                    theme={pickerTheme}
-                />
-
-                <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em', marginTop: 8 }}>FLOOR TEXTURE</div>
-                <MaterialTexturePicker
-                    items={floorMaterials}
-                    currentId={segSceneConfig?.floorMaterial}
-                    onSelect={(id) => patchRoomSceneById(seg.id, { floorMaterial: id as FloorMaterial })}
-                    onClear={() => patchRoomSceneById(seg.id, { floorMaterial: undefined })}
-                    theme={pickerTheme}
-                />
+                <Card>
+                    <SectionLabel>Appearance</SectionLabel>
+                    <PropField label="Thickness (m)">
+                        <NumInput value={seg.thickness ?? 0.15} min={0.05} max={0.4} step={0.01}
+                            onChange={v => patchSegment({ thickness: v })} />
+                    </PropField>
+                    <PropField label="Wall type">
+                        <SegmentedControl
+                            options={[
+                                { value: 'solid', label: 'Solid' },
+                                { value: 'railing', label: 'Railing' },
+                                { value: 'open', label: 'Open' },
+                            ] as const}
+                            value={seg.wallType ?? 'solid'}
+                            onChange={wt => patchSegment({ wallType: wt })}
+                        />
+                    </PropField>
+                    <PropField label="Wall color">
+                        <ColorSwatchInput
+                            value={segSceneConfig?.wallColor ?? '#FFFFFF'}
+                            onChange={v => patchRoomSceneById(seg.id, { wallColor: v })}
+                        />
+                    </PropField>
+                    <Divider />
+                    <SectionLabel>Wall Texture</SectionLabel>
+                    <MaterialTexturePicker
+                        items={wallMaterials}
+                        currentId={segSceneConfig?.wallMaterial}
+                        onSelect={(id) => patchRoomSceneById(seg.id, { wallMaterial: id as WallMaterial })}
+                        onClear={() => patchRoomSceneById(seg.id, { wallMaterial: undefined })}
+                        theme={pickerTheme}
+                    />
+                    <Divider />
+                    <SectionLabel>Floor Texture</SectionLabel>
+                    <MaterialTexturePicker
+                        items={floorMaterials}
+                        currentId={segSceneConfig?.floorMaterial}
+                        onSelect={(id) => patchRoomSceneById(seg.id, { floorMaterial: id as FloorMaterial })}
+                        onClear={() => patchRoomSceneById(seg.id, { floorMaterial: undefined })}
+                        theme={pickerTheme}
+                    />
+                </Card>
             </>}
 
             {opening && <>
-                <PropField label="Width (m)"><NumInput value={opening.width} min={0.5} max={4} step={0.1} onChange={v => patchOpening({ width: v })} /></PropField>
-                {opening.type === 'window' && <>
-                    <PropField label="Height (m)"><NumInput value={opening.height} min={0.3} max={2.5} step={0.1} onChange={v => patchOpening({ height: v })} /></PropField>
-                    <PropField label="Sill (m)"><NumInput value={opening.sillHeight} min={0} max={2} step={0.1} onChange={v => patchOpening({ sillHeight: v })} /></PropField>
-                </>}
-                <PropField label="Position (m)"><NumInput value={opening.position} min={0.3} max={20} step={0.1} onChange={v => patchOpening({ position: v })} /></PropField>
-                {opening.type === 'door' && (
-                    <>
-
+                <Card>
+                    <PropField label="Width (m)"><NumInput value={opening.width} min={0.5} max={4} step={0.1} onChange={v => patchOpening({ width: v })} /></PropField>
+                    {opening.type === 'window' && <>
+                        <PropField label="Height (m)"><NumInput value={opening.height} min={0.3} max={2.5} step={0.1} onChange={v => patchOpening({ height: v })} /></PropField>
+                        <PropField label="Sill (m)"><NumInput value={opening.sillHeight} min={0} max={2} step={0.1} onChange={v => patchOpening({ sillHeight: v })} /></PropField>
+                    </>}
+                    <PropField label="Position (m)"><NumInput value={opening.position} min={0.3} max={20} step={0.1} onChange={v => patchOpening({ position: v })} /></PropField>
+                    {opening.type === 'door' && <>
                         <PropField label="Swing">
-                            <button onClick={() => patchOpening({ swingDirection: opening.swingDirection === 'inward' ? 'outward' : 'inward' })}
-                                style={{ height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)', color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600 }}>
+                            <Button variant="secondary" onClick={() => patchOpening({ swingDirection: opening.swingDirection === 'inward' ? 'outward' : 'inward' })}>
                                 {opening.swingDirection === 'inward' ? '← Inward' : '→ Outward'}
-                            </button>
+                            </Button>
                         </PropField>
                         <PropField label="State">
-                            <button
-                                onClick={() => patchOpening({ isOpen: !opening.isOpen })}
-                                style={{ height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer', border: '1px solid rgba(99,102,241,0.4)', background: opening.isOpen ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)', color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600 }}
-                            >
+                            <Button variant="secondary" onClick={() => patchOpening({ isOpen: !opening.isOpen })}>
                                 {opening.isOpen ? '🚪 Open' : '🚪 Closed'}
-                            </button>
+                            </Button>
                         </PropField>
+                    </>}
+                </Card>
 
-                        <div style={{ height: 1, background: THEME.border, margin: '6px 0' }} />
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>
-                            MATERIAL
-                        </div>
-                        <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.55)', marginBottom: 2 }}>
+                {opening.type === 'door' && (
+                    <Card>
+                        <SectionLabel>Material</SectionLabel>
+                        <div style={{ fontSize: 11.5, color: COLOR.textFaint, marginTop: -4 }}>
                             Overrides the global door style for this door only. Leave on "Default" to follow the scene-wide setting.
                         </div>
                         <MaterialTexturePicker
@@ -422,54 +379,42 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             onClear={() => patchOpening({ material: undefined })}
                             theme={pickerTheme}
                         />
-                    </>
+                    </Card>
                 )}
-            </>
-            }
+            </>}
 
             {furniture && <>
-                <PropField label="Type">
-                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
-                        {FURNITURE_LABELS[furniture.type] ?? furniture.type}
-                    </span>
-                </PropField>
-                <PropField label="X pos (m)">
-                    <NumInput value={furniture.x} min={-50} max={50} step={0.5}
-                        onChange={v => patchFurniture({ x: snapFurniture(v) })} />
-                </PropField>
-                <PropField label="Z pos (m)">
-                    <NumInput value={furniture.z} min={-50} max={50} step={0.5}
-                        onChange={v => patchFurniture({ z: snapFurniture(v) })} />
-                </PropField>
-
-                <PropField label="Scale">
-                    <input type="range" min={50} max={150} step={5}
-                        value={Math.round((furniture.scale ?? 1) * 100)}
-                        onChange={e => patchFurniture({ scale: parseFloat(e.target.value) / 100 })}
-                        style={{ flex: 1, accentColor: '#6366F1' }} />
-                    <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', marginLeft: 4 }}>
-                        {Math.round((furniture.scale ?? 1) * 100)}%
-                    </span>
-                </PropField>
-                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                    <button
-                        onClick={() => patchFurniture({ rotation: furniture.rotation - Math.PI / 2 })}
-                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
-                        ↺ −90°
-                    </button>
-                    <button
-                        onClick={() => patchFurniture({ rotation: furniture.rotation + Math.PI / 2 })}
-                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
-                        ↻ +90°
-                    </button>
-                </div>
+                <Card>
+                    <PropField label="Type">
+                        <span style={{ fontSize: 12.5, color: COLOR.accent, fontWeight: 600 }}>
+                            {FURNITURE_LABELS[furniture.type] ?? furniture.type}
+                        </span>
+                    </PropField>
+                    <PropField label="X pos (m)">
+                        <NumInput value={furniture.x} min={-50} max={50} step={0.5}
+                            onChange={v => patchFurniture({ x: snapFurniture(v) })} />
+                    </PropField>
+                    <PropField label="Z pos (m)">
+                        <NumInput value={furniture.z} min={-50} max={50} step={0.5}
+                            onChange={v => patchFurniture({ z: snapFurniture(v) })} />
+                    </PropField>
+                    <PropField label="Scale">
+                        <RangeRow
+                            value={Math.round((furniture.scale ?? 1) * 100)}
+                            onChange={v => patchFurniture({ scale: v / 100 })}
+                            format={v => `${v}%`}
+                            min={50} max={150} step={5}
+                        />
+                    </PropField>
+                    <div style={{ display: 'flex', gap: SPACE.xxs }}>
+                        <Button flex variant="secondary" onClick={() => patchFurniture({ rotation: furniture.rotation - Math.PI / 2 })}>↺ −90°</Button>
+                        <Button flex variant="secondary" onClick={() => patchFurniture({ rotation: furniture.rotation + Math.PI / 2 })}>↻ +90°</Button>
+                    </div>
+                </Card>
 
                 {supportsFurnitureTexture(furniture.type) && (
-                    <>
-                        <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>
-                            FURNITURE TEXTURE
-                        </div>
+                    <Card>
+                        <SectionLabel>Furniture Texture</SectionLabel>
                         {furnitureMaterials.length > 0 ? (
                             <MaterialTexturePicker
                                 items={furnitureMaterials}
@@ -479,90 +424,79 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                 theme={pickerTheme}
                             />
                         ) : (
-                            <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.5)' }}>
+                            <div style={{ fontSize: 11.5, color: COLOR.textFaint }}>
                                 No furniture materials wired into the universal catalog yet —
                                 see the commented-out FURNITURE_MATERIALS import in universalMaterials.ts.
                             </div>
                         )}
-                    </>
+                    </Card>
                 )}
             </>}
 
             {stairs && <>
-                <PropField label="Type">
-                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
-                        {STAIRS_LABELS[stairs.type] ?? stairs.type}
-                    </span>
-                </PropField>
-                <PropField label="X pos (m)">
-                    <NumInput value={stairs.x + stairs.width / 2} min={-50} max={50} step={0.5}
-                        onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, x: snapM(v) - s.width / 2 } : s) })} />
-                </PropField>
-                <PropField label="Z pos (m)">
-                    <NumInput value={stairs.z + stairs.depth / 2} min={-50} max={50} step={0.5}
-                        onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, z: snapM(v) - s.depth / 2 } : s) })} />
-                </PropField>
-                <PropField label="Rotation">
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <input type="range" min={0} max={360} step={15}
-                            value={Math.round((stairs.rotation * 180) / Math.PI)}
-                            onChange={e => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: (parseFloat(e.target.value) * Math.PI) / 180 } : s) })}
-                            style={{ flex: 1, accentColor: '#6366F1' }} />
-                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 30, flexShrink: 0 }}>
-                            {Math.round((stairs.rotation * 180) / Math.PI)}°
+                <Card>
+                    <PropField label="Type">
+                        <span style={{ fontSize: 12.5, color: COLOR.accent, fontWeight: 600 }}>
+                            {STAIRS_LABELS[stairs.type] ?? stairs.type}
                         </span>
+                    </PropField>
+                    <PropField label="X pos (m)">
+                        <NumInput value={stairs.x + stairs.width / 2} min={-50} max={50} step={0.5}
+                            onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, x: snapM(v) - s.width / 2 } : s) })} />
+                    </PropField>
+                    <PropField label="Z pos (m)">
+                        <NumInput value={stairs.z + stairs.depth / 2} min={-50} max={50} step={0.5}
+                            onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, z: snapM(v) - s.depth / 2 } : s) })} />
+                    </PropField>
+                    <PropField label="Rotation">
+                        <RangeRow
+                            value={Math.round((stairs.rotation * 180) / Math.PI)}
+                            onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: (v * Math.PI) / 180 } : s) })}
+                            format={v => `${v}°`}
+                            min={0} max={360} step={15}
+                        />
+                    </PropField>
+                    <div style={{ display: 'flex', gap: SPACE.xxs }}>
+                        <Button flex variant="secondary" onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: s.rotation - Math.PI / 2 } : s) })}>↺ −90°</Button>
+                        <Button flex variant="secondary" onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: s.rotation + Math.PI / 2 } : s) })}>↻ +90°</Button>
                     </div>
-                </PropField>
-                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                    <button
-                        onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: s.rotation - Math.PI / 2 } : s) })}
-                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
-                        ↺ −90°
-                    </button>
-                    <button
-                        onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: s.rotation + Math.PI / 2 } : s) })}
-                        style={{ flex: 1, height: 28, borderRadius: 6, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)', fontSize: 11, cursor: 'pointer' }}>
-                        ↻ +90°
-                    </button>
-                </div>
+                </Card>
             </>}
 
             {outdoorObj && <>
-                <PropField label="Type">
-                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
-                        {OUTDOOR_OBJECT_LABELS[outdoorObj.type]}
-                    </span>
-                </PropField>
-                <PropField label="X pos (m)">
-                    <NumInput value={outdoorObj.x} min={-50} max={50} step={0.5} onChange={v => patchOutdoor({ x: snapM(v) })} />
-                </PropField>
-                <PropField label="Z pos (m)">
-                    <NumInput value={outdoorObj.z} min={-50} max={50} step={0.5} onChange={v => patchOutdoor({ z: snapM(v) })} />
-                </PropField>
-                <PropField label="Rotation">
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <input type="range" min={0} max={360} step={15}
-                            value={Math.round((outdoorObj.rotation * 180) / Math.PI)}
-                            onChange={e => patchOutdoor({ rotation: (parseFloat(e.target.value) * Math.PI) / 180 })}
-                            style={{ flex: 1, accentColor: '#6366F1' }} />
-                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 30, flexShrink: 0 }}>
-                            {Math.round((outdoorObj.rotation * 180) / Math.PI)}°
+                <Card>
+                    <PropField label="Type">
+                        <span style={{ fontSize: 12.5, color: COLOR.accent, fontWeight: 600 }}>
+                            {OUTDOOR_OBJECT_LABELS[outdoorObj.type]}
                         </span>
-                    </div>
-                </PropField>
-                <PropField label="Scale">
-                    <input type="range" min={50} max={150} step={5}
-                        value={Math.round((outdoorObj.scale ?? 1) * 100)}
-                        onChange={e => patchOutdoor({ scale: parseFloat(e.target.value) / 100 })}
-                        style={{ flex: 1, accentColor: '#6366F1' }} />
-                    <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', marginLeft: 4 }}>
-                        {Math.round((outdoorObj.scale ?? 1) * 100)}%
-                    </span>
-                </PropField>
+                    </PropField>
+                    <PropField label="X pos (m)">
+                        <NumInput value={outdoorObj.x} min={-50} max={50} step={0.5} onChange={v => patchOutdoor({ x: snapM(v) })} />
+                    </PropField>
+                    <PropField label="Z pos (m)">
+                        <NumInput value={outdoorObj.z} min={-50} max={50} step={0.5} onChange={v => patchOutdoor({ z: snapM(v) })} />
+                    </PropField>
+                    <PropField label="Rotation">
+                        <RangeRow
+                            value={Math.round((outdoorObj.rotation * 180) / Math.PI)}
+                            onChange={v => patchOutdoor({ rotation: (v * Math.PI) / 180 })}
+                            format={v => `${v}°`}
+                            min={0} max={360} step={15}
+                        />
+                    </PropField>
+                    <PropField label="Scale">
+                        <RangeRow
+                            value={Math.round((outdoorObj.scale ?? 1) * 100)}
+                            onChange={v => patchOutdoor({ scale: v / 100 })}
+                            format={v => `${v}%`}
+                            min={50} max={150} step={5}
+                        />
+                    </PropField>
+                </Card>
+
                 {outdoorObj.type === 'bench' && (
-                    <>
-                        <div style={{ height: 1, background: THEME.border, margin: '8px 0 4px 0' }} />
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(99,102,241,0.7)', letterSpacing: '0.08em' }}>MATERIAL</div>
+                    <Card>
+                        <SectionLabel>Material</SectionLabel>
                         <MaterialTexturePicker
                             items={getMaterialsForDomain('outdoor').map(({ key, def }) => ({
                                 id: key, label: def.label ?? key, swatch: def.color, thumbnail: def.textureUrl,
@@ -573,72 +507,65 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             onClear={() => patchOutdoor({ materialId: undefined })}
                             theme={pickerTheme}
                         />
-                    </>
+                    </Card>
                 )}
             </>}
 
-
-            {wallDecor && <>
-                <PropField label="Type">
-                    <span style={{ fontSize: 11, color: 'rgba(165,168,255,0.9)', fontWeight: 600 }}>
-                        {WALL_DECOR_LABELS[wallDecor.type]}
-                    </span>
-                </PropField>
-                <PropField label="Position (m)">
-                    <NumInput value={wallDecor.position} min={0} max={20} step={0.1}
-                        onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, position: v } : d) })} />
-                </PropField>
-                <PropField label="Height (m)">
-                    <NumInput value={wallDecor.heightOffset} min={0} max={fp.roomHeight} step={0.1}
-                        onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, heightOffset: v } : d) })} />
-                </PropField>
-                <PropField label="Width (m)">
-                    <NumInput value={wallDecor.width} min={0.2} max={4} step={0.1}
-                        onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, width: v } : d) })} />
-                </PropField>
-                {/* NEW — which face of the wall this mounts on. Lets two items share
-        the same wall/position without overlapping (e.g. one per side of a
-        wall shared between two rooms), and lets exterior-facing decor be
-        placed at all. Defaults to true (interior side) to match all prior
-        placements, which never set this field. */}
-                <PropField label="Side">
-                    <button
-                        onClick={() => onChange({
-                            ...fp,
-                            wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id
-                                ? { ...d, facingInward: !(d.facingInward ?? true) }
-                                : d)
-                        })}
-                        style={{
-                            height: 26, padding: '0 10px', borderRadius: 5, cursor: 'pointer',
-                            border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)',
-                            color: 'rgba(165,168,255,0.9)', fontSize: 11, fontWeight: 600,
-                        }}
-                    >
-                        {(wallDecor.facingInward ?? true) ? 'Interior side' : 'Exterior side'}
-                    </button>
-                </PropField>
-                <PropField label="Rotation">
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <input type="range" min={-180} max={180} step={5}
-                            value={Math.round(((wallDecor.rotation ?? 0) * 180) / Math.PI)}
-                            onChange={e => onChange({
+            {wallDecor && (
+                <Card>
+                    <PropField label="Type">
+                        <span style={{ fontSize: 12.5, color: COLOR.accent, fontWeight: 600 }}>
+                            {WALL_DECOR_LABELS[wallDecor.type]}
+                        </span>
+                    </PropField>
+                    <PropField label="Position (m)">
+                        <NumInput value={wallDecor.position} min={0} max={20} step={0.1}
+                            onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, position: v } : d) })} />
+                    </PropField>
+                    <PropField label="Height (m)">
+                        <NumInput value={wallDecor.heightOffset} min={0} max={fp.roomHeight} step={0.1}
+                            onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, heightOffset: v } : d) })} />
+                    </PropField>
+                    <PropField label="Width (m)">
+                        <NumInput value={wallDecor.width} min={0.2} max={4} step={0.1}
+                            onChange={v => onChange({ ...fp, wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id ? { ...d, width: v } : d) })} />
+                    </PropField>
+                    <PropField label="Side">
+                        <Button
+                            variant="secondary"
+                            onClick={() => onChange({
                                 ...fp,
                                 wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id
-                                    ? { ...d, rotation: (parseFloat(e.target.value) * Math.PI) / 180 }
+                                    ? { ...d, facingInward: !(d.facingInward ?? true) }
                                     : d)
                             })}
-                            style={{ flex: 1, accentColor: '#6366F1' }} />
-                        <span style={{ fontSize: 10, color: 'rgba(148,163,184,0.8)', width: 34, flexShrink: 0 }}>
-                            {Math.round(((wallDecor.rotation ?? 0) * 180) / Math.PI)}°
-                        </span>
-                    </div>
-                </PropField>
-            </>}
+                        >
+                            {(wallDecor.facingInward ?? true) ? 'Interior side' : 'Exterior side'}
+                        </Button>
+                    </PropField>
+                    <PropField label="Rotation">
+                        <RangeRow
+                            value={Math.round(((wallDecor.rotation ?? 0) * 180) / Math.PI)}
+                            onChange={v => onChange({
+                                ...fp,
+                                wallDecor: (fp.wallDecor ?? []).map(d => d.id === wallDecor.id
+                                    ? { ...d, rotation: (v * Math.PI) / 180 }
+                                    : d)
+                            })}
+                            format={v => `${v}°`}
+                            min={-180} max={180} step={5}
+                        />
+                    </PropField>
+                </Card>
+            )}
 
-            <button onClick={onDelete} style={{ marginTop: 4, height: 28, borderRadius: 6, border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: 'rgba(248,113,113,0.8)', fontSize: 11, cursor: 'pointer' }}>
+            <Button
+                variant="danger"
+                onClick={onDelete}
+                style={{ marginTop: SPACE.xxs }}
+            >
                 Delete {room ? 'room' : opening ? 'opening' : node ? 'node' : furniture ? 'furniture' : stairs ? 'stairs' : wallDecor ? 'decor item' : shape ? 'area' : 'segment'}
-            </button>
+            </Button>
         </div>
     )
 }

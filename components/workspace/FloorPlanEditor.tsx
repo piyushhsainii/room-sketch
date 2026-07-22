@@ -21,6 +21,8 @@ import { CameraView, getBuiltInViews } from './lib/camera'
 import { CameraViewPicker } from './CameraViewPicker'
 import { duplicateClosedShape, duplicateRoom, MirrorAxis, mirrorRoom } from './lib/duplicate'
 import { duplicateFurniture, duplicateOpening, duplicateOutdoorObject, duplicateStairs, duplicateWallDecor } from './lib/duplicate-items'
+import { FloatingDock } from '../ui/FloatingDock'
+import { HomeIcon } from 'lucide-react'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -849,6 +851,13 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             }
             const segHit = hitLineSegment(wx, wz)
             if (segHit) {
+                const segWallType = segHit.seg.wallType ?? 'solid'
+                if (segWallType !== 'solid') {
+                    // Openings can't be cut into a railing or an already-open edge —
+                    // silently no-op rather than attaching a door/window that would
+                    // render nonsensically per the railing feature's design.
+                    return
+                }
                 const { seg, t, fromId, toId } = segHit
                 const a = fpRef.current.lineNodes.find(n => n.id === fromId)!
                 const b = fpRef.current.lineNodes.find(n => n.id === toId)!
@@ -1802,6 +1811,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         const el = canvasDivRef.current
         if (!el) return
         const handler = (e: WheelEvent) => {
+            if ((e.target as HTMLElement).closest('[data-panel="right-sidebar"]')) return
             e.preventDefault(); e.stopPropagation()
             const factor = e.deltaY < 0 ? 1.12 : 0.9
             const newZoom = Math.max(0.2, Math.min(5, zoomRef.current * factor))
@@ -1815,7 +1825,10 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     useEffect(() => {
         const el = editorRef.current
         if (!el) return
-        const handler = (e: WheelEvent) => { e.preventDefault(); e.stopPropagation() }
+        const handler = (e: WheelEvent) => {
+            if ((e.target as HTMLElement).closest('[data-panel="right-sidebar"]')) return
+            e.preventDefault(); e.stopPropagation()
+        }
         el.addEventListener('wheel', handler, { passive: false })
         return () => el.removeEventListener('wheel', handler)
     }, [])
@@ -2218,7 +2231,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     )}
                 </div>
             </div>
-            <Dock
+            {/* <Dock
                 items={[
                     {
                         id: 'properties', label: 'Properties', onClick: () => setRightTab('properties'), icon: (
@@ -2240,8 +2253,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 expanded={sheetOpen}
                 onExpandedChange={setSheetOpen}
 
-            >
-                <div style={{ display: 'flex', gap: 2, padding: 10, borderBottom: `1px solid ${THEME.border}`, flexShrink: 0 }}>
+            > */}
+            {/* <div style={{ display: 'flex', gap: 2, padding: 10, borderBottom: `1px solid ${THEME.border}`, flexShrink: 0 }}>
                     {(['properties', 'scene'] as const).map(t => (
                         <button key={t} onClick={() => setRightTab(t)} style={{
                             height: 26, padding: '0 10px', borderRadius: 5, border: 'none', flex: 1,
@@ -2252,10 +2265,83 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                             {t === 'properties' ? 'PROPERTIES' : "SCENE"}
                         </button>
                     ))}
-                </div>
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                    {rightTab === 'properties' && (
-                        <div style={{ overflowY: 'auto', minHeight: 0 }} className=''>
+                </div> */}
+            {/* </Dock> */}
+            <FloatingDock
+                activeId={sheetOpen ? rightTab : null}
+                items={[
+                    {
+                        id: 'properties',
+                        title: 'Properties',
+                        icon: (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                                <rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+                            </svg>
+                        ),
+                        onClick: () => {
+                            if (sheetOpen && rightTab === 'properties') {
+                                setSheetOpen(false)
+                            } else {
+                                setRightTab('properties')
+                                setSheetOpen(true)
+                            }
+                        },
+                    },
+                    {
+                        id: 'scene',
+                        title: 'Scene',
+                        icon: (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M4 4h16v16H4zM4 12h16M12 4v16" />
+                            </svg>
+                        ),
+                        onClick: () => {
+                            if (sheetOpen && rightTab === 'scene') {
+                                setSheetOpen(false)
+                            } else {
+                                setRightTab('scene')
+                                setSheetOpen(true)
+                            }
+                        },
+                    },
+                ]}
+            />
+
+            {sheetOpen && rightTab === 'properties' && (
+                <div
+                    data-panel="right-sidebar"
+                    style={{
+                        position: 'absolute',
+                        top: '50%',
+                        right: 12,
+                        transform: 'translateY(-50%)',
+                        height: '80vh',
+                        width: 320,
+                        background: THEME.bg ?? '#fff',
+                        border: `1px solid ${THEME.border}`,
+                        borderRadius: 8,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        zIndex: 20,
+                        overflow: 'hidden',
+                    }}
+                >
+                    <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 12px', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0,
+                    }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>PROPERTIES</span>
+                        <button
+                            onClick={() => setSheetOpen(false)}
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted, fontSize: 14, lineHeight: 1 }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+                    <ScrollableList maxHeight={1200}>
+                        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}
+                        >
                             <SceneGraphPanel fp={fp} selectedId={selectedId} onSelect={setSelectedId} />
                             <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
                             <PropsPanel
@@ -2290,19 +2376,51 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                 onChangeSceneConfig={setSceneConfig}
                                 onDuplicate={handleDuplicateSelected}
                                 onMirror={handleMirrorSelected}
-
                             />
                         </div>
-                    )}
-                    <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                        {rightTab === 'scene' && (
-                            <div style={{ flex: 1, minHeight: 0 }}>
-                                <MaterialsPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} />
-                            </div>
-                        )}
+                    </ScrollableList>
+                </div>
+            )}
+
+            {sheetOpen && rightTab === 'scene' && (
+
+
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: '50%',
+                        right: 12,
+                        transform: 'translateY(-50%)',
+                        height: '80vh',
+                        width: 320,
+                        background: THEME.bg ?? '#fff',
+                        border: `1px solid ${THEME.border}`,
+                        borderRadius: 8,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        zIndex: 20,
+                        overflow: 'hidden',
+                    }}
+                >
+                    <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 12px', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0,
+                    }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>SCENE</span>
+                        <button
+                            onClick={() => setSheetOpen(false)}
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted, fontSize: 14, lineHeight: 1 }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}>
+                        <MaterialsPanel fp={fp} config={sceneConfig} onChange={setSceneConfig} onChangeFp={setFp} />
+
                     </div>
                 </div>
-            </Dock>
+
+            )}
         </div>
     )
 }

@@ -446,21 +446,32 @@ export function draw2D(
 
         const isSel = selectedId === seg.id
         const isHov = hoveredId === seg.id
+        const wallType = seg.wallType ?? 'solid'
 
         ctx.save()
         ctx.strokeStyle = isSel
             ? 'rgba(99,102,241,0.95)'
             : isHov
                 ? 'rgba(165,168,255,0.85)'
-                : 'rgba(148,163,184,0.75)'
-        ctx.lineWidth = Math.max(3, (seg.thickness ?? 0.15) * scale)
+                : wallType === 'railing'
+                    ? 'rgba(120,140,160,0.8)'
+                    : wallType === 'open'
+                        ? 'rgba(180,180,180,0.4)'
+                        : 'rgba(148,163,184,0.75)'
+        ctx.lineWidth = wallType === 'open'
+            ? 1.5
+            : Math.max(3, (seg.thickness ?? 0.15) * scale)
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
+        if (wallType === 'railing') ctx.setLineDash([8, 4])
+        else if (wallType === 'open') ctx.setLineDash([3, 5])
+        else ctx.setLineDash([])
         ctx.beginPath()
         ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
         for (let i = 1; i < nodes.length; i++) ctx.lineTo(cx(nodes[i]!.x), cy(nodes[i]!.z))
         if (seg.closed) ctx.closePath()
         ctx.stroke()
+        ctx.setLineDash([])
 
         // Segment length labels
         for (let i = 0; i < nodes.length - 1; i++) {

@@ -329,7 +329,7 @@ export function MaterialsPanel({ fp, config, onChange, onChangeFp }: Props) {
     return (
 
         <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <ScrollableList maxHeight="100%">
+            <ScrollableList maxHeight={1200}>
                 <div
                     style={{
                         background: T.bg,

@@ -8,6 +8,7 @@ import { DoorVariant3D } from './door-variants';
 import { WindowVariant3D } from './window-variant3d';
 import { WallDecorMesh } from '../mesh/wall-decor-mesh';
 import { RoomSceneConfig } from '../FloorPlanEditor';
+import { Railing3D } from './railing-3d';
 
 
 function LineWalls3DImpl({
@@ -76,6 +77,7 @@ function LineWalls3DImpl({
                     s.nodeIds.length === seg.nodeIds.length &&
                     s.nodeIds.every(id => new Set(seg.nodeIds).has(id))
                 )
+                const wallType = seg.wallType ?? 'solid'
 
                 for (let i = 0; i < nodes.length - 1; i++) {
                     const a = nodes[i]!, b = nodes[i + 1]!
@@ -87,20 +89,17 @@ function LineWalls3DImpl({
                     const mcz = (a.z + b.z) / 2
                     const angle = Math.atan2(dz, dx)
 
+                    // Openings are rejected at placement time on non-solid segments
+                    // (see handleMouseDown), so this should normally be empty for
+                    // railing/open segments — but if data ever arrives from an older
+                    // save or an external edit, treat as solid-with-openings rather
+                    // than silently dropping the openings.
                     const segOpenings = fp.openings.filter(op =>
                         op.roomId === seg.id &&
                         op.segmentNodeIds?.[0] === a.id &&
                         op.segmentNodeIds?.[1] === b.id
                     )
 
-                    // Per-piece override — checked BEFORE the segment-level
-                    // fallback. Computed here, inside the per-node-pair loop,
-                    // rather than once per segment, since different pieces of
-                    // the same segment can each carry their own override.
-                    // Key format (`${seg.id}_${i}`) must match exactly what
-                    // the selection/PropsPanel UI writes when setting a
-                    // per-piece override — see patchSpecificSegmentPiece in
-                    // PropsPanel.tsx.
                     const pieceKey = `${seg.id}_${i}`
                     const pieceOverride = matchedShape?.wallOverrides?.[pieceKey]
                     const pieceMat = pieceOverride?.material ?? segWallMaterial.get(seg.id) ?? wallMaterial
@@ -108,12 +107,6 @@ function LineWalls3DImpl({
                     const pieceId = `${seg.id}::piece::${i}`
                     const isPieceSelected = interactive && selectedId === pieceId
 
-                    // Per-piece click selects the specific piece (enabling a
-                    // per-piece material override via PropsPanel) instead of
-                    // the whole segment. Falls back to whole-segment select
-                    // (makeRoomHandlers) when not interactive or as a base —
-                    // the piece-specific onClick below takes priority since
-                    // it's attached directly to each piece's own mesh.
                     const handlers = interactive ? {
                         onClick: (e: any) => { e.stopPropagation(); onSelect?.(pieceId) },
                         onPointerOver: (e: any) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' },
@@ -121,34 +114,81 @@ function LineWalls3DImpl({
                     } : {}
                     const showOutline = interactive && (isPieceSelected || isRoomSelected || hovered)
 
+                    const outlineMesh = (
+                        <mesh position={[mcx, H / 2, mcz]} rotation={[0, -angle, 0]} renderOrder={999}>
+                            <boxGeometry args={[len * 1.01, H * 1.01, T * 1.4]} />
+                            <meshBasicMaterial
+                                color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
+                                wireframe
+                                transparent
+                                opacity={isPieceSelected || isRoomSelected ? 0.9 : 0.5}
+                                depthTest={false}
+                            />
+                        </mesh>
+                    )
+
                     if (segOpenings.length === 0) {
-                        panels.push(
-                            <group key={`${seg.id}_${i}`}>
-                                <mesh
-                                    position={[mcx, H / 2, mcz]}
-                                    rotation={[0, -angle, 0]}
-                                    castShadow
-                                    receiveShadow
-                                    {...handlers}
-                                >
-                                    <boxGeometry args={[len, H, T]} />
-                                    <WallMat mat={pieceMat} color={pieceColor} roughness={wallRoughness} width={len} height={H} depth={T} />
-                                </mesh>
-                                {showOutline && (
-                                    <mesh position={[mcx, H / 2, mcz]} rotation={[0, -angle, 0]} renderOrder={999}>
-                                        <boxGeometry args={[len * 1.01, H * 1.01, T * 1.4]} />
-                                        <meshBasicMaterial
-                                            color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
-                                            wireframe
-                                            transparent
-                                            opacity={isPieceSelected || isRoomSelected ? 0.9 : 0.5}
-                                            depthTest={false}
-                                        />
+                        if (wallType === 'open') {
+                            // True gap — no physical geometry. Keep an invisible clickable
+                            // volume in interactive mode so the edge is still selectable
+                            // (e.g. to switch it back to solid/railing later).
+                            panels.push(
+                                <group key={`${seg.id}_${i}`}>
+                                    {interactive && (
+                                        <mesh
+                                            position={[mcx, H / 2, mcz]}
+                                            rotation={[0, -angle, 0]}
+                                            {...handlers}
+                                            visible={false}
+                                        >
+                                            <boxGeometry args={[len, H, T]} />
+                                            <meshBasicMaterial />
+                                        </mesh>
+                                    )}
+                                    {showOutline && outlineMesh}
+                                </group>
+                            )
+                        } else if (wallType === 'railing') {
+                            panels.push(
+                                <group key={`${seg.id}_${i}`} position={[mcx, 0, mcz]} rotation={[0, -angle, 0]}>
+                                    <group {...handlers}>
+                                        <Railing3D len={len} wallRoughness={wallRoughness} color={pieceColor} />
+                                    </group>
+                                    {showOutline && (
+                                        <mesh position={[0, H / 2, 0]} renderOrder={999}>
+                                            <boxGeometry args={[len * 1.01, H * 1.01, T * 1.4]} />
+                                            <meshBasicMaterial
+                                                color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
+                                                wireframe
+                                                transparent
+                                                opacity={isPieceSelected || isRoomSelected ? 0.9 : 0.5}
+                                                depthTest={false}
+                                            />
+                                        </mesh>
+                                    )}
+                                </group>
+                            )
+                        } else {
+                            panels.push(
+                                <group key={`${seg.id}_${i}`}>
+                                    <mesh
+                                        position={[mcx, H / 2, mcz]}
+                                        rotation={[0, -angle, 0]}
+                                        castShadow
+                                        receiveShadow
+                                        {...handlers}
+                                    >
+                                        <boxGeometry args={[len, H, T]} />
+                                        <WallMat mat={pieceMat} color={pieceColor} roughness={wallRoughness} width={len} height={H} depth={T} />
                                     </mesh>
-                                )}
-                            </group>
-                        )
+                                    {showOutline && outlineMesh}
+                                </group>
+                            )
+                        }
                     } else {
+                        // Solid-with-openings path — unchanged from before, still gated
+                        // to only ever really apply to wallType === 'solid' segments
+                        // since openings can't be placed on railing/open edges.
                         const sorted = [...segOpenings].sort((a, b) => (a.segmentT ?? 0) - (b.segmentT ?? 0))
                         let cursor = 0
 
@@ -193,13 +233,6 @@ function LineWalls3DImpl({
                             if (op) {
                                 const opPos2 = (op.segmentT ?? 0) * len
 
-                                // Header/sill panels flanking a door/window on
-                                // this piece — per Step 2's documented gap,
-                                // these must ALSO use the piece override, not
-                                // just the plain-wall (no-opening) case above,
-                                // or a wall with a door shows the override on
-                                // part of itself and the global material on
-                                // the rest.
                                 const headerH = H - op.height
                                 if (headerH > 0.02) {
                                     const hx = a.x + (dx / len) * opPos2

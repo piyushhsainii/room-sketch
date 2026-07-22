@@ -4,6 +4,7 @@ import { MaterialCategory } from "../texture/materials-registry"
 import { UniversalMaterial } from "../texture/universalMaterials"
 import { CameraView } from "./camera"
 import { PlacedOutdoorObject } from "./outdoor-constants"
+import { WallType } from "./wall-constants"
 
 
 export type MaterialDomain = 'wall' | 'floor' | 'door' | 'furniture' | "outdoor"
@@ -275,6 +276,7 @@ export type LineSegment = {
     nodeIds: string[]
     thickness: number
     closed: boolean
+    wallType?: WallType
 }
 
 

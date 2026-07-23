@@ -6,17 +6,14 @@
 // should render with a red outline/tint this frame.
 
 import { useRef, useCallback } from "react";
-import {
-  FloorPlanState,
-  FURNITURE_FOOTPRINTS,
-  LineNode,
-} from "../lib/constants";
+import { FloorPlanState, LineNode } from "../lib/constants";
 import {
   furnitureIntersectsWallSegment,
   furnitureToRect,
   RotRect,
   rotRectsOverlap,
 } from "../lib/collision";
+import { FURNITURE_FOOTPRINTS } from "../lib/furniture-constants";
 
 const COLLISION_EXEMPT: Set<string> = new Set([
   // Matches the highlightH === 0 wall-mounted group already established in

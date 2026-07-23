@@ -26,66 +26,84 @@ export interface UniversalMaterial {
   textureUrl?: string;
 }
 
+// function buildCatalog(): UniversalMaterial[] {
+//   const items: UniversalMaterial[] = [];
+
+//   // ── Walls ──────────────────────────────────────────────────────────────
+//   for (const w of WALL_MATERIALS) {
+//     const def = (WALL_MAT_DEFS as any)[w.id];
+//     const thumbnail = thumbnailFromDef(def);
+//     items.push({
+//       id: w.id,
+//       label: w.label,
+//       swatch: w.swatch,
+//       thumbnail,
+//       textureUrl: def?.textureUrl ?? def?.mapUrl ?? thumbnail,
+//       category: categoryFromThumbnail(thumbnail),
+//       appliesTo: ["wall"],
+//     });
+//   }
+
+//   // ── Floors ─────────────────────────────────────────────────────────────
+//   for (const [key, def] of Object.entries(FLOOR_MAT_DEFS) as [string, any][]) {
+//     const thumbnail = thumbnailFromDef(def);
+//     items.push({
+//       id: key,
+//       label:
+//         def.label ??
+//         key.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+//       swatch: def.swatch ?? def.color ?? "#ccc",
+//       thumbnail,
+//       textureUrl: def.textureUrl ?? def.mapUrl ?? thumbnail,
+//       category: categoryFromThumbnail(thumbnail),
+//       appliesTo: ["floor"],
+//     });
+//   }
+
+//   // ── Doors ──────────────────────────────────────────────────────────────
+//   for (const d of DOOR_MATERIALS) {
+//     items.push({
+//       id: d.id,
+//       label: d.label,
+//       swatch: d.swatch,
+//       thumbnail: undefined, // door textures are resolved by DoorMat internally, not a flat file path here
+//       textureUrl: undefined,
+//       category: categorizeDoorMaterial(d.id),
+//       appliesTo: ["door"],
+//     });
+//   }
+
+//   // ── Furniture ────────────────────────────────────────────────────────
+//   for (const f of FURNITURE_MATERIALS) {
+//     items.push({
+//       id: f.id,
+//       label: f.label,
+//       swatch: f.swatch,
+//       thumbnail: f.thumbnail, // was hardcoded undefined — dropped the picker swatch image
+//       textureUrl: f.textureUrl, // was missing entirely — this is what FurnitureMesh's resolver reads
+//       category: categoryFromThumbnail(f.id) ?? "other",
+//       appliesTo: ["furniture"],
+//     });
+//   }
+
+//   return items;
+// }
+
 function buildCatalog(): UniversalMaterial[] {
   const items: UniversalMaterial[] = [];
 
-  // ── Walls ──────────────────────────────────────────────────────────────
-  for (const w of WALL_MATERIALS) {
-    const def = (WALL_MAT_DEFS as any)[w.id];
-    const thumbnail = thumbnailFromDef(def);
+  for (const [id, def] of Object.entries(MATERIAL_REGISTRY)) {
+    const thumbnail = def.textureUrl; // undefined for flat-color entries (preview emoji, no photo texture)
     items.push({
-      id: w.id,
-      label: w.label,
-      swatch: w.swatch,
-      thumbnail,
-      // full-res map for the mesh — falls back to thumbnail if the def
-      // doesn't separately provide one, so real-time apply still works
-      // even for defs that only ever had a single texture path.
-      textureUrl: def?.textureUrl ?? def?.mapUrl ?? thumbnail,
-      category: categoryFromThumbnail(thumbnail),
-      appliesTo: ["wall"],
-    });
-  }
-
-  // ── Floors ─────────────────────────────────────────────────────────────
-  for (const [key, def] of Object.entries(FLOOR_MAT_DEFS) as [string, any][]) {
-    const thumbnail = thumbnailFromDef(def);
-    items.push({
-      id: key,
+      id,
       label:
-        def.label ??
-        key.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      swatch: def.swatch ?? def.color ?? "#ccc",
+        (def as any).label ??
+        id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      swatch: def.color,
       thumbnail,
-      textureUrl: def.textureUrl ?? def.mapUrl ?? thumbnail,
-      category: categoryFromThumbnail(thumbnail),
-      appliesTo: ["floor"],
-    });
-  }
-
-  // ── Doors ──────────────────────────────────────────────────────────────
-  for (const d of DOOR_MATERIALS) {
-    items.push({
-      id: d.id,
-      label: d.label,
-      swatch: d.swatch,
-      thumbnail: undefined, // door textures are resolved by DoorMat internally, not a flat file path here
-      textureUrl: undefined,
-      category: categorizeDoorMaterial(d.id),
-      appliesTo: ["door"],
-    });
-  }
-
-  // ── Furniture ────────────────────────────────────────────────────────
-  for (const f of FURNITURE_MATERIALS) {
-    items.push({
-      id: f.id,
-      label: f.label,
-      swatch: f.swatch,
-      thumbnail: f.thumbnail, // was hardcoded undefined — dropped the picker swatch image
-      textureUrl: f.textureUrl, // was missing entirely — this is what FurnitureMesh's resolver reads
-      category: categoryFromThumbnail(f.id) ?? "other",
-      appliesTo: ["furniture"],
+      textureUrl: def.textureUrl ?? thumbnail,
+      category: def.category,
+      appliesTo: def.domains,
     });
   }
 

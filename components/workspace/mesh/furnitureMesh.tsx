@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react'
-import { FURNITURE_FOOTPRINTS, PlacedFurniture } from "../lib/constants"
 import { RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
 import { getMaterialsForDomain } from '../texture/materials-registry'
+import { FURNITURE_FOOTPRINTS, PlacedFurniture } from '../lib/furniture-constants'
 
 const FABRIC_TEX_URLS = {
     map: '/textures/Fabric049_1K-JPG_Color.jpg',

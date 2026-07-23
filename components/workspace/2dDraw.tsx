@@ -1,7 +1,8 @@
 import { deriveClosedPolygons, getSegmentOpeningWorldPos, toCanvas } from "@/lib/helpers";
-import { EditorTool, FloorPlanState, FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./lib/constants";
+import { EditorTool, FloorPlanState, FURNITURE_COLORS, FURNITURE_LABELS, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./lib/constants";
 import { LIGHT_FIXTURE_LABELS } from "./lights-constant";
 import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./lib/outdoor-constants";
+import { FURNITURE_FOOTPRINTS } from "./lib/furniture-constants";
 
 export function draw2D(
     ctx: CanvasRenderingContext2D,

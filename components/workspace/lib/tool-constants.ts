@@ -2,6 +2,11 @@ import { ICONS, ToolGroup } from "../lib/constants";
 
 export const TOOL_GROUPS: ToolGroup[] = [
   {
+    id: "presets",
+    label: "Room Presets",
+    leaves: [{ id: "presets", label: "Room Presets", icon: ICONS.presets }],
+  },
+  {
     id: "select",
     label: "Select",
     leaves: [
@@ -193,6 +198,31 @@ export const TOOL_GROUPS: ToolGroup[] = [
         label: "Floor Lamp",
         icon: ICONS["light-floor-lamp"],
       },
+      {
+        id: "light-track",
+        label: "Track Lighting",
+        icon: ICONS["light-track"],
+      },
+      {
+        id: "light-chandelier",
+        label: "Chandelier",
+        icon: ICONS["light-chandelier"],
+      },
+      {
+        id: "light-shelf-strip",
+        label: "Shelf Strip",
+        icon: ICONS["light-shelf-strip"],
+      },
+      {
+        id: "light-spotlight",
+        label: "Spotlight",
+        icon: ICONS["light-spotlight"],
+      },
+      {
+        id: "light-string",
+        label: "String Lights",
+        icon: ICONS["light-string"],
+      },
     ],
   },
   {
@@ -214,6 +244,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
         id: "outdoor-mailbox",
         label: "Mailbox",
         icon: ICONS["outdoor-mailbox"],
+      },
+      {
+        id: "light-outdoor-bollard",
+        label: "Bollard Light",
+        icon: ICONS["light-outdoor-bollard"],
       },
     ],
   },

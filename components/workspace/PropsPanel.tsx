@@ -5,9 +5,10 @@ import { getMaterialsFor } from "./texture/universalMaterials"
 import { MaterialTexturePicker } from "./texture/MaterialPicker"
 import { OUTDOOR_OBJECT_LABELS, PlacedOutdoorObject } from "./lib/outdoor-constants"
 import { matchClosedShape } from "./MaterialsPanel"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { getMaterialsForDomain } from "./texture/materials-registry"
 import { Button, Card, COLOR, ColorSwatchInput, Divider, EmptyState, IconButton, RangeRow, SectionLabel, SegmentedControl, SPACE } from "./texture/inspector-ui"
+import { LIGHT_FIXTURE_LABELS, PlacedLight } from "./lights-constant"
 
 
 export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, onChangeSceneConfig, onDuplicate, onMirror }: {
@@ -22,6 +23,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 }) {
 
     const pickerTheme = { border: COLOR.border, borderStrong: COLOR.borderStrong, textMuted: COLOR.textMuted }
+    const [segWallSide, setSegWallSide] = useState<'interior' | 'exterior'>('interior')
     const wallMaterials = getMaterialsFor('wall')
     const floorMaterials = getMaterialsFor('floor')
     const furnitureMaterials = getMaterialsFor('furniture')
@@ -51,6 +53,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     const furniture = (fp.furniture ?? []).find(f => f.id === selectedId)
     const stairs = (fp.stairs ?? []).find(s => s.id === selectedId)
     const wallDecor = (fp.wallDecor ?? []).find(d => d.id === selectedId)
+    const outdoorObj = (fp.outdoorObjects ?? []).find(o => o.id === selectedId)
+    const light = (fp.lights ?? []).find(l => l.id === selectedId)
 
     // Helper functions to patch configurations
     const patchRoomScene = (patch: Partial<RoomSceneConfig>) => {
@@ -79,7 +83,11 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         })
     }
 
-    if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape && !wallDecor) return (
+    // ── FIX: this guard previously omitted `light`, so selecting a light
+    // fell through to the empty state before the (correct) second guard
+    // further down ever ran. `light` is now part of the single guard below,
+    // and the duplicate second guard has been removed entirely. ──
+    if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape && !wallDecor && !outdoorObj && !light) return (
         <EmptyState label="Select a room, wall, node or opening to edit properties" />
     )
 
@@ -91,7 +99,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
     const patchNode = (patch: Partial<LineNode>) =>
         onChange({ ...fp, lineNodes: fp.lineNodes.map(n => n.id === node?.id ? { ...n, ...patch } : n) })
-    const outdoorObj = (fp.outdoorObjects ?? []).find(o => o.id === selectedId)
 
     const roomConfig = sceneConfig.rooms.find(r => r.roomId === wallRoom?.id)
     const specificWallColor = wallSel ? roomConfig?.wallOverrides?.[wallSel.wall]?.color : undefined
@@ -120,10 +127,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
     const segSceneConfig = seg ? sceneConfig.rooms.find(r => r.roomId === seg.id) : undefined
 
-    if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape && !wallDecor && !outdoorObj) return (
-        <EmptyState label="Select a room, wall, node or opening to edit properties" />
-    )
-
     const patchShape = (patch: Partial<ClosedShape>) => {
         if (!shape) return
         const existing = (fp.closedShapes ?? []).find(s => s.id === shape.id)
@@ -140,9 +143,27 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
             outdoorObjects: (fp.outdoorObjects ?? []).map(o => o.id === outdoorObj.id ? { ...o, ...patch } : o)
         })
     }
-    const canDuplicate = !!(room || shape || furniture || stairs || outdoorObj || wallDecor || opening);
 
-    const title = wallRoom ? 'Wall' : room || seg ? 'Room' : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type) : node ? 'Wall Node' : furniture ? 'Furniture' : stairs ? 'Stairs / Elevator' : wallDecor ? WALL_DECOR_LABELS[wallDecor.type] : 'Wall Segment'
+    const patchLight = (patch: Partial<PlacedLight>) => {
+        if (!light) return
+        onChange({
+            ...fp,
+            lights: (fp.lights ?? []).map(l => l.id === light.id ? { ...l, ...patch } : l)
+        })
+    }
+
+    const canDuplicate = !!(room || shape || furniture || stairs || outdoorObj || wallDecor || opening || light);
+
+    const title = wallRoom ? 'Wall'
+        : room || seg ? 'Room'
+            : opening ? (OPENING_VARIANT_LABELS[opening.variant ?? opening.type] ?? opening.type)
+                : node ? 'Wall Node'
+                    : furniture ? 'Furniture'
+                        : stairs ? 'Stairs / Elevator'
+                            : wallDecor ? WALL_DECOR_LABELS[wallDecor.type]
+                                : light ? LIGHT_FIXTURE_LABELS[light.type]
+                                    : outdoorObj ? OUTDOOR_OBJECT_LABELS[outdoorObj.type]
+                                        : 'Wall Segment'
 
     return (
         <div style={{ padding: SPACE.md, display: 'flex', flexDirection: 'column', gap: SPACE.md, background: COLOR.bg }}>
@@ -310,19 +331,45 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             onChange={wt => patchSegment({ wallType: wt })}
                         />
                     </PropField>
+                    <PropField label="Side">
+                        <SegmentedControl
+                            options={[
+                                { value: 'interior', label: 'Interior' },
+                                { value: 'exterior', label: 'Exterior' },
+                            ] as const}
+                            value={segWallSide}
+                            onChange={setSegWallSide}
+                        />
+                    </PropField>
                     <PropField label="Wall color">
                         <ColorSwatchInput
-                            value={segSceneConfig?.wallColor ?? '#FFFFFF'}
-                            onChange={v => patchRoomSceneById(seg.id, { wallColor: v })}
+                            value={(segWallSide === 'exterior'
+                                ? (segSceneConfig as any)?.exteriorWallColor ?? segSceneConfig?.wallColor
+                                : segSceneConfig?.wallColor) ?? '#FFFFFF'}
+                            onChange={v => patchRoomSceneById(seg.id,
+                                segWallSide === 'exterior' ? { exteriorWallColor: v } as any : { wallColor: v })}
                         />
                     </PropField>
                     <Divider />
-                    <SectionLabel>Wall Texture</SectionLabel>
+                    <SectionLabel>{segWallSide === 'exterior' ? 'Exterior Wall Texture' : 'Interior Wall Texture'}</SectionLabel>
+                    <div style={{ fontSize: 11, color: COLOR.textFaint, marginTop: -4 }}>
+                        {segWallSide === 'exterior'
+                            ? "Leave on \"Default\" to mirror the interior texture on this side."
+                            : 'Applies to the inside face of this wall loop.'}
+                    </div>
                     <MaterialTexturePicker
                         items={wallMaterials}
-                        currentId={segSceneConfig?.wallMaterial}
-                        onSelect={(id) => patchRoomSceneById(seg.id, { wallMaterial: id as WallMaterial })}
-                        onClear={() => patchRoomSceneById(seg.id, { wallMaterial: undefined })}
+                        currentId={segWallSide === 'exterior'
+                            ? (segSceneConfig as any)?.exteriorWallMaterial
+                            : segSceneConfig?.wallMaterial}
+                        onSelect={(id) => patchRoomSceneById(seg.id,
+                            segWallSide === 'exterior'
+                                ? { exteriorWallMaterial: id as WallMaterial } as any
+                                : { wallMaterial: id as WallMaterial })}
+                        onClear={() => patchRoomSceneById(seg.id,
+                            segWallSide === 'exterior'
+                                ? { exteriorWallMaterial: undefined } as any
+                                : { wallMaterial: undefined })}
                         theme={pickerTheme}
                     />
                     <Divider />
@@ -511,6 +558,121 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 )}
             </>}
 
+            {light && <>
+                <Card>
+                    <PropField label="Type">
+                        <span style={{ fontSize: 12.5, color: COLOR.accent, fontWeight: 600 }}>
+                            {LIGHT_FIXTURE_LABELS[light.type]}
+                        </span>
+                    </PropField>
+
+                    {light.x !== undefined && (
+                        <>
+                            <PropField label="X pos (m)">
+                                <NumInput value={light.x} min={-50} max={50} step={0.5}
+                                    onChange={v => patchLight({ x: snapM(v) })} />
+                            </PropField>
+                            <PropField label="Z pos (m)">
+                                <NumInput value={light.z ?? 0} min={-50} max={50} step={0.5}
+                                    onChange={v => patchLight({ z: snapM(v) })} />
+                            </PropField>
+                        </>
+                    )}
+
+                    {(light.wall || light.segmentNodeIds) && (
+                        <>
+                            <PropField label="Position (m)">
+                                <NumInput value={light.position ?? 0} min={0} max={20} step={0.1}
+                                    onChange={v => patchLight({ position: v })} />
+                            </PropField>
+                            {/* Which side of the wall the fixture faces — mirrors the
+                                same control wallDecor already has, using the same
+                                facingInward field on PlacedLight. */}
+                            <PropField label="Side">
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => patchLight({ facingInward: !(light.facingInward ?? true) })}
+                                >
+                                    {(light.facingInward ?? true) ? 'Interior side' : 'Exterior side'}
+                                </Button>
+                            </PropField>
+                        </>
+                    )}
+
+                    <PropField label="Height (m)">
+                        <NumInput value={light.heightOffset} min={0} max={fp.roomHeight} step={0.1}
+                            onChange={v => patchLight({ heightOffset: v })} />
+                    </PropField>
+
+                    {light.type === 'shelf_strip' && (
+                        <PropField label="Width (m)">
+                            <NumInput value={light.width ?? 1} min={0.2} max={4} step={0.1}
+                                onChange={v => patchLight({ width: v })} />
+                        </PropField>
+                    )}
+
+                    <PropField label="Color">
+                        <ColorSwatchInput value={light.color} onChange={v => patchLight({ color: v })} />
+                    </PropField>
+
+                    <PropField label="Intensity">
+                        <RangeRow
+                            value={Math.round(light.intensity * 10)}
+                            onChange={v => patchLight({ intensity: v / 10 })}
+                            format={v => (v / 10).toFixed(1)}
+                            min={1} max={100} step={1}
+                        />
+                    </PropField>
+
+                    <PropField label="Scale">
+                        <RangeRow
+                            value={Math.round((light.scale ?? 1) * 100)}
+                            onChange={v => patchLight({ scale: v / 100 })}
+                            format={v => `${v}%`}
+                            min={50} max={150} step={5}
+                        />
+                    </PropField>
+
+                    <PropField label="Shadows">
+                        <Button variant="secondary" onClick={() => patchLight({ castShadow: !light.castShadow })}>
+                            {light.castShadow ? '☑ Casts shadow' : '☐ No shadow'}
+                        </Button>
+                    </PropField>
+                </Card>
+
+                {light.type === 'spotlight' && (
+                    <Card>
+                        <SectionLabel>Aim</SectionLabel>
+                        <PropField label="Yaw">
+                            <RangeRow
+                                value={Math.round(((light.aimRotation ?? 0) * 180) / Math.PI)}
+                                onChange={v => patchLight({ aimRotation: (v * Math.PI) / 180 })}
+                                format={v => `${v}°`}
+                                min={-180} max={180} step={5}
+                            />
+                        </PropField>
+                        <PropField label="Tilt">
+                            <RangeRow
+                                value={Math.round(((light.aimTilt ?? -0.3) * 180) / Math.PI)}
+                                onChange={v => patchLight({ aimTilt: (v * Math.PI) / 180 })}
+                                format={v => `${v}°`}
+                                min={-80} max={10} step={5}
+                            />
+                        </PropField>
+                    </Card>
+                )}
+
+                {light.type === 'string_lights' && (
+                    <Card>
+                        <SectionLabel>String</SectionLabel>
+                        <PropField label="Bulb count">
+                            <NumInput value={light.bulbCount ?? 12} min={4} max={40} step={1}
+                                onChange={v => patchLight({ bulbCount: Math.round(v) })} />
+                        </PropField>
+                    </Card>
+                )}
+            </>}
+
             {wallDecor && (
                 <Card>
                     <PropField label="Type">
@@ -564,7 +726,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 onClick={onDelete}
                 style={{ marginTop: SPACE.xxs }}
             >
-                Delete {room ? 'room' : opening ? 'opening' : node ? 'node' : furniture ? 'furniture' : stairs ? 'stairs' : wallDecor ? 'decor item' : shape ? 'area' : 'segment'}
+                Delete {room ? 'room' : opening ? 'opening' : node ? 'node' : furniture ? 'furniture' : stairs ? 'stairs' : wallDecor ? 'decor item' : light ? 'light' : outdoorObj ? 'object' : shape ? 'area' : 'segment'}
             </Button>
         </div>
     )
@@ -612,4 +774,3 @@ function DuplicateIconButton({ onClick, title }: { onClick: () => void; title: s
         </button>
     )
 }
-

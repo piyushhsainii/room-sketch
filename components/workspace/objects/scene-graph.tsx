@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { FloorPlanState, FURNITURE_LABELS, OPENING_VARIANT_LABELS, STAIRS_LABELS, WALL_DECOR_LABELS } from "../lib/constants";
+import { OUTDOOR_OBJECT_LABELS } from "../lib/outdoor-constants"
 import { THEME } from "../FloorPlanEditor";
 
 type SceneGraphEntry = { id: string; label: string; sub?: string }
@@ -26,9 +27,6 @@ function buildSceneGraph(fp: FloorPlanState) {
         id: o.id, label: OPENING_VARIANT_LABELS[o.variant ?? o.type] ?? 'Opening', sub: `${o.width.toFixed(1)}m`,
     }))
 
-    // Split out from the old combined "Models" bucket — furniture now gets
-    // its own group so it's actually browsable/selectable by name instead
-    // of being lumped in with stairs under a generic label.
     const furniture: SceneGraphEntry[] = (fp.furniture ?? []).map(f => ({
         id: f.id, label: FURNITURE_LABELS[f.type] ?? f.type,
     }))
@@ -39,6 +37,23 @@ function buildSceneGraph(fp: FloorPlanState) {
     const wallDecor: SceneGraphEntry[] = (fp.wallDecor ?? []).map(d => ({
         id: d.id, label: WALL_DECOR_LABELS[d.type],
     }))
+
+    // NEW — lights were completely absent from the scene graph before, so a
+    // placed light had no way to be reselected here once deselected on
+    // canvas. string_lights get a node-count sub-label since they have no
+    // single "position" the way point fixtures do.
+    const lights: SceneGraphEntry[] = (fp.lights ?? []).map(l => ({
+        id: l.id,
+        label: LIGHT_FIXTURE_LABELS[l.type],
+        sub: l.type === 'string_lights' ? `${(l.pathNodeIds ?? []).length} pts` : undefined,
+    }))
+
+    // NEW — same gap for outdoor objects (crosswalk/dustbin/bench/mailbox
+    // and now the bollard light).
+    const outdoorObjects: SceneGraphEntry[] = (fp.outdoorObjects ?? []).map(o => ({
+        id: o.id, label: OUTDOOR_OBJECT_LABELS[o.type],
+    }))
+
     const annotations: SceneGraphEntry[] = (fp.annotations ?? []).filter(a => a.text).map(a => ({ id: a.id, label: a.text }))
 
     return [
@@ -49,12 +64,15 @@ function buildSceneGraph(fp: FloorPlanState) {
         { key: 'windows', label: 'Windows', entries: windows },
         { key: 'openings', label: 'Openings', entries: passages },
         { key: 'rooms', label: 'Rooms', entries: rooms },
+        { key: 'lights', label: 'Lights', entries: lights },
+        { key: 'outdoor', label: 'Outdoor Objects', entries: outdoorObjects },
         { key: 'annotations', label: 'Labels', entries: annotations },
         { key: 'walldecor', label: 'Wall Decor', entries: wallDecor },
     ]
 }
 
 import { ScrollableList } from "../../ui/ScrollableList"
+import { LIGHT_FIXTURE_LABELS } from "../lights-constant";
 
 export function SceneGraphPanel({ fp, selectedId, onSelect }: {
     fp: FloorPlanState

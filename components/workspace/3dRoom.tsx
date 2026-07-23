@@ -67,6 +67,7 @@ function Room3D({
     }
 
     const handleWallClick = (e: any) => { e.stopPropagation(); onSelectRoom?.(room.id) }
+
     return (
         <group>
             {/* Floor */}

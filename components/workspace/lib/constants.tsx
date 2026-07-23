@@ -3,6 +3,7 @@ import { PlacedLight } from "../lights-constant"
 import { MaterialCategory } from "../texture/materials-registry"
 import { UniversalMaterial } from "../texture/universalMaterials"
 import { CameraView } from "./camera"
+import { FurnitureType, PlacedFurniture } from "./furniture-constants"
 import { PlacedOutdoorObject } from "./outdoor-constants"
 import { WallType } from "./wall-constants"
 
@@ -33,12 +34,18 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     'solid-beige': { color: '#D8C9B0', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'solid', domains: ['floor', 'wall', 'door', 'furniture'], preview: '⬜' },
 
     // ── Wood ─────────────────────────────────────────────────────────────
-    wood: { color: '#C8A878', roughness: 0.6, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor'], textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
-    'wood-oak': { color: '#D4B592', roughness: 0.5, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'furniture'], textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
-    'wood-walnut': { color: '#5C4033', roughness: 0.4, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'furniture'], textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
+    wood: { color: '#C8A878', roughness: 0.6, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'wall'], textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
+    'wood-oak': { color: '#D4B592', roughness: 0.5, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'furniture', 'wall'], textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
+    'wood-walnut': { color: '#5C4033', roughness: 0.4, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'furniture', 'wall'], textureUrl: '/textures/Wood049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Wood049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Wood049_1K-JPG_Roughness.jpg' },
     'wood-slat-oak': { color: '#C8A878', roughness: 0.5, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'door'], textureUrl: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/Wood052_1K-JPG/Wood052_1K-JPG_Roughness.jpg' },
     'wood-slat-dark': { color: '#4A3220', roughness: 0.55, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'door'], textureUrl: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/Wood066_1K-JPG/Wood066_1K-JPG_Roughness.jpg' },
-    'wood-floor-herringbone': { color: '#C4A672', roughness: 0.55, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door'], textureUrl: '/textures/wood/WoodFloor070_1K-JPG/WoodFloor070_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodFloor070_1K-JPG/WoodFloor070_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodFloor070_1K-JPG/WoodFloor070_1K-JPG_Roughness.jpg' },
+    'wood-floor-herringbone': { color: '#C4A672', roughness: 0.55, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'wall'], textureUrl: '/textures/wood/WoodFloor070_1K-JPG/WoodFloor070_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodFloor070_1K-JPG/WoodFloor070_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodFloor070_1K-JPG/WoodFloor070_1K-JPG_Roughness.jpg' },
+    'wood-floor-009': { color: '#B6895C', roughness: 0.55, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'wall'], textureUrl: '/textures/wood/WoodFloor009_1K-JPG/WoodFloor009_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodFloor009_1K-JPG/WoodFloor009_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodFloor009_1K-JPG/WoodFloor009_1K-JPG_Roughness.jpg' },
+    'wood-floor-021': { color: '#C9A876', roughness: 0.55, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'wall'], textureUrl: '/textures/wood/WoodFloor021_1K-JPG/WoodFloor021_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodFloor021_1K-JPG/WoodFloor021_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodFloor021_1K-JPG/WoodFloor021_1K-JPG_Roughness.jpg' },
+    'wood-floor-024': { color: '#8C6239', roughness: 0.55, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'wall'], textureUrl: '/textures/wood/WoodFloor024_1K-JPG/WoodFloor024_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodFloor024_1K-JPG/WoodFloor024_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodFloor024_1K-JPG/WoodFloor024_1K-JPG_Roughness.jpg' },
+    'wood-floor-043': { color: '#D8B98C', roughness: 0.55, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'wall'], textureUrl: '/textures/wood/WoodFloor043_1K-JPG/WoodFloor043_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodFloor043_1K-JPG/WoodFloor043_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodFloor043_1K-JPG/WoodFloor043_1K-JPG_Roughness.jpg' },
+    'wood-floor-060': { color: '#A17849', roughness: 0.55, metalness: 0, repeatScale: 1, category: 'wood', domains: ['floor', 'door', 'wall'], textureUrl: '/textures/wood/WoodFloor060_1K-JPG/WoodFloor060_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodFloor060_1K-JPG/WoodFloor060_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodFloor060_1K-JPG/WoodFloor060_1K-JPG_Roughness.jpg' },
+
 
     // ── Marble & stone ───────────────────────────────────────────────────
     marble: { color: '#EAE6E0', roughness: 0.12, metalness: 0.1, repeatScale: 1, category: 'marble-stone', domains: ['floor', 'door'], textureUrl: '/textures/Marble022_1K-JPG_Color.jpg', normalMapUrl: '/textures/Marble022_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Marble022_1K-JPG_Roughness.jpg' },
@@ -50,32 +57,32 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     'marble-veined': { color: '#E8E4DC', roughness: 0.1, metalness: 0.06, repeatScale: 1.5, category: 'marble-stone', domains: ['wall'], textureUrl: '/textures/marble/Marble012_1K-JPG/Marble012_1K-JPG_Color.jpg', normalMapUrl: '/textures/marble/Marble012_1K-JPG/Marble012_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/marble/Marble012_1K-JPG/Marble012_1K-JPG_Roughness.jpg' },
 
     // NEW: Added missing folders found in file system
-    'marble-014': { color: '#D4CFC7', roughness: 0.1, metalness: 0.05, repeatScale: 1, category: 'marble-stone', domains: ['floor', 'wall'], textureUrl: '/textures/marble/Marble014_1K-JPG/Marble014_1K-JPG_Color.jpg', normalMapUrl: '/textures/marble/Marble014_1K-JPG/Marble014_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/marble/Marble014_1K-JPG/Marble014_1K-JPG_Roughness.jpg' },
-    'marble-onyx-015': { color: '#2A302E', roughness: 0.06, metalness: 0.12, repeatScale: 1, category: 'marble-stone', domains: ['floor', 'wall'], textureUrl: '/textures/marble/Onyx015_1K-JPG/Onyx015_1K-JPG_Color.jpg', normalMapUrl: '/textures/marble/Onyx015_1K-JPG/Onyx015_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/marble/Onyx015_1K-JPG/Onyx015_1K-JPG_Roughness.jpg' },
-    'marble-travertine-010': { color: '#CDBFA6', roughness: 0.38, metalness: 0.02, repeatScale: 1, category: 'marble-stone', domains: ['floor'], textureUrl: '/textures/marble/Travertine010_1K-JPG/Travertine010_1K-JPG_Color.jpg', normalMapUrl: '/textures/marble/Travertine010_1K-JPG/Travertine010_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/marble/Travertine010_1K-JPG/Travertine010_1K-JPG_Roughness.jpg' },
+    'marble-014': { color: '#D4CFC7', roughness: 0.1, metalness: 0.05, repeatScale: 1, category: 'marble-stone', domains: ['floor', 'wall', 'door'], textureUrl: '/textures/marble/Marble014_1K-JPG/Marble014_1K-JPG_Color.jpg', normalMapUrl: '/textures/marble/Marble014_1K-JPG/Marble014_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/marble/Marble014_1K-JPG/Marble014_1K-JPG_Roughness.jpg' },
+    'marble-onyx-015': { color: '#2A302E', roughness: 0.06, metalness: 0.12, repeatScale: 1, category: 'marble-stone', domains: ['floor', 'wall', 'door'], textureUrl: '/textures/marble/Onyx015_1K-JPG/Onyx015_1K-JPG_Color.jpg', normalMapUrl: '/textures/marble/Onyx015_1K-JPG/Onyx015_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/marble/Onyx015_1K-JPG/Onyx015_1K-JPG_Roughness.jpg' },
+    'marble-travertine-010': { color: '#CDBFA6', roughness: 0.38, metalness: 0.02, repeatScale: 1, category: 'marble-stone', domains: ['floor', 'door', 'wall'], textureUrl: '/textures/marble/Travertine010_1K-JPG/Travertine010_1K-JPG_Color.jpg', normalMapUrl: '/textures/marble/Travertine010_1K-JPG/Travertine010_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/marble/Travertine010_1K-JPG/Travertine010_1K-JPG_Roughness.jpg' },
 
     // ── Concrete ─────────────────────────────────────────────────────────
-    concrete: { color: '#A8A8A8', roughness: 0.92, metalness: 0, repeatScale: 2, category: 'concrete', domains: ['floor'], textureUrl: '/textures/Concrete025_1K-JPG_Color.jpg', normalMapUrl: '/textures/Concrete025_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Concrete025_1K-JPG_Roughness.jpg' },
-    'concrete-raw': { color: '#A8A6A0', roughness: 0.95, metalness: 0, repeatScale: 0.15, category: 'concrete', domains: ['wall'], textureUrl: '/textures/Concrete025_1K-JPG_Color.jpg', normalMapUrl: '/textures/Concrete025_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Concrete025_1K-JPG_Roughness.jpg' },
-    'concrete-smooth': { color: '#B0AEA8', roughness: 0.6, metalness: 0, repeatScale: 2, category: 'concrete', domains: ['wall'], textureUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Color.jpg', normalMapUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Roughness.jpg' },
-    'concrete-polished': { color: '#B6B4AE', roughness: 0.25, metalness: 0.05, repeatScale: 2, category: 'concrete', domains: ['floor'], textureUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Color.jpg', normalMapUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Roughness.jpg' },
+    concrete: { color: '#A8A8A8', roughness: 0.92, metalness: 0, repeatScale: 2, category: 'concrete', domains: ['floor', 'wall'], textureUrl: '/textures/Concrete025_1K-JPG_Color.jpg', normalMapUrl: '/textures/Concrete025_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Concrete025_1K-JPG_Roughness.jpg' },
+    'concrete-raw': { color: '#A8A6A0', roughness: 0.95, metalness: 0, repeatScale: 0.15, category: 'concrete', domains: ['wall', 'floor'], textureUrl: '/textures/Concrete025_1K-JPG_Color.jpg', normalMapUrl: '/textures/Concrete025_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Concrete025_1K-JPG_Roughness.jpg' },
+    'concrete-smooth': { color: '#B0AEA8', roughness: 0.6, metalness: 0, repeatScale: 2, category: 'concrete', domains: ['wall', 'floor'], textureUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Color.jpg', normalMapUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Roughness.jpg' },
+    'concrete-polished': { color: '#B6B4AE', roughness: 0.25, metalness: 0.05, repeatScale: 2, category: 'concrete', domains: ['floor', 'wall'], textureUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Color.jpg', normalMapUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/concrete/Concrete045_1K-JPG/Concrete045_1K-JPG_Roughness.jpg' },
 
     // ── Tile ─────────────────────────────────────────────────────────────
     tiles: {
-        color: '#D4D0C8', roughness: 0.3, metalness: 0, repeatScale: 1, category: 'tile', domains: ['floor', 'door'], // was 20 — lower repeat count = larger, more visible tile squares
+        color: '#D4D0C8', roughness: 0.3, metalness: 0, repeatScale: 1, category: 'tile', domains: ['floor', 'door', 'wall'], // was 20 — lower repeat count = larger, more visible tile squares
         textureUrl: '/textures/tiles/Tiles075_1K-JPG/Tiles075_1K-JPG_Color.jpg',
         normalMapUrl: '/textures/tiles/Tiles075_1K-JPG/Tiles075_1K-JPG_NormalGL.jpg',
         roughnessMapUrl: '/textures/tiles/Tiles075_1K-JPG/Tiles075_1K-JPG_Roughness.jpg',
     },
     'tile-ceramic': {
-        color: '#F2F1EC', roughness: 0.25, metalness: 0.05, repeatScale: 1, category: 'tile', domains: ['floor', 'wall'], // was 0.5 — for THIS entry, 0.5 was actually stretching one texture across the whole surface almost unrepeated; bumped up slightly toward a visible grid too, adjust to taste
+        color: '#F2F1EC', roughness: 0.25, metalness: 0.05, repeatScale: 1, category: 'tile', domains: ['floor', 'wall', 'door'], // was 0.5 — for THIS entry, 0.5 was actually stretching one texture across the whole surface almost unrepeated; bumped up slightly toward a visible grid too, adjust to taste
         textureUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_Color.jpg',
         normalMapUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_NormalGL.jpg',
         roughnessMapUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_Roughness.jpg',
     },
     'tile-travertine': {
         color: '#F2F1F0',
-        roughness: 0.25, metalness: 0.05, repeatScale: 1, category: 'tile', domains: ['floor', 'wall'], // was 0.5, same note as tile-ceramic
+        roughness: 0.25, metalness: 0.05, repeatScale: 1, category: 'tile', domains: ['floor', 'wall', "door"], // was 0.5, same note as tile-ceramic
         textureUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_Color.jpg',
         normalMapUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_NormalGL.jpg',
         roughnessMapUrl: '/textures/tiles/Tiles101_1K-JPG/Tiles101_Roughness.jpg',
@@ -287,45 +294,18 @@ export type ClosedShape = {
     color?: string
     floorMaterial?: FloorMaterial
     wallMaterial?: WallMaterial
-    wallOverrides?: Record<string, { color?: string; material?: WallMaterial }>
+    wallOverrides?: Record<string, {
+        color?: string
+        material?: WallMaterial
+        exteriorColor?: string
+        exteriorMaterial?: WallMaterial
+    }>
+
 
 }
 
 export type Annotation = { id: string; x: number; z: number; text: string; fontSize: number }
 
-export type FurnitureType =
-    | 'sofa'
-    | 'bed'
-    | 'dining_table'
-    | 'desk'
-    | 'wardrobe'
-    | 'bathtub'
-    | 'toilet'
-    | 'plant'
-    | 'chair'
-    | 'coffee_table'
-    | 'single_sofa'
-    | 'lamp'
-    | 'mirror'
-    | 'kitchen_stove'
-    | 'chimney'
-    | 'commode'
-    | 'shower'
-    | 'shoe_rack'
-    | 'led_strip'
-    | 'wall_panel_pvc'
-    | 'painting'
-    | 'lounge_recliner'
-
-export type PlacedFurniture = {
-    id: string
-    type: FurnitureType
-    x: number
-    z: number
-    rotation: number
-    scale: number
-    materialId?: string;
-}
 
 
 export const FLOOR_MATERIALS: { id: FloorMaterial; label: string; preview: string; roughness: number; color: string }[] = [
@@ -352,7 +332,10 @@ export type EditorTool =
     | 'delete' | 'annotate' | 'furniture'
     | 'wall-decor-led' | 'wall-decor-pvc' | 'wall-decor-painting' | 'led_tv'
     | 'light-ceiling-pendant' | 'light-ceiling-recessed' | 'light-floor-lamp' | 'light-wall-sconce'
-    | 'outdoor-crosswalk' | 'outdoor-dustbin' | 'outdoor-bench' | 'outdoor-mailbox'   // NEW
+    | 'light-track' | 'light-chandelier' | 'light-shelf-strip' | 'light-spotlight' | 'light-string' | 'light-outdoor-bollard'  // NEW
+    | 'outdoor-crosswalk' | 'outdoor-dustbin' | 'outdoor-bench' | 'outdoor-mailbox'
+    | 'presets'          // NEW — opens PresetsPanel; not itself a canvas drawing tool
+    | 'template-place'   // NEW — armed after picking a room template; next canvas click commits it
 
 export interface ToolLeaf {
     id: EditorTool
@@ -390,6 +373,15 @@ const S = (children: React.ReactNode) => (
 )
 
 export const ICONS: Record<EditorTool, React.ReactNode> = {
+    presets: S(<>
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+    </>),
+    'template-place': S(<>
+        <path d="M12 2l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-1.5z" />
+    </>),
     select: S(<path d="M5 3l14 9-7 1-4 7z" />),
     pan: S(<>
         <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3" />
@@ -566,6 +558,46 @@ export const ICONS: Record<EditorTool, React.ReactNode> = {
             <path d="M8 7v10M4 17h16" strokeLinecap="round" />
         </svg>
     ),
+    'light-track': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 6h18" strokeLinecap="round" />
+            <path d="M7 6v3M12 6v3M17 6v3" strokeLinecap="round" />
+            <path d="M6 9l1.5 3M12 9l0 3M18 9l-1.5 3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    ),
+    'light-chandelier': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 3v3" strokeLinecap="round" />
+            <circle cx="12" cy="10" r="4" />
+            <path d="M9 13l-2 5M15 13l2 5M12 13v5M6 16h12" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    ),
+    'light-shelf-strip': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="10" width="18" height="4" rx="1" />
+            <path d="M5 14v2M19 14v2" strokeLinecap="round" />
+        </svg>
+    ),
+    'light-spotlight': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 3h6l2 5H7l2-5z" strokeLinejoin="round" />
+            <path d="M9 8l3 13 3-13" strokeLinejoin="round" />
+        </svg>
+    ),
+    'light-string': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 6c4 6 14 6 18 0" strokeLinecap="round" />
+            <circle cx="7" cy="9" r="1.3" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="11.5" r="1.3" fill="currentColor" stroke="none" />
+            <circle cx="17" cy="9" r="1.3" fill="currentColor" stroke="none" />
+        </svg>
+    ),
+    'light-outdoor-bollard': (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="9" y="4" width="6" height="12" rx="1" />
+            <path d="M6 20h12M8 16v4M16 16v4" strokeLinecap="round" />
+        </svg>
+    ),
 }
 
 // ── Tool groups (drives the toolbar layout) ────────────────────────────────
@@ -721,30 +753,6 @@ export const GRID_M = 0.5
 export const PX_PER_M = 40
 export const MIN_ROOM = 1.0
 
-export const FURNITURE_FOOTPRINTS: Record<FurnitureType, { w: number; d: number }> = {
-    sofa: { w: 2.2, d: 0.95 },
-    bed: { w: 1.7, d: 2.1 },
-    dining_table: { w: 1.5, d: 1.5 },
-    desk: { w: 1.4, d: 0.7 },
-    wardrobe: { w: 1.9, d: 0.62 },
-    bathtub: { w: 0.82, d: 1.6 },
-    toilet: { w: 0.46, d: 0.68 },
-    plant: { w: 0.4, d: 0.4 },
-    chair: { w: 0.55, d: 0.55 },
-    coffee_table: { w: 1.2, d: 0.65 },
-    single_sofa: { w: 0.95, d: 0.9 },
-    lamp: { w: 0.35, d: 0.35 },
-    mirror: { w: 0.7, d: 0.06 },
-    kitchen_stove: { w: 0.6, d: 0.6 },
-    chimney: { w: 0.9, d: 0.55 },
-    commode: { w: 0.5, d: 0.45 },
-    shower: { w: 0.9, d: 0.9 },
-    shoe_rack: { w: 0.9, d: 0.32 },
-    led_strip: { w: 1.25, d: 0.05 },
-    wall_panel_pvc: { w: 1.2, d: 0.05 },
-    painting: { w: 0.9, d: 0.05 },
-    lounge_recliner: { w: 2, d: 2 }
-}
 export const FURNITURE_COLORS: Record<FurnitureType, string> = {
     sofa: 'rgba(160,148,130,0.88)',
     bed: 'rgba(130,120,155,0.88)',
@@ -767,7 +775,7 @@ export const FURNITURE_COLORS: Record<FurnitureType, string> = {
     led_strip: 'rgba(255,220,150,0.9)',
     wall_panel_pvc: 'rgba(228,221,207,0.88)',
     painting: 'rgba(120,105,85,0.88)',
-    lounge_recliner: "rgba(110, 90,70, 1)"
+    lounge_recliner: "rgb(185, 94, 3)"
 }
 
 

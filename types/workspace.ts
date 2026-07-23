@@ -2,10 +2,11 @@ import {
   DoorMaterial,
   DoorStyle,
   FloorMaterial,
-  PlacedFurniture,
   PlacedStairs,
   WallMaterial,
 } from "@/components/workspace/lib/constants";
+import { PlacedFurniture } from "@/components/workspace/lib/furniture-constants";
+import { SceneLight } from "@/components/workspace/lights-constant";
 
 export interface WallPoint {
   x: number;
@@ -69,23 +70,7 @@ export type SceneJSON = {
   }[];
   line_nodes?: { id: string; x: number; z: number }[];
   line_segments?: { id: string; node_ids: string[]; thickness?: number }[];
-  lights?: {
-    id: string;
-    type: "wall_sconce" | "ceiling_pendant" | "ceiling_recessed" | "floor_lamp";
-    room_id?: string;
-    wall?: "north" | "south" | "east" | "west";
-    position?: number;
-    segment_node_ids?: string[];
-    segment_t?: number;
-    x?: number;
-    z?: number;
-    height_offset: number;
-    color: string;
-    intensity: number;
-    cast_shadow: boolean;
-    scale: number;
-    facing_inward?: boolean; // Added optional flag for inward orientation
-  }[];
+  lights?: SceneLight[]; // was an inline literal locked to the old 4 types
   outdoor_objects: SceneOutdoorObject[]; // NEW
   saved_views?: {
     id: string;

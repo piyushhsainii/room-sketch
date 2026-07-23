@@ -15,7 +15,6 @@ import {
   FloorPlanState,
   LineNode,
   LineSegment,
-  PlacedFurniture,
   PlacedStairs,
 } from "@/components/workspace/lib/constants";
 
@@ -28,6 +27,7 @@ import type {
   SceneOutdoorObject,
 } from "@/types/workspace";
 import { normalizeDoorMaterialOverride } from "@/components/workspace/mesh/door-style-migration";
+import { PlacedFurniture } from "@/components/workspace/lib/furniture-constants";
 
 export function floorPlanStateToSceneJSON(
   fp: FloorPlanState,
@@ -112,6 +112,11 @@ export function floorPlanStateToSceneJSON(
     segment_t: l.segmentT,
     x: l.x,
     z: l.z,
+    width: l.width, // NEW — shelf_strip
+    aim_rotation: l.aimRotation, // NEW — spotlight
+    aim_tilt: l.aimTilt, // NEW — spotlight
+    path_node_ids: l.pathNodeIds, // NEW — string_lights
+    bulb_count: l.bulbCount, // NEW — string_lights
     height_offset: l.heightOffset,
     color: l.color,
     intensity: l.intensity,
@@ -156,7 +161,7 @@ export function floorPlanStateToSceneJSON(
     rooms: [...rooms, ...lineRooms],
     furniture: furniture,
     stairs: stairs ?? [],
-    lights,
+    lights: lights ?? [],
     door_style: cfg.doorStyle ?? ("glass_clear" as DoorStyle),
     global_wall_material: cfg.globalWallMaterial ?? "paint",
     global_floor_material: cfg.globalFloorMaterial ?? "plain",
@@ -281,14 +286,21 @@ export function sceneJSONToFloorPlanState(
     segmentT: l.segment_t,
     x: l.x,
     z: l.z,
+    width: l.width, // NEW
+    aimRotation: l.aim_rotation, // NEW
+    aimTilt: l.aim_tilt, // NEW
+    // pathNodeIds references raw lineNode ids directly (unlike roomId, line
+    // node ids are NOT remapped through roomIdReverseMap during load — see
+    // `lineNodes = json.line_nodes.map(...)` above, which preserves the
+    // original ids verbatim) — so no reverse-lookup needed here, a straight
+    // passthrough is correct.
+    pathNodeIds: l.path_node_ids, // NEW
+    bulbCount: l.bulb_count, // NEW
     heightOffset: l.height_offset,
     color: l.color,
     intensity: l.intensity,
     castShadow: l.cast_shadow,
     scale: l.scale,
-    // Old saved scenes predate this field — default to true (room-side),
-    // matching the sconce's original hardcoded-direction behavior so
-    // existing saved plans don't visually flip on load.
     facingInward: l.facing_inward ?? true,
   }));
 
@@ -330,8 +342,8 @@ export function sceneJSONToFloorPlanState(
     lineSegments,
     closedShapes,
     openings,
-    furniture: json.furniture ?? [],
-    stairs: json.stairs ?? [],
+    furniture,
+    stairs,
     annotations: [],
     roomHeight,
     wallDecor: [],

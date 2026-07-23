@@ -1,4 +1,14 @@
 // components/workspace/MaterialsPanel.tsx
+//
+// CHANGES FROM YOUR VERSION (search for "// HISTORY:" to find every one):
+// 1. New required prop `pushHistory: () => void`.
+// 2. Every place that calls `onChange(...)` (global materials, room
+//    overrides) or `onChangeFp(...)` (area overrides) now calls
+//    `pushHistory()` immediately before it. Each swatch click is already a
+//    single discrete action — same granularity as how tool handlers in
+//    FloorPlanEditor already do `pushHistory(); setFp(...)` for e.g.
+//    placing furniture — so no debouncing/settle logic is needed here,
+//    unlike a continuous slider.
 'use client'
 
 import React, { useMemo, useState } from 'react'
@@ -130,9 +140,6 @@ function SwatchGrid({ items, currentVal, onSelect, columns = 4 }: {
     )
 }
 
-// ── Category sub-accordion — genuinely filters to just that category's
-// items now (this was the bug: previously every expanded category rendered
-// the SAME full unfiltered item list regardless of which one was clicked).
 function CategoryRow({
     category, items, currentVal, onSelect, defaultOpen, columns,
 }: {
@@ -167,10 +174,6 @@ function CategoryRow({
                 </svg>
             </button>
             {open && (
-                // Scroll containment MUST use ScrollableList, not overflowY
-                // directly — raw overflow doesn't work here because the 2D
-                // canvas's native wheel listener hijacks scroll events
-                // inside floating panels (documented app-wide constraint).
                 <ScrollableList maxHeight={260}>
                     <div style={{ paddingBottom: 4 }}>
                         <SwatchGrid items={items} currentVal={currentVal} onSelect={onSelect} columns={columns} />
@@ -181,9 +184,6 @@ function CategoryRow({
     )
 }
 
-// ── Top-level material-domain accordion (Wall Materials / Floor Materials /
-// Door Style). Collapsed by default so the Global Default Materials card
-// doesn't render every category of every domain expanded at once.
 function CategorizedMaterialGrid({
     icon, title, domain, currentVal, onSelect, columns = 4, defaultOpen = false,
 }: {
@@ -237,7 +237,7 @@ function CategorizedMaterialGrid({
             {open && (
                 <div style={{ paddingBottom: 12 }}>
                     {sortedCategories.map((cat, idx) => {
-                        const catItems = grouped[cat] // ← genuinely just this category's items
+                        const catItems = grouped[cat]
                         return (
                             <CategoryRow
                                 key={cat}
@@ -300,10 +300,15 @@ interface Props {
     config: SceneConfig
     onChange: (cfg: SceneConfig) => void
     onChangeFp?: (fp: FloorPlanState) => void
+    /** Call once, before applying a discrete scene-config change, so it
+     *  becomes a single undoable step (same convention as pushHistory()
+     *  before setFp() calls elsewhere in the app). */
+    pushHistory: () => void
 }
 
-export function MaterialsPanel({ fp, config, onChange, onChangeFp }: Props) {
+export function MaterialsPanel({ fp, config, onChange, onChangeFp, pushHistory }: Props) {
     const updateRoom = (roomId: string, changes: Partial<RoomSceneConfig>) => {
+        pushHistory() // HISTORY: room-level material/color override
         const existing = config.rooms.find(r => r.roomId === roomId) ?? { roomId }
         const updated = { ...existing, ...changes }
         const newRooms = [...config.rooms.filter(r => r.roomId !== roomId), updated]
@@ -317,6 +322,7 @@ export function MaterialsPanel({ fp, config, onChange, onChangeFp }: Props) {
 
     const updateShape = (nodeIds: string[], matchedShape: ClosedShape | undefined, shapeLabel: string, patch: Partial<ClosedShape>) => {
         if (!onChangeFp) return
+        pushHistory() // HISTORY: area (closed-shape) material override
         let shapes = [...(fp.closedShapes ?? [])]
         if (matchedShape) {
             shapes = shapes.map(s => s.id === matchedShape.id ? { ...s, ...patch } : s)
@@ -343,20 +349,20 @@ export function MaterialsPanel({ fp, config, onChange, onChangeFp }: Props) {
                         <CategorizedMaterialGrid
                             icon="🧱" title="Wall Materials" domain="wall"
                             currentVal={config.globalWallMaterial || 'paint'}
-                            onSelect={v => onChange({ ...config, globalWallMaterial: v as WallMaterial })}
+                            onSelect={v => { pushHistory(); onChange({ ...config, globalWallMaterial: v as WallMaterial }) }}
                             columns={4}
                             defaultOpen
                         />
                         <CategorizedMaterialGrid
                             icon="🪵" title="Floor Materials" domain="floor"
                             currentVal={config.globalFloorMaterial || 'plain'}
-                            onSelect={v => onChange({ ...config, globalFloorMaterial: v as FloorMaterial })}
+                            onSelect={v => { pushHistory(); onChange({ ...config, globalFloorMaterial: v as FloorMaterial }) }}
                             columns={4}
                         />
                         <CategorizedMaterialGrid
                             icon="🚪" title="Door Style" domain="door"
                             currentVal={config.doorStyle}
-                            onSelect={v => onChange({ ...config, doorStyle: v as DoorStyle })}
+                            onSelect={v => { pushHistory(); onChange({ ...config, doorStyle: v as DoorStyle }) }}
                             columns={4}
                         />
                     </div>
@@ -478,12 +484,6 @@ export function matchClosedShape(
         const centroidDist = Math.hypot(target.cx - candidate.cx, target.cz - candidate.cz)
         const areaDiff = Math.abs(target.area - candidate.area)
 
-        // Both centroid and area must be close — a room that genuinely
-        // moved or resized a lot shouldn't silently inherit another
-        // room's saved material. Tolerances are deliberately tight
-        // (0.5m centroid drift, 10% area difference or 0.5m² absolute,
-        // whichever is larger) since this is meant to catch incidental
-        // node-id churn, not real geometry changes.
         if (centroidDist < 0.5 && areaDiff < Math.max(0.5, target.area * 0.1)) {
             const score = centroidDist + areaDiff
             if (score < bestScore) { bestScore = score; best = s }

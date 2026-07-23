@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
 import { OrbitControls } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./lib/constants"
 import { Room3D } from "./3dRoom"
@@ -10,6 +10,7 @@ import { SceneConfig } from "./FloorPlanEditor"
 import { LightFixtureMesh } from "./mesh/lights-mesh"
 import { OutdoorObjectMesh } from "./mesh/outdoor-object-mesh"
 import { CameraView } from "./lib/camera"
+import { StringLightsMesh } from "./mesh/string-lights-mesh"
 
 export type Scene3DHandle = {
     flyTo: (view: CameraView) => void
@@ -36,11 +37,17 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
 
     useImperativeHandle(ref, () => ({
         flyTo: (view: CameraView) => {
-            const controls = controlsRef.current
-            if (!controls) return
-            controls.object.position.set(...view.position)
-            controls.target.set(...view.target)
-            controls.update()
+            const apply = () => {
+                const controls = controlsRef.current
+                if (!controls) {
+                    requestAnimationFrame(apply)
+                    return
+                }
+                controls.object.position.set(...view.position)
+                controls.target.set(...view.target)
+                controls.update()
+            }
+            apply()
         },
         getCurrentView: () => {
             const controls = controlsRef.current
@@ -51,6 +58,34 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             }
         }
     }), [])
+
+    useEffect(() => {
+        if (walkMode) return
+        const controls = controlsRef.current
+        if (!controls) return
+
+        const allX = [
+            ...fp.rooms.flatMap(r => [r.x, r.x + r.width]),
+            ...fp.lineNodes.map(n => n.x),
+        ]
+        const allZ = [
+            ...fp.rooms.flatMap(r => [r.z, r.z + r.depth]),
+            ...fp.lineNodes.map(n => n.z),
+        ]
+        if (allX.length === 0) return
+
+        const minX = Math.min(...allX), maxX = Math.max(...allX)
+        const minZ = Math.min(...allZ), maxZ = Math.max(...allZ)
+        const cx = (minX + maxX) / 2
+        const cz = (minZ + maxZ) / 2
+        const span = Math.max(maxX - minX, maxZ - minZ, 5)
+
+        controls.object.position.set(cx, span * 1.6, cz + 0.01)
+        controls.target.set(cx, 0, cz)
+        controls.update()
+        // run once on mount, not on every fp change
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     return (
         <>
@@ -101,11 +136,16 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                     />
                 )
             })}
-
+            {(fp.lights ?? []).filter(l => l.type === 'string_lights').map(l => (
+                <StringLightsMesh key={l.id} light={l} fp={fp} selected={interactiveMode && selectedId === l.id}
+                    onSelect={interactiveMode ? () => onSelect?.(l.id) : undefined} />
+            ))}
             {(fp.lights ?? []).map(light => {
                 let pos: [number, number, number]
                 let rot = 0
                 const T = 0.15, normalOffset = T / 2 + 0.05
+                const inward = light.facingInward ?? true
+                const faceDir = inward ? 1 : -1   // NEW — mirrors WallDecorMesh's faceDir
 
                 if (light.segmentNodeIds) {
                     const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
@@ -116,15 +156,25 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                     const pz = a.z + (b.z - a.z) * t
                     const angle = Math.atan2(b.z - a.z, b.x - a.x)
                     const nx = Math.sin(angle), nz = -Math.cos(angle)
-                    pos = [px + nx * normalOffset, light.heightOffset, pz + nz * normalOffset]
-                    rot = -angle
+                    // NEW — faceDir flips which side of the segment the fixture sits on
+                    pos = [px + nx * normalOffset * faceDir, light.heightOffset, pz + nz * normalOffset * faceDir]
+                    rot = inward ? -angle : -angle + Math.PI   // NEW — flip facing 180° on exterior
                 } else if (light.roomId && light.wall) {
                     const room = fp.rooms.find(r => r.id === light.roomId)
                     if (!room) return null
-                    if (light.wall === 'north') { pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + normalOffset]; rot = 0 }
-                    else if (light.wall === 'south') { pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + room.depth - normalOffset]; rot = Math.PI }
-                    else if (light.wall === 'west') { pos = [room.x + normalOffset, light.heightOffset, room.z + (light.position ?? 0)]; rot = Math.PI / 2 }
-                    else { pos = [room.x + room.width - normalOffset, light.heightOffset, room.z + (light.position ?? 0)]; rot = -Math.PI / 2 }
+                    if (light.wall === 'north') {
+                        pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + normalOffset * faceDir]
+                        rot = inward ? 0 : Math.PI
+                    } else if (light.wall === 'south') {
+                        pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + room.depth - normalOffset * faceDir]
+                        rot = inward ? Math.PI : 0
+                    } else if (light.wall === 'west') {
+                        pos = [room.x + normalOffset * faceDir, light.heightOffset, room.z + (light.position ?? 0)]
+                        rot = inward ? Math.PI / 2 : -Math.PI / 2
+                    } else {
+                        pos = [room.x + room.width - normalOffset * faceDir, light.heightOffset, room.z + (light.position ?? 0)]
+                        rot = inward ? -Math.PI / 2 : Math.PI / 2
+                    }
                 } else {
                     pos = [light.x ?? 0, light.heightOffset, light.z ?? 0]
                 }

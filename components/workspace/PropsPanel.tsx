@@ -320,7 +320,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 <Card>
                     <SectionLabel>Appearance</SectionLabel>
                     <PropField label="Thickness (m)">
-                        <NumInput value={seg.thickness ?? 0.15} min={0.05} max={0.4} step={0.01}
+                        <NumInput value={seg.thickness ?? 0.15} min={0.02} max={2} step={0.01}
                             onChange={v => patchSegment({ thickness: v })} />
                     </PropField>
                     <PropField label="Wall type">

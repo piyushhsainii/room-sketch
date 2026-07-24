@@ -635,7 +635,7 @@ export function draw2D(
         const cz_ = nodes.reduce((s, n) => s + n.z, 0) / nodes.length
         ctx.setLineDash([]); ctx.fillStyle = 'rgba(165,168,255,0.7)'; ctx.font = `${Math.max(9, 11 * zoom)}px system-ui`
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText('Area', cx(cx_), cy(cz_)); ctx.restore()
+        ctx.fillText(shapeMatch?.label || 'Area', cx(cx_), cy(cz_)); ctx.restore()
     }
     // ── Line nodes ─────────────────────────────────────────────────────────────
     for (const node of fp.lineNodes ?? []) {

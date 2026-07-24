@@ -244,6 +244,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const pendingTooltipRef = useRef<{ text: string; x: number; y: number } | null | undefined>(undefined)
     const tooltipRafRef = useRef<number | null>(null)
     const [viewPickerOpen, setViewPickerOpen] = useState(false)
+    const [shapeDragModeActive, setShapeDragModeActive] = useState(false)
 
     function scheduleTooltipUpdate(next: { text: string; x: number; y: number } | null) {
         pendingTooltipRef.current = next
@@ -459,6 +460,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         window.addEventListener('keydown', h)
         return () => window.removeEventListener('keydown', h)
     }, [selectedId])
+
+    useEffect(() => { setMoveArmedForId(null) }, [selectedId])
 
     const toggleFullscreen = useCallback(async () => {
         if (!document.fullscreenElement) { await editorRef.current?.requestFullscreen(); setIsFullscreen(true) }
@@ -1071,22 +1074,26 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 isMouseDownRef.current = true
                 return
             }
-
             // 6. Closed Shapes — only reached if the click missed every wall segment
             const shape = hitClosedShape(wx, wz)
             if (shape) {
-                setSelectedId(shape.id)
-                const startPositions = new Map<string, { x: number, z: number }>()
-                for (const nid of shape.nodeIds) {
-                    const n = fpRef.current.lineNodes.find(nd => nd.id === nid)
-                    if (n) startPositions.set(nid, { x: n.x, z: n.z })
+                if (moveArmedForId && moveArmedForId !== shape.id) {
+                    setMoveArmedForId(null)
                 }
-                shapeDragRef.current = { shapeId: shape.id, ox: wx, oz: wz, startPositions }
+                setSelectedId(shape.id)
+
+                if (moveArmedForId === shape.id) {
+                    const startPositions = new Map<string, { x: number, z: number }>()
+                    for (const nid of shape.nodeIds) {
+                        const n = fpRef.current.lineNodes.find(nd => nd.id === nid)
+                        if (n) startPositions.set(nid, { x: n.x, z: n.z })
+                    }
+                    shapeDragRef.current = { shapeId: shape.id, ox: wx, oz: wz, startPositions }
+                }
                 dragRoomRef.current = null
                 isMouseDownRef.current = true
                 return
             }
-
             // 7. LOWEST PRIORITY: Room areas (clicked on the floor area)
             const room = hitRoom(wx, wz)
             if (room) {
@@ -1247,9 +1254,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             if (segHit) {
                 const segWallType = segHit.seg.wallType ?? 'solid'
                 if (segWallType !== 'solid') {
-                    // Openings can't be cut into a railing or an already-open edge —
-                    // silently no-op rather than attaching a door/window that would
-                    // render nonsensically per the railing feature's design.
                     return
                 }
                 const { seg, t, fromId, toId } = segHit
@@ -1264,7 +1268,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 const op: EditorOpening = {
                     id: uid(),
                     roomId: seg.id,
-                    wall: 'north', // placeholder — actual direction computed from segment angle
+                    wall: 'north',
                     type: isDoorTool ? 'door' : 'window',
                     variant: tool,
                     position: parseFloat(clampedPos.toFixed(2)),
@@ -2117,7 +2121,11 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         dragConfirmedRef.current = false
 
         if (hadDrag) pushHistory()
-
+        if (shapeDragRef.current) {
+            shapeDragRef.current = null
+            setMoveArmedForId(null)   // one-shot: dragging once consumes the arm
+            // ...whatever history-push logic already exists here...
+        }
         if (canvasRef.current && spaceHeldRef.current) canvasRef.current.style.cursor = 'grab'
         else if (canvasRef.current) canvasRef.current.style.cursor = ''
         resizeHandleRef.current = null

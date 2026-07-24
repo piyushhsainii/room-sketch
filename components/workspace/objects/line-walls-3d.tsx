@@ -10,36 +10,7 @@ import { WallDecorMesh } from '../mesh/wall-decor-mesh';
 import { RoomSceneConfig } from '../FloorPlanEditor';
 import { Railing3D } from './railing-3d';
 import { matchClosedShape } from '../MaterialsPanel';
-
-/* ------------------------------------------------------------------ */
-/* Dual-sided wall material support                                    */
-/* ------------------------------------------------------------------ */
-//
-// A wall piece override previously only carried one { material, color }
-// pair, applied to every face of the wall's box geometry — so the inside
-// and outside always looked identical. This adds an optional second pair
-// for the "other" side (`exteriorMaterial` / `exteriorColor`). When those
-// are absent, the resolved exterior falls back to the same value as the
-// interior, so existing saved data renders exactly as it did before.
-//
-// NOTE ON THE TYPE: `ClosedShape['wallOverrides'][pieceKey]` lives in
-// `../lib/constants` and I don't have that file's source. This module
-// reads the new fields off the override object defensively (optional
-// chaining, no assumed shape), so it compiles/runs even before the type
-// is widened — but for proper typing/autocomplete, add these two optional
-// fields to whatever interface defines a wall-piece override:
-//
-//   exteriorMaterial?: WallMaterial | null
-//   exteriorColor?: string
-//
-// Similarly, wherever pieceKey overrides currently get *written* (the
-// picker UI that calls something like patchShape/patchWallOverride for
-// `${seg.id}_${i}`) needs a second "which side am I editing" control — I
-// don't have that file either. The `facingInward` pattern already used for
-// wall decor / PropsPanel's per-wall picker is a good model to copy: a
-// toggle button that flips which of `material`/`color` vs
-// `exteriorMaterial`/`exteriorColor` the picker writes to.
-
+import { Text } from '@react-three/drei';
 type WallSideOverride = {
     material?: WallMaterial | null
     color?: string
@@ -222,10 +193,12 @@ function LineWalls3DImpl({
                         onPointerOut: (e: any) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = 'auto' },
                     } : {}
                     const showOutline = interactive && (isPieceSelected || isRoomSelected || hovered)
-
+                    const wallType = seg.wallType ?? 'solid'
+                    const segT = seg.thickness ?? 0.15
                     const outlineMesh = (
                         <mesh position={[mcx, H / 2, mcz]} rotation={[0, -angle, 0]} renderOrder={999}>
-                            <boxGeometry args={[len * 1.01, H * 1.01, T * 1.4]} />
+                            {/* OLD: <boxGeometry args={[len * 1.01, H * 1.01, T * 1.4]} /> */}
+                            <boxGeometry args={[len * 1.01, H * 1.01, segT * 1.4]} />
                             <meshBasicMaterial
                                 color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
                                 wireframe
@@ -306,11 +279,7 @@ function LineWalls3DImpl({
                             )
                         }
                     } else {
-                        // Solid-with-openings path — unchanged geometry logic, still gated
-                        // to only ever really apply to wallType === 'solid' segments since
-                        // openings can't be placed on railing/open edges. Each sub-panel
-                        // now also gets an exterior overlay for dual-sided texturing, same
-                        // fallback rule as the no-openings path above.
+                        // Solid-with-openings path — ...
                         const sorted = [...segOpenings].sort((a, b) => (a.segmentT ?? 0) - (b.segmentT ?? 0))
                         let cursor = 0
 
@@ -333,18 +302,22 @@ function LineWalls3DImpl({
                                             receiveShadow
                                             {...handlers}
                                         >
-                                            <boxGeometry args={[segLen, H, T]} />
-                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={segLen} height={H} depth={T} />
+                                            {/* OLD: <boxGeometry args={[segLen, H, T]} /> */}
+                                            <boxGeometry args={[segLen, H, segT]} />
+                                            {/* OLD: ... depth={T} /> */}
+                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={segLen} height={H} depth={segT} />
                                         </mesh>
                                         <group position={[wx, H / 2, wz]} rotation={[0, -angle, 0]}>
-                                            <mesh position={[0, 0, -(T / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}>
+                                            {/* OLD: <mesh position={[0, 0, -(T / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}> */}
+                                            <mesh position={[0, 0, -(segT / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}>
                                                 <planeGeometry args={[segLen, H]} />
                                                 <WallMat mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={segLen} height={H} depth={0.01} />
                                             </mesh>
                                         </group>
                                         {showOutline && (
                                             <mesh position={[wx, H / 2, wz]} rotation={[0, -angle, 0]} renderOrder={999}>
-                                                <boxGeometry args={[segLen * 1.01, H * 1.01, T * 1.4]} />
+                                                {/* OLD: <boxGeometry args={[segLen * 1.01, H * 1.01, T * 1.4]} /> */}
+                                                <boxGeometry args={[segLen * 1.01, H * 1.01, segT * 1.4]} />
                                                 <meshBasicMaterial
                                                     color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
                                                     wireframe
@@ -374,8 +347,10 @@ function LineWalls3DImpl({
                                             receiveShadow
                                             {...handlers}
                                         >
-                                            <boxGeometry args={[op.width, headerH, T]} />
-                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={T} />
+                                            {/* OLD: <boxGeometry args={[op.width, headerH, T]} /> */}
+                                            <boxGeometry args={[op.width, headerH, segT]} />
+                                            {/* OLD: ... depth={T} /> */}
+                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} />
                                         </mesh>
                                     )
                                 }
@@ -392,35 +367,37 @@ function LineWalls3DImpl({
                                             receiveShadow
                                             {...handlers}
                                         >
-                                            <boxGeometry args={[op.width, op.sillHeight, T]} />
-                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={op.sillHeight} depth={T} />
+                                            <boxGeometry args={[op.width, op.sillHeight, segT]} />
+                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={op.sillHeight} depth={segT} />
                                         </mesh>
                                     )
                                 }
 
+                                // window/door WindowVariant3D/DoorVariant3D calls unchanged — they don't use T
+
+                                const ox = a.x + (dx / len) * opPos2
+                                const oz = a.z + (dz / len) * opPos2
+
                                 if (op.type === 'window') {
-                                    const gx = a.x + (dx / len) * opPos2
-                                    const gz = a.z + (dz / len) * opPos2
+                                    const glazingCenterY = op.sillHeight + op.height / 2
                                     panels.push(
                                         <WindowVariant3D
-                                            key={`${seg.id}_${i}_g${si}`}
+                                            key={`${seg.id}_${i}_w${si}`}
                                             op={op}
                                             angle={angle}
-                                            basePos={[gx, op.sillHeight + op.height / 2, gz]}
+                                            basePos={[ox, glazingCenterY, oz]}
                                         />
                                     )
-                                }
-
-                                if (op.type === 'door') {
-                                    const doorX = a.x + (dx / len) * opPos2
-                                    const doorZ = a.z + (dz / len) * opPos2
+                                } else if (op.type === 'door') {
                                     panels.push(
                                         <DoorVariant3D
-                                            key={`${seg.id}_${i}_door${si}`}
+                                            key={`${seg.id}_${i}_d${si}`}
                                             op={op}
                                             angle={angle}
-                                            basePos={[doorX, op.height / 2, doorZ]}
+                                            basePos={[ox, op.height / 2, oz]}
                                             doorStyle={doorStyle}
+                                            interactive={interactive}
+                                            onToggleOpen={onToggleDoorOpen}
                                         />
                                     )
                                 }
@@ -454,7 +431,9 @@ function LineWalls3DImpl({
                 const worldD = maxZ - minZ
                 const matchedShape = matchClosedShape(nodeIds, fp.lineNodes, closedShapes ?? fp.closedShapes ?? [])
                 const shapeMat = matchedShape?.floorMaterial ?? floorMaterial
-
+                const centroidX = xs.reduce((s, x) => s + x, 0) / xs.length
+                const centroidZ = zs.reduce((s, z) => s + z, 0) / zs.length
+                const shapeLabel = matchedShape?.label || 'Area'
                 const nodeIdSet = new Set(nodeIds)
                 const matchedSeg = (fp.lineSegments ?? []).find(s =>
                     s.nodeIds.length === nodeIds.length &&
@@ -464,30 +443,44 @@ function LineWalls3DImpl({
                 const isFloorSelected = interactive && !!floorRoomId && selectedId === floorRoomId
 
                 return (
-                    <DerivedFloorShape
-                        key={`floor_derived_${idx}`}
-                        nodeIds={nodeIds}
-                        nodes={nodes}
-                        minX={minX}
-                        minZ={minZ}
-                        worldW={worldW}
-                        worldD={worldD}
-                        shapeMat={shapeMat as FloorMaterial}
-                        interactive={interactive}
-                        roomId={floorRoomId}
-                        selected={isFloorSelected}
-                        onSelect={onSelect}
-                    />
+                    <React.Fragment key={`floor_derived_${idx}`}>
+                        <DerivedFloorShape
+                            nodeIds={nodeIds}
+                            nodes={nodes}
+                            minX={minX}
+                            minZ={minZ}
+                            worldW={worldW}
+                            worldD={worldD}
+                            shapeMat={shapeMat as FloorMaterial}
+                            interactive={interactive}
+                            roomId={floorRoomId}
+                            selected={isFloorSelected}
+                            onSelect={onSelect}
+                        />
+                        <Text
+                            position={[centroidX, 0.05, centroidZ]}
+                            rotation={[-Math.PI / 2, 0, 0]}
+                            fontSize={0.35}
+                            color="#6B5B4E"
+                            anchorX="center"
+                            anchorY="middle"
+                            outlineWidth={0.01}
+                            outlineColor="#FFFFFF"
+                        >
+                            {shapeLabel}
+                        </Text>
+                    </React.Fragment>
                 )
             })}
             {(fp.lineNodes ?? []).map(node => {
                 const owningSeg = (fp.lineSegments ?? []).find(seg => seg.nodeIds.includes(node.id))
                 const nodeMat = owningSeg ? (segWallMaterial.get(owningSeg.id) ?? wallMaterial) : wallMaterial
+                const nodeT = owningSeg?.thickness ?? 0.15
 
                 return (
                     <mesh key={node.id} position={[node.x, H / 2, node.z]} castShadow receiveShadow>
-                        <cylinderGeometry args={[T / 2, T / 2, H, 8]} />
-                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={T} height={H} depth={T} />
+                        <cylinderGeometry args={[nodeT / 2, nodeT / 2, H, 8]} />
+                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={nodeT} height={H} depth={nodeT} />
                     </mesh>
                 )
             })}

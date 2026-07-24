@@ -29,19 +29,24 @@ export type QuickAction = 'move' | 'bend' | 'duplicate' | 'delete' | 'properties
 // back for some entity type, add 'move' to that type's array below and
 // wire an onMove handler — the menu itself doesn't care.
 const ACTIONS_BY_ENTITY: Record<
-    'room' | 'wall' | 'segment' | 'furniture' | 'stairs' | 'outdoor' | 'wallDecor' | 'opening' | 'shape' | 'node',
+    'room' | 'wall' | 'segment' | 'furniture' | 'stairs' | 'outdoor' | 'wallDecor' | 'opening' | 'shape' | 'node' | 'light',
     QuickAction[]
 > = {
-    room: ['properties', 'duplicate', 'delete'],
-    wall: ['properties', 'delete'],               // single room-wall (north/south/east/west) — no duplicate, no bend
-    segment: ['properties', 'bend', 'duplicate', 'delete'], // line-wall segment — the case in your screenshot
-    furniture: ['properties', 'duplicate', 'delete'],
-    stairs: ['properties', 'duplicate', 'delete'],
-    outdoor: ['properties', 'duplicate', 'delete'],
-    wallDecor: ['properties', 'duplicate', 'delete'],
-    opening: ['properties', 'duplicate', 'delete'],
-    shape: ['properties', 'duplicate', 'delete'],
+    room: ['properties', 'move', 'duplicate', 'delete'],
+    wall: ['properties', 'delete'],               // wall resize is edge-drag only, not a free move
+    segment: ['properties', 'move', 'bend', 'duplicate', 'delete'],
+    furniture: ['properties', 'move', 'duplicate', 'delete'],
+    stairs: ['properties', 'move', 'duplicate', 'delete'],
+    outdoor: ['properties', 'move', 'duplicate', 'delete'],
+    wallDecor: ['properties', 'duplicate', 'delete'],   // wall-anchored — slide-along-wall stays a free drag
+    opening: ['properties', 'duplicate', 'delete'],     // doors/windows — same, slide-along-wall stays free
+    shape: ['properties', 'move', 'duplicate', 'delete'],
     node: ['properties', 'delete'],
+    light: ['properties', 'duplicate', 'delete'],       // wall-point/wall-strip lights slide along wall (free);
+    // free-point lights (pendant, floor lamp, etc.) currently have no Move
+    // button either — flag if you want click-to-relocate for those too,
+    // it's a small addition once the free-point commit case exists (see
+    // move-commit.ts)
 }
 
 const ICONS: Record<QuickAction, React.ReactNode> = {
@@ -80,7 +85,7 @@ const ICONS: Record<QuickAction, React.ReactNode> = {
 /* Anchor computation (Plan step 2)                                    */
 /* ------------------------------------------------------------------ */
 
-type SelectionKind = keyof typeof ACTIONS_BY_ENTITY
+type SelectionKind = keyof typeof ACTIONS_BY_ENTITY | 'light'
 
 export function classifySelection(fp: FloorPlanState, selectedId: string | null): SelectionKind | null {
     if (!selectedId) return null
@@ -91,6 +96,9 @@ export function classifySelection(fp: FloorPlanState, selectedId: string | null)
     if ((fp.stairs ?? []).some(s => s.id === selectedId)) return 'stairs'
     if ((fp.outdoorObjects ?? []).some(o => o.id === selectedId)) return 'outdoor'
     if ((fp.wallDecor ?? []).some(d => d.id === selectedId)) return 'wallDecor'
+    if ((fp.lights ?? []).some(l => l.id === selectedId)) return 'light'   // NEW — was missing entirely, so the
+    // menu's `actions.length === 0` guard silently rendered nothing for
+    // any selected light fixture.
     if (fp.openings.some(o => o.id === selectedId)) return 'opening'
     if (fp.lineNodes.some(n => n.id === selectedId)) return 'node'
     if ((fp.closedShapes ?? []).some(s => s.id === selectedId)) return 'shape'
@@ -153,12 +161,56 @@ export function getSelectionAnchorWorld(
         }
         case 'wallDecor':
         case 'opening': {
-            // Both are wall-anchored with a roomId + position/segmentT — approximate
-            // via whichever room/segment they belong to, falling back to null
-            // (menu just won't render) rather than guessing wrong. Wire this up
-            // properly once I can see how these compute their own world position
-            // for rendering (there's presumably a shared helper already, since
-            // LineWalls3D positions door/window/decor meshes along the wall).
+            // Both are wall-anchored via either {roomId, wall, position} (a
+            // rectangle room's wall) or {segmentNodeIds, segmentT} (a
+            // line-drawn wall) — same two shapes used at placement time in
+            // handleMouseDown's door/window/decor branches. Resolve position
+            // along whichever one is present.
+            const entity = kind === 'opening'
+                ? fp.openings.find(o => o.id === selectedId)
+                : (fp.wallDecor ?? []).find(d => d.id === selectedId)
+            if (!entity) return null
+
+            if (entity.wall && entity.roomId) {
+                const room = fp.rooms.find(r => r.id === entity.roomId)
+                if (!room) return null
+                const isH = entity.wall === 'north' || entity.wall === 'south'
+                return isH
+                    ? { x: room.x + entity.position, z: entity.wall === 'north' ? room.z : room.z + room.depth }
+                    : { x: entity.wall === 'west' ? room.x : room.x + room.width, z: room.z + entity.position }
+            }
+            if (entity.segmentNodeIds) {
+                const a = fp.lineNodes.find(n => n.id === entity.segmentNodeIds![0])
+                const b = fp.lineNodes.find(n => n.id === entity.segmentNodeIds![1])
+                if (!a || !b) return null
+                const t = entity.segmentT ?? 0
+                return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }
+            }
+            return null
+        }
+        case 'light': {
+            const light = (fp.lights ?? []).find(l => l.id === selectedId)
+            if (!light) return null
+            // Free-point light (x/z set directly)
+            if (light.x !== undefined && light.z !== undefined) {
+                return { x: light.x, z: light.z }
+            }
+            // Wall-point / wall-strip light — same resolution as opening/wallDecor above
+            if (light.wall && light.roomId) {
+                const room = fp.rooms.find(r => r.id === light.roomId)
+                if (!room) return null
+                const isH = light.wall === 'north' || light.wall === 'south'
+                return isH
+                    ? { x: room.x + (light.position ?? 0), z: light.wall === 'north' ? room.z : room.z + room.depth }
+                    : { x: light.wall === 'west' ? room.x : room.x + room.width, z: room.z + (light.position ?? 0) }
+            }
+            if (light.segmentNodeIds) {
+                const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
+                const b = fp.lineNodes.find(n => n.id === light.segmentNodeIds![1])
+                if (!a || !b) return null
+                const t = light.segmentT ?? 0
+                return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }
+            }
             return null
         }
         case 'shape': {
@@ -225,24 +277,29 @@ export function QuickActionMenu({
     onDelete,
     onBend,
     onOpenProperties,
+    onMove,
+    /** True while a click-to-relocate move is currently armed for this
+     *  selection — lets the menu show the Move button as active/pressed. */
+    moveArmed = false,
 }: {
     fp: FloorPlanState
     selectedId: string | null
-    /** Already-computed screen (client) pixel coordinates — pass the same
-     *  x/y you'd pass into the annotation popup (toCanvas + rect.left/top). */
     screenX: number
     screenY: number
-    /** False while a drag is actively engaged on the selection, or while
-     *  nothing is selected — parent controls this so the menu has a single
-     *  source of truth, per plan step 3/7. */
     visible: boolean
     onDuplicate: () => void
     onDelete: () => void
     onBend: (segId: string) => void
-    /** Switches the side panel to the Properties tab. Doesn't need to touch
-     *  selectedId — that's already set from whatever selected the entity in
-     *  the first place. */
     onOpenProperties: () => void
+    /** Arms click-to-relocate mode for the current selection. Clicking Move
+     *  does NOT move anything by itself — it puts the editor into a state
+     *  where the NEXT click on the canvas (not a drag) commits the new
+     *  position, using the exact same apply() logic as the pointer-drag
+     *  dispatch table in handleMouseMove (see drag-controller.ts), so
+     *  there's one source of truth for "how does this entity kind
+     *  translate," not two. */
+    onMove: () => void
+    moveArmed?: boolean
 }) {
     const kind = useMemo(() => classifySelection(fp, selectedId), [fp, selectedId])
     const actions = kind ? ACTIONS_BY_ENTITY[kind] : []
@@ -261,6 +318,7 @@ export function QuickActionMenu({
             case 'delete': onDelete(); break
             case 'bend': if (kind === 'segment' && !bendDisabled) onBend(selectedId); break
             case 'properties': onOpenProperties(); break
+            case 'move': onMove(); break
         }
     }
 
@@ -290,6 +348,7 @@ export function QuickActionMenu({
             {actions.map((action, i) => {
                 const isBend = action === 'bend'
                 const disabled = isBend && bendDisabled
+                const pressed = action === 'move' && moveArmed
                 return (
                     <React.Fragment key={action}>
                         {i > 0 && <div style={{ width: 1, height: 16, background: PILL.divider, margin: '0 2px' }} />}
@@ -301,18 +360,20 @@ export function QuickActionMenu({
                                     : action === 'delete' ? 'Delete'
                                         : action === 'bend' ? (disabled ? 'Already bent — drag its middle node' : 'Add a bend point')
                                             : action === 'properties' ? 'Open properties'
-                                                : 'Move'
+                                                : action === 'move' ? (pressed ? 'Click on the canvas to place — click Move again to cancel' : 'Move (click destination)')
+                                                    : 'Move'
                             }
                             style={{
                                 width: 30, height: 30, borderRadius: '50%',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                border: 'none', background: 'transparent',
-                                color: disabled ? 'rgba(255,255,255,0.3)' : PILL.iconIdle,
+                                border: 'none',
+                                background: pressed ? 'rgba(255,255,255,0.22)' : 'transparent',
+                                color: disabled ? 'rgba(255,255,255,0.3)' : (pressed ? PILL.iconHover : PILL.iconIdle),
                                 cursor: disabled ? 'default' : 'pointer',
                                 transition: 'background 120ms ease, color 120ms ease',
                             }}
-                            onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = PILL.iconHover } }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = disabled ? 'rgba(255,255,255,0.3)' : PILL.iconIdle }}
+                            onMouseEnter={e => { if (!disabled && !pressed) { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = PILL.iconHover } }}
+                            onMouseLeave={e => { if (!pressed) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = disabled ? 'rgba(255,255,255,0.3)' : PILL.iconIdle } }}
                         >
                             {ICONS[action]}
                         </button>

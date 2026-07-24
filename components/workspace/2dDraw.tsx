@@ -1,8 +1,17 @@
-import { deriveClosedPolygons, getSegmentOpeningWorldPos, toCanvas } from "@/lib/helpers";
+import { getSegmentOpeningWorldPos, toCanvas } from "@/lib/helpers";
 import { EditorTool, FloorPlanState, FURNITURE_COLORS, FURNITURE_LABELS, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./lib/constants";
-import { LIGHT_FIXTURE_LABELS } from "./lights-constant";
+import { LIGHT_FIXTURE_LABELS, LIGHT_PLACEMENT_KIND } from "./lights-constant";
 import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./lib/outdoor-constants";
 import { FURNITURE_FOOTPRINTS } from "./lib/furniture-constants";
+
+// NOTE — deriveClosedPolygons is intentionally NOT imported/called here anymore.
+// It's an expensive graph traversal that only needs to re-run when wall
+// topology (fp.lineSegments) actually changes, not on every redraw. The
+// caller now computes it once (cached, keyed on lineSegments identity) and
+// passes the result in via `closedPolygons`. Same story for the openings
+// filter (was O(rooms × openings) + O(segments × openings) per frame, now
+// two Map lookups) and the closedShapes .find() (was O(shapes × polygons)
+// per frame, now a Map lookup). See caller-side caching helpers.
 
 export function draw2D(
     ctx: CanvasRenderingContext2D,
@@ -16,7 +25,12 @@ export function draw2D(
     pan: { x: number; y: number },
     preview: { x: number; z: number } | null,
     activeLineNodeId: string | null,
-    overlappingIds: Set<string>
+    overlappingIds: Set<string>,
+    // ── NEW params — all precomputed + cached by the caller, see scheduleRedraw ──
+    closedPolygons: string[][],
+    openingsByRoom: Map<string, FloorPlanState['openings']>,
+    openingsBySegment: Map<string, FloorPlanState['openings']>,
+    shapesIndex: Map<string, NonNullable<FloorPlanState['closedShapes']>[number]>
 ) {
     const W = ctx.canvas.width
     const H = ctx.canvas.height
@@ -70,7 +84,9 @@ export function draw2D(
         ctx.restore()
 
         // ── Room Openings ────────────────────────────────────────────────────
-        for (const op of fp.openings.filter(o => o.roomId === room.id && !o.segmentNodeIds)) {
+        // was: fp.openings.filter(o => o.roomId === room.id && !o.segmentNodeIds)
+        // now: O(1) map lookup instead of an O(M) scan per room, every frame
+        for (const op of openingsByRoom.get(room.id) ?? []) {
             const isHorizontal = op.wall === 'north' || op.wall === 'south'
             const opStart = op.position - op.width / 2
             const opEnd = op.position + op.width / 2
@@ -227,7 +243,7 @@ export function draw2D(
         const isHov = hoveredId === d.id
         const dw = d.width * scale
 
-        // NEW — which face this decor mounts on. Drives both the little side
+        // which face this decor mounts on. Drives both the little side
         // indicator tick below and the label offset direction, so items on
         // opposite faces of the same wall/position don't render their labels
         // on top of each other.
@@ -243,7 +259,7 @@ export function draw2D(
         ctx.fillRect(-dw / 2, -3, dw, 6)
         ctx.strokeRect(-dw / 2, -3, dw, 6)
 
-        // NEW — small tick pointing toward the mounted face, so which side an
+        // small tick pointing toward the mounted face, so which side an
         // item is on is visible directly in the 2D editor, not just in 3D.
         ctx.beginPath()
         ctx.moveTo(0, 3 * faceDir)
@@ -255,7 +271,7 @@ export function draw2D(
 
         // Label drawn in a SEPARATE, un-rotated-by-wall-angle pass so text is
         // always upright and legible, offset outward on the wall's normal —
-        // now also flipped by `faceDir` so labels for opposite-face items don't
+        // flipped by `faceDir` so labels for opposite-face items don't
         // stack on top of each other.
         const normalX = Math.sin(angle) * faceDir, normalZ = -Math.cos(angle) * faceDir
         const labelOffset = 14
@@ -277,58 +293,94 @@ export function draw2D(
         ctx.textBaseline = 'middle'
         ctx.fillText(label, lx, ly)
         ctx.restore()
-        // REMOVED — duplicate un-boxed ctx.fillText(...) block that previously
-        // followed here, rendering the same label a second time at the same
-        // position. Left over from before the pill-background version existed.
     }
     // ── Lights ─────────────────────────────────────────────────────────────
     for (const l of fp.lights ?? []) {
         const isSel = selectedId === l.id
         const isHov = hoveredId === l.id
         const label = LIGHT_FIXTURE_LABELS[l.type] ?? l.type
+        const kind = LIGHT_PLACEMENT_KIND[l.type]
 
-        if (l.type === 'wall_sconce') {
-            // Wall-anchored — mirrors wallDecor's exact resolution + labeled
-            // pill treatment above, since this is the same placement mode.
+        // ── path (string_lights) — dashed polyline through pathNodeIds ──
+        if (kind === 'path') {
+            const nodes = (l.pathNodeIds ?? []).map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean) as LineNode[]
+            if (nodes.length < 2) continue
+            ctx.save()
+            ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.9)' : isHov ? 'rgba(234,179,8,0.8)' : 'rgba(234,179,8,0.6)'
+            ctx.lineWidth = isSel ? 2.5 : 1.5
+            ctx.setLineDash([4, 4])
+            ctx.beginPath()
+            ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
+            for (let i = 1; i < nodes.length; i++) ctx.lineTo(cx(nodes[i]!.x), cy(nodes[i]!.z))
+            ctx.stroke()
+            ctx.setLineDash([])
+            for (const n of nodes) {
+                ctx.beginPath()
+                ctx.arc(cx(n.x), cy(n.z), isSel ? 4 : 3, 0, Math.PI * 2)
+                ctx.fillStyle = 'rgba(234,179,8,0.85)'
+                ctx.fill()
+            }
+            ctx.restore()
+            continue
+        }
+
+        // ── wall-point / wall-strip — resolve wall-anchored position ──
+        if (kind === 'wall-point' || kind === 'wall-strip') {
             let dx: number, dz: number, angle: number
             if (l.segmentNodeIds) {
                 const a = fp.lineNodes.find(n => n.id === l.segmentNodeIds![0])
                 const b = fp.lineNodes.find(n => n.id === l.segmentNodeIds![1])
                 if (!a || !b) continue
-                const t = l.segmentT ?? 0
+                const t = l.segmentT ?? 0.5
                 dx = a.x + (b.x - a.x) * t
                 dz = a.z + (b.z - a.z) * t
                 angle = Math.atan2(b.z - a.z, b.x - a.x)
-            } else {
+            } else if (l.roomId && l.wall) {
                 const room = fp.rooms.find(r => r.id === l.roomId)
-                if (!room || !l.wall) continue
+                if (!room) continue
                 if (l.wall === 'north') { dx = room.x + (l.position ?? 0); dz = room.z; angle = 0 }
                 else if (l.wall === 'south') { dx = room.x + (l.position ?? 0); dz = room.z + room.depth; angle = 0 }
                 else if (l.wall === 'west') { dx = room.x; dz = room.z + (l.position ?? 0); angle = Math.PI / 2 }
                 else { dx = room.x + room.width; dz = room.z + (l.position ?? 0); angle = Math.PI / 2 }
+            } else continue
+
+            const px = cx(dx), pz = cy(dz)
+
+            if (kind === 'wall-strip') {
+                // Strip-length item — draw a short bar like wall decor, not a dot
+                const widthPx = (l.width ?? 1) * scale
+                ctx.save()
+                ctx.translate(px, pz)
+                ctx.rotate(angle)
+                ctx.fillStyle = isSel ? 'rgba(99,102,241,0.7)' : isHov ? 'rgba(255,217,138,0.85)' : 'rgba(255,217,138,0.7)'
+                ctx.fillRect(-widthPx / 2, -3, widthPx, 6)
+                ctx.restore()
+            } else {
+                ctx.save()
+                ctx.beginPath()
+                ctx.arc(px, pz, isSel ? 7 : isHov ? 6 : 5, 0, Math.PI * 2)
+                ctx.fillStyle = isSel ? 'rgba(99,102,241,0.65)' : isHov ? 'rgba(165,168,255,0.7)' : l.color
+                ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.25)'
+                ctx.lineWidth = isSel || isHov ? 1.5 : 1
+                ctx.fill()
+                ctx.stroke()
+                // Spotlight gets a small direction wedge showing aimRotation
+                if (l.type === 'spotlight') {
+                    const aim = l.aimRotation ?? 0
+                    ctx.strokeStyle = 'rgba(0,0,0,0.4)'
+                    ctx.lineWidth = 1.5
+                    ctx.beginPath()
+                    ctx.moveTo(px, pz)
+                    ctx.lineTo(px + Math.sin(aim) * 14, pz - Math.cos(aim) * 14)
+                    ctx.stroke()
+                }
+                ctx.restore()
             }
 
-            ctx.save()
-            ctx.translate(cx(dx), cy(dz))
-            ctx.rotate(angle)
-            ctx.fillStyle = isSel ? 'rgba(99,102,241,0.6)' : isHov ? 'rgba(165,168,255,0.7)' : l.color
-            ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.25)'
-            ctx.lineWidth = isSel || isHov ? 1.5 : 1
-            ctx.beginPath()
-            ctx.arc(0, 0, isSel ? 7 : isHov ? 6 : 5, 0, Math.PI * 2)
-            ctx.fill()
-            ctx.stroke()
-            ctx.restore()
-
-            const normalX = Math.sin(angle), normalZ = -Math.cos(angle)
-            const labelOffset = 14
+            const lx = px, ly = pz + (kind === 'wall-strip' ? 14 : 16)
             ctx.save()
             ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
             const tw = ctx.measureText(label).width
-            const lx = cx(dx) + normalX * labelOffset
-            const ly = cy(dz) + normalZ * labelOffset
-
-            // Background pill (Responsive to Hover and Select)
             ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
             ctx.beginPath()
             ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
@@ -336,59 +388,54 @@ export function draw2D(
             ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.08)'
             ctx.lineWidth = 1
             ctx.stroke()
-
-            // Text color logic
             ctx.fillStyle = isSel ? '#FFFFFF' : isHov ? '#4F46E5' : 'rgba(80,60,40,0.9)'
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             ctx.fillText(label, lx, ly)
             ctx.restore()
-        } else {
-            // Free-placed ceiling/floor types
-            const px = cx(l.x ?? 0), pz = cy(l.z ?? 0)
-            ctx.save()
-            ctx.beginPath()
-            ctx.arc(px, pz, isSel ? 8 : isHov ? 7 : 6, 0, Math.PI * 2)
-            ctx.fillStyle = isSel ? 'rgba(99,102,241,0.65)' : isHov ? 'rgba(165,168,255,0.7)' : l.color
-            ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.25)'
-            ctx.lineWidth = isSel || isHov ? 1.5 : 1
-            ctx.fill()
-            ctx.stroke()
-
-            // Dashed Selection/Hover Outer Ring
-            if (isSel || isHov) {
-                ctx.beginPath()
-                ctx.arc(px, pz, 12, 0, Math.PI * 2)
-                ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.5)' : 'rgba(99,102,241,0.25)'
-                ctx.lineWidth = 1.5
-                ctx.setLineDash([3, 3])
-                ctx.stroke()
-                ctx.setLineDash([])
-            }
-            ctx.restore()
-
-            // Text Label with Background Pill Container for Free-placed items
-            ctx.save()
-            ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-            const tw = ctx.measureText(label).width
-            const lx = px
-            const ly = pz + 16
-
-            ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
-            ctx.beginPath()
-            ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
-            ctx.fill()
-            ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.08)'
-            ctx.lineWidth = 1
-            ctx.stroke()
-
-            ctx.fillStyle = isSel ? '#FFFFFF' : isHov ? '#4F46E5' : 'rgba(80,60,40,0.85)'
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(label, lx, ly)
-            ctx.restore()
+            continue
         }
+
+        // ── free-point — ceiling_pendant, ceiling_recessed, floor_lamp,
+        // track_lighting, chandelier, outdoor_bollard ──
+        const px = cx(l.x ?? 0), pz = cy(l.z ?? 0)
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(px, pz, isSel ? 8 : isHov ? 7 : 6, 0, Math.PI * 2)
+        ctx.fillStyle = isSel ? 'rgba(99,102,241,0.65)' : isHov ? 'rgba(165,168,255,0.7)' : l.color
+        ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.25)'
+        ctx.lineWidth = isSel || isHov ? 1.5 : 1
+        ctx.fill()
+        ctx.stroke()
+        if (isSel || isHov) {
+            ctx.beginPath()
+            ctx.arc(px, pz, 12, 0, Math.PI * 2)
+            ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.5)' : 'rgba(99,102,241,0.25)'
+            ctx.lineWidth = 1.5
+            ctx.setLineDash([3, 3])
+            ctx.stroke()
+            ctx.setLineDash([])
+        }
+        ctx.restore()
+
+        ctx.save()
+        ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
+        const tw = ctx.measureText(label).width
+        const lx = px, ly = pz + 16
+        ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
+        ctx.beginPath()
+        ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
+        ctx.fill()
+        ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.08)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        ctx.fillStyle = isSel ? '#FFFFFF' : isHov ? '#4F46E5' : 'rgba(80,60,40,0.85)'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(label, lx, ly)
+        ctx.restore()
     }
+
     if (drawRect && Math.abs(drawRect.w) > 0.1 && Math.abs(drawRect.d) > 0.1) {
         const rx = cx(Math.min(drawRect.x, drawRect.x + drawRect.w))
         const rz = cy(Math.min(drawRect.z, drawRect.z + drawRect.d))
@@ -495,7 +542,9 @@ export function draw2D(
         ctx.restore()
 
         // Draw openings on line segments
-        for (const op of fp.openings.filter(o => o.roomId === seg.id && o.segmentNodeIds)) {
+        // was: fp.openings.filter(o => o.roomId === seg.id && o.segmentNodeIds)
+        // now: O(1) map lookup instead of an O(M) scan per segment, every frame
+        for (const op of openingsBySegment.get(seg.id) ?? []) {
             const pos = getSegmentOpeningWorldPos(op, fp.lineNodes)
             if (!pos) continue
             const hw = (op.width / 2) * scale
@@ -561,10 +610,16 @@ export function draw2D(
         }
     }
     // ── Closed shapes ──────────────────────────────────────────────────────────
-    for (const nodeIds of deriveClosedPolygons(fp.lineNodes, fp.lineSegments)) {
+    // was: for (const nodeIds of deriveClosedPolygons(fp.lineNodes, fp.lineSegments))
+    // now: caller passes the cached result in (recomputed only when
+    // fp.lineSegments identity changes, i.e. topology actually changed)
+    for (const nodeIds of closedPolygons) {
         const nodes = nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
         if (nodes.length < 3) continue
-        const shapeMatch = fp.closedShapes?.find(s => s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIds.includes(id)))
+        // was: fp.closedShapes?.find(s => s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIds.includes(id)))
+        // now: O(1) map lookup via sorted-id key instead of an O(shapes) scan per polygon
+        const shapeKey = [...nodeIds].sort().join(',')
+        const shapeMatch = shapesIndex.get(shapeKey)
         const isSel = shapeMatch && selectedId === shapeMatch.id
         const isHov = shapeMatch && hoveredId === shapeMatch.id
         ctx.save(); ctx.beginPath(); ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
@@ -576,11 +631,6 @@ export function draw2D(
         ctx.lineWidth = isSel ? 2 : 1
         ctx.setLineDash(isSel ? [] : [4, 3])
         ctx.stroke()
-        ctx.save(); ctx.beginPath(); ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
-        for (let i = 1; i < nodes.length; i++) ctx.lineTo(cx(nodes[i]!.x), cy(nodes[i]!.z))
-        ctx.closePath()
-        ctx.fillStyle = 'rgba(139,123,107,0.12)'; ctx.fill()
-        ctx.strokeStyle = 'rgba(139,123,107,0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.stroke()
         const cx_ = nodes.reduce((s, n) => s + n.x, 0) / nodes.length
         const cz_ = nodes.reduce((s, n) => s + n.z, 0) / nodes.length
         ctx.setLineDash([]); ctx.fillStyle = 'rgba(165,168,255,0.7)'; ctx.font = `${Math.max(9, 11 * zoom)}px system-ui`

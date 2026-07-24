@@ -9,6 +9,7 @@ import { WindowVariant3D } from './window-variant3d';
 import { WallDecorMesh } from '../mesh/wall-decor-mesh';
 import { RoomSceneConfig } from '../FloorPlanEditor';
 import { Railing3D } from './railing-3d';
+import { matchClosedShape } from '../MaterialsPanel';
 
 /* ------------------------------------------------------------------ */
 /* Dual-sided wall material support                                    */
@@ -69,7 +70,41 @@ function resolveWallSides(
     return { interior, exterior }
 }
 
+function segmentBelongsToShape(segNodeIds: string[], shapeNodeIds: string[]): boolean {
+    for (let i = 0; i < shapeNodeIds.length; i++) {
+        const a = shapeNodeIds[i]!
+        const b = shapeNodeIds[(i + 1) % shapeNodeIds.length]!
+        for (let j = 0; j < segNodeIds.length - 1; j++) {
+            const sa = segNodeIds[j]!, sb = segNodeIds[j + 1]!
+            if ((sa === a && sb === b) || (sa === b && sb === a)) return true
+        }
+    }
+    return false
+}
 /* ------------------------------------------------------------------ */
+
+export function insertNodeIntoShapesOnSplit(
+    closedShapes: ClosedShape[] | undefined,
+    fromId: string,
+    toId: string,
+    newNodeId: string,
+): ClosedShape[] | undefined {
+    if (!closedShapes || closedShapes.length === 0) return closedShapes
+    return closedShapes.map((s) => {
+        const ids = s.nodeIds
+        for (let i = 0; i < ids.length; i++) {
+            const a = ids[i]!
+            const b = ids[(i + 1) % ids.length]!
+            if ((a === fromId && b === toId) || (a === toId && b === fromId)) {
+                const next = [...ids];
+                // insert newNodeId right after position i (works for either direction)
+                next.splice(i + 1, 0, newNodeId);
+                return { ...s, nodeIds: next };
+            }
+        }
+        return s;
+    });
+}
 
 function LineWalls3DImpl({
     fp, wallRoughness = 0.85, floorMaterial = 'wood', doorStyle = 'natural', closedShapes, wallColor = '#FFFFFF',
@@ -121,8 +156,7 @@ function LineWalls3DImpl({
     for (const seg of fp.lineSegments ?? []) {
         const nodeIdSet = new Set(seg.nodeIds)
         const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
-            s.nodeIds.length === seg.nodeIds.length &&
-            s.nodeIds.every(id => nodeIdSet.has(id))
+            segmentBelongsToShape(seg.nodeIds, s.nodeIds)
         )
         // Precedence: this-exact-segment override (from the PropsPanel whole-
         // segment picker) > shape-level Area Override > global default.
@@ -147,8 +181,7 @@ function LineWalls3DImpl({
                 const isRoomSelected = interactive && selectedId === seg.id
                 const panels: React.ReactNode[] = []
                 const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
-                    s.nodeIds.length === seg.nodeIds.length &&
-                    s.nodeIds.every(id => new Set(seg.nodeIds).has(id))
+                    segmentBelongsToShape(seg.nodeIds, s.nodeIds)
                 )
                 const wallType = seg.wallType ?? 'solid'
 
@@ -419,14 +452,10 @@ function LineWalls3DImpl({
                 const minZ = Math.min(...zs), maxZ = Math.max(...zs)
                 const worldW = maxX - minX
                 const worldD = maxZ - minZ
-                const nodeIdSet = new Set(nodeIds)
-
-                const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
-                    s.nodeIds.length === nodeIds.length &&
-                    s.nodeIds.every(id => nodeIdSet.has(id))
-                )
+                const matchedShape = matchClosedShape(nodeIds, fp.lineNodes, closedShapes ?? fp.closedShapes ?? [])
                 const shapeMat = matchedShape?.floorMaterial ?? floorMaterial
 
+                const nodeIdSet = new Set(nodeIds)
                 const matchedSeg = (fp.lineSegments ?? []).find(s =>
                     s.nodeIds.length === nodeIds.length &&
                     s.nodeIds.every(id => nodeIdSet.has(id))
@@ -592,7 +621,11 @@ function DerivedFloorShape({
         geo.setAttribute('uv', new THREE.BufferAttribute(uvArr, 2))
 
         return geo
-    }, [nodeIds.join(','), ...nodes.flatMap(n => [n.x, n.z]), minX, minZ, worldW, worldD])
+    }, [
+        nodeIds.join(','),
+        nodes.map(n => `${n.x},${n.z}`).join('|'),   // one fixed-size string dep instead of a spread array
+        minX, minZ, worldW, worldD,
+    ])
 
     return (
         <FloorPiece

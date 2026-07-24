@@ -1,10 +1,15 @@
 import {
+  ClosedShape,
   EditorOpening,
+  EditorRoom,
   FloorPlanState,
+  FURNITURE_LABELS,
   GRID_M,
   LineNode,
   LineSegment,
+  OPENING_VARIANT_LABELS,
   PX_PER_M,
+  STAIRS_LABELS,
 } from "@/components/workspace/lib/constants";
 
 // export function deriveClosedPolygons(
@@ -263,16 +268,57 @@ export function deriveClosedPolygons(
     return _cachedFaces;
   }
 
-  const positive = uniqueFaces.filter((f) => f.signedArea > 0.05);
-  const negative = uniqueFaces.filter((f) => f.signedArea < -0.05);
-  const interiorFaces =
-    positive.length >= negative.length ? positive : negative;
+  // ── Determine each connected component's outer boundary face and ──────
+  // exclude only that one, keeping every other face (regardless of sign)
+  // as an interior room/sub-area. This replaces the old global
+  // positive-vs-negative-count heuristic, which broke as soon as a
+  // partition or extra sub-area shifted the count balance.
+  const parent = new Map<string, string>();
+  function find(x: string): string {
+    while (parent.get(x) !== x) {
+      parent.set(x, parent.get(parent.get(x)!)!);
+      x = parent.get(x)!;
+    }
+    return x;
+  }
+  function union(a: string, b: string) {
+    const ra = find(a),
+      rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
+  for (const id of adj.keys()) parent.set(id, id);
+  for (const [a, neighbors] of adj) {
+    for (const b of neighbors) union(a, b);
+  }
 
-  // REMOVED — console.log(...) here was serializing every face's data on
-  // every call (2x per redraw frame, from draw2D and LineWalls3D both),
-  // which was a significant chunk of the console spam and CPU cost.
-  // REMOVED — duplicate `return interiorFaces.map((f) => f.ids)` line that
-  // followed the real return (dead/unreachable code).
+  const facesByComponent = new Map<string, typeof uniqueFaces>();
+  for (const f of uniqueFaces) {
+    const compId = find(f.ids[0]!);
+    if (!facesByComponent.has(compId)) facesByComponent.set(compId, []);
+    facesByComponent.get(compId)!.push(f);
+  }
+
+  const interiorFaces: typeof uniqueFaces = [];
+  for (const faces of facesByComponent.values()) {
+    if (faces.length === 1) {
+      // A lone face with nothing else in its component IS the room itself
+      // (e.g. a single unpartitioned room) — keep it.
+      interiorFaces.push(...faces);
+      continue;
+    }
+    let outerIdx = 0;
+    let maxAbs = Math.abs(faces[0]!.signedArea);
+    for (let i = 1; i < faces.length; i++) {
+      const a = Math.abs(faces[i]!.signedArea);
+      if (a > maxAbs) {
+        maxAbs = a;
+        outerIdx = i;
+      }
+    }
+    faces.forEach((f, i) => {
+      if (i !== outerIdx) interiorFaces.push(f);
+    });
+  }
 
   const result = interiorFaces.map((f) => f.ids);
   _lastLineNodes = lineNodes;
@@ -367,78 +413,107 @@ export function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+// export function tryConvertClosedLineShape(
+//   fp: FloorPlanState,
+//   newSegId: string,
+// ): FloorPlanState {
+//   const adj = new Map<string, string[]>();
+//   for (const seg of fp.lineSegments) {
+//     for (let i = 0; i < seg.nodeIds.length - 1; i++) {
+//       const a = seg.nodeIds[i]!,
+//         b = seg.nodeIds[i + 1]!;
+//       if (!adj.has(a)) adj.set(a, []);
+//       if (!adj.has(b)) adj.set(b, []);
+//       adj.get(a)!.push(b);
+//       adj.get(b)!.push(a);
+//     }
+//   }
+
+//   const newSeg = fp.lineSegments.find((s) => s.id === newSegId);
+//   if (!newSeg || newSeg.nodeIds.length < 2) return fp;
+
+//   const startId = newSeg.nodeIds[0]!;
+//   const endId = newSeg.nodeIds[newSeg.nodeIds.length - 1]!;
+
+//   function findPath(
+//     from: string,
+//     to: string,
+//     visited: Set<string>,
+//   ): string[] | null {
+//     if (from === to) return [from];
+//     visited.add(from);
+//     for (const next of adj.get(from) ?? []) {
+//       if (visited.has(next)) continue;
+//       if (from === endId && next === startId) continue;
+//       if (from === startId && next === endId) continue;
+//       const path = findPath(next, to, visited);
+//       if (path) return [from, ...path];
+//     }
+//     return null;
+//   }
+
+//   const path = findPath(endId, startId, new Set());
+//   if (!path || path.length < 3) return fp;
+
+//   // Deduplicate — old code put startId at index 0 AND at end of path, causing 4-node triangles
+//   const cycleNodeIds = [...new Set([startId, ...path])];
+//   if (cycleNodeIds.length < 3) return fp;
+
+//   const cycleNodes = cycleNodeIds
+//     .map((id) => fp.lineNodes.find((n) => n.id === id))
+//     .filter(Boolean) as LineNode[];
+//   if (cycleNodes.length < 3) return fp;
+
+//   // Only deduplicate against existing closedShapes, never create a room
+//   const cycleSet = new Set(cycleNodeIds);
+//   const alreadyExists = (fp.closedShapes ?? []).some(
+//     (s) =>
+//       s.nodeIds.length === cycleNodeIds.length &&
+//       s.nodeIds.every((id) => cycleSet.has(id)),
+//   );
+//   if (alreadyExists) return fp;
+
+//   return {
+//     ...fp,
+//     closedShapes: [
+//       ...(fp.closedShapes ?? []),
+//       {
+//         id: uid(),
+//         nodeIds: cycleNodeIds,
+//         label: `Area ${(fp.closedShapes ?? []).length + 1}`,
+//         color: "#FFFFFF",
+//       },
+//     ],
+//   };
+// }
+
 export function tryConvertClosedLineShape(
   fp: FloorPlanState,
-  newSegId: string,
+  newSegId?: string,
 ): FloorPlanState {
-  const adj = new Map<string, string[]>();
-  for (const seg of fp.lineSegments) {
-    for (let i = 0; i < seg.nodeIds.length - 1; i++) {
-      const a = seg.nodeIds[i]!,
-        b = seg.nodeIds[i + 1]!;
-      if (!adj.has(a)) adj.set(a, []);
-      if (!adj.has(b)) adj.set(b, []);
-      adj.get(a)!.push(b);
-      adj.get(b)!.push(a);
-    }
+  const polygons = deriveClosedPolygons(fp.lineNodes, fp.lineSegments);
+  const existing = fp.closedShapes ?? [];
+
+  const newShapes: ClosedShape[] = [];
+  for (const nodeIds of polygons) {
+    if (nodeIds.length < 3) continue;
+    const idSet = new Set(nodeIds);
+    const alreadyExists = existing.some(
+      (s) =>
+        s.nodeIds.length === nodeIds.length &&
+        s.nodeIds.every((id) => idSet.has(id)),
+    );
+    if (alreadyExists) continue;
+    newShapes.push({
+      id: uid(),
+      nodeIds,
+      label: `Area ${existing.length + newShapes.length + 1}`,
+      color: "#FFFFFF",
+    });
   }
 
-  const newSeg = fp.lineSegments.find((s) => s.id === newSegId);
-  if (!newSeg || newSeg.nodeIds.length < 2) return fp;
-
-  const startId = newSeg.nodeIds[0]!;
-  const endId = newSeg.nodeIds[newSeg.nodeIds.length - 1]!;
-
-  function findPath(
-    from: string,
-    to: string,
-    visited: Set<string>,
-  ): string[] | null {
-    if (from === to) return [from];
-    visited.add(from);
-    for (const next of adj.get(from) ?? []) {
-      if (visited.has(next)) continue;
-      if (from === endId && next === startId) continue;
-      if (from === startId && next === endId) continue;
-      const path = findPath(next, to, visited);
-      if (path) return [from, ...path];
-    }
-    return null;
-  }
-
-  const path = findPath(endId, startId, new Set());
-  if (!path || path.length < 3) return fp;
-
-  // Deduplicate — old code put startId at index 0 AND at end of path, causing 4-node triangles
-  const cycleNodeIds = [...new Set([startId, ...path])];
-  if (cycleNodeIds.length < 3) return fp;
-
-  const cycleNodes = cycleNodeIds
-    .map((id) => fp.lineNodes.find((n) => n.id === id))
-    .filter(Boolean) as LineNode[];
-  if (cycleNodes.length < 3) return fp;
-
-  // Only deduplicate against existing closedShapes, never create a room
-  const cycleSet = new Set(cycleNodeIds);
-  const alreadyExists = (fp.closedShapes ?? []).some(
-    (s) =>
-      s.nodeIds.length === cycleNodeIds.length &&
-      s.nodeIds.every((id) => cycleSet.has(id)),
-  );
-  if (alreadyExists) return fp;
-
-  return {
-    ...fp,
-    closedShapes: [
-      ...(fp.closedShapes ?? []),
-      {
-        id: uid(),
-        nodeIds: cycleNodeIds,
-        label: `Area ${(fp.closedShapes ?? []).length + 1}`,
-        color: "#FFFFFF",
-      },
-    ],
-  };
+  if (newShapes.length === 0) return fp;
+  return { ...fp, closedShapes: [...existing, ...newShapes] };
 }
 
 export function toWorld(canvasPx: number, panPx: number, zoom: number) {
@@ -479,4 +554,168 @@ export function polygonAreaM2(
     a += p1.x * p2.z - p2.x * p1.z;
   }
   return Math.abs(a / 2);
+}
+
+export function labelForHover(id: string, fp: FloorPlanState): string {
+  if (id.includes("::wall::")) {
+    const wall = id.split("::wall::")[1];
+    return `Wall (${wall})`;
+  }
+  const op = fp.openings.find((o) => o.id === id);
+  if (op) return OPENING_VARIANT_LABELS[op.variant ?? op.type] ?? op.type;
+  const room = fp.rooms.find((r) => r.id === id);
+  if (room) return room.label;
+  const f = (fp.furniture ?? []).find((x) => x.id === id);
+  if (f) return FURNITURE_LABELS[f.type];
+  const s = (fp.stairs ?? []).find((x) => x.id === id);
+  if (s) return STAIRS_LABELS[s.type];
+  if (fp.lineSegments.some((sg) => sg.id === id)) return "Wall segment";
+  return "";
+}
+
+export function roomContainsPoint(room: EditorRoom, wx: number, wz: number) {
+  return (
+    wx >= room.x &&
+    wx <= room.x + room.width &&
+    wz >= room.z &&
+    wz <= room.z + room.depth
+  );
+}
+
+export function getWallHit(
+  room: EditorRoom,
+  wx: number,
+  wz: number,
+  thresholdM: number,
+): "north" | "south" | "east" | "west" | null {
+  const d = {
+    north: Math.abs(wz - room.z),
+    south: Math.abs(wz - (room.z + room.depth)),
+    west: Math.abs(wx - room.x),
+    east: Math.abs(wx - (room.x + room.width)),
+  };
+  const min = Math.min(d.north, d.south, d.west, d.east);
+  if (min > thresholdM) return null;
+  return Object.entries(d).find(([, v]) => v === min)![0] as
+    | "north"
+    | "south"
+    | "east"
+    | "west";
+}
+
+// Group nodes into connected components so multi-building/disconnected
+// wall graphs are handled correctly, not just a single blob.
+const parent = new Map<string, string>();
+function find(x: string): string {
+  while (parent.get(x) !== x) {
+    parent.set(x, parent.get(parent.get(x)!)!);
+    x = parent.get(x)!;
+  }
+  return x;
+}
+function union(a: string, b: string) {
+  const ra = find(a),
+    rb = find(b);
+  if (ra !== rb) parent.set(ra, rb);
+}
+
+export function repairDisconnectedNodes(
+  fp: FloorPlanState,
+  tolerance = 0.05,
+): FloorPlanState {
+  let nodes = [...fp.lineNodes];
+  let segments = fp.lineSegments.map((s) => ({
+    ...s,
+    nodeIds: [...s.nodeIds],
+  }));
+
+  // ── Pass 1: merge near-duplicate coincident nodes ──────────────────────
+  const idRemap = new Map<string, string>(); // dropped id -> surviving id
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    if (!a || idRemap.has(a.id)) continue;
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      if (!b || idRemap.has(b.id)) continue;
+      if (Math.hypot(a.x - b.x, a.z - b.z) < tolerance) {
+        idRemap.set(b.id, a.id);
+      }
+    }
+  }
+
+  if (idRemap.size > 0) {
+    nodes = nodes.filter((n) => !idRemap.has(n.id));
+    segments = segments.map((s) => ({
+      ...s,
+      nodeIds: s.nodeIds.map((id) => idRemap.get(id) ?? id),
+    }));
+    // A merge can create a degenerate segment (consecutive duplicate ids,
+    // e.g. a 2-node wall whose two endpoints just became the same node) —
+    // drop those, and collapse any other consecutive duplicates in-place.
+    segments = segments
+      .map((s) => ({
+        ...s,
+        nodeIds: s.nodeIds.filter(
+          (id, idx) => idx === 0 || id !== s.nodeIds[idx - 1],
+        ),
+      }))
+      .filter((s) => s.nodeIds.length >= 2);
+  }
+
+  // ── Pass 2: split any segment whose span a node now sits on ────────────
+  // (handles the case where a node was already correctly de-duplicated in
+  // pass 1 for one wall, but still floats mid-span on a DIFFERENT wall —
+  // e.g. the partition's far end lands on the boundary wall it's meant to
+  // connect to.)
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+  function pointOnSegment(
+    px: number,
+    pz: number,
+    ax: number,
+    az: number,
+    bx: number,
+    bz: number,
+  ) {
+    const dx = bx - ax,
+      dz = bz - az;
+    const len2 = dx * dx + dz * dz;
+    if (len2 < 1e-9) return null;
+    const t = ((px - ax) * dx + (pz - az) * dz) / len2;
+    if (t <= 0.001 || t >= 0.999) return null; // at/beyond an endpoint, not a true mid-span hit
+    const projX = ax + t * dx,
+      projZ = az + t * dz;
+    const dist = Math.hypot(px - projX, pz - projZ);
+    return dist < tolerance ? t : null;
+  }
+
+  let changed = true;
+  let guard = 0;
+  while (changed && guard++ < 200) {
+    changed = false;
+    outer: for (const node of nodes) {
+      for (let si = 0; si < segments.length; si++) {
+        const seg = segments[si]!;
+        for (let k = 0; k < seg.nodeIds.length - 1; k++) {
+          const aId = seg.nodeIds[k]!,
+            bId = seg.nodeIds[k + 1]!;
+          if (aId === node.id || bId === node.id) continue;
+          const a = nodeMap.get(aId),
+            b = nodeMap.get(bId);
+          if (!a || !b) continue;
+          const t = pointOnSegment(node.x, node.z, a.x, a.z, b.x, b.z);
+          if (t !== null) {
+            // Split: replace [..., aId, bId, ...] with [..., aId, node.id, bId, ...]
+            const newNodeIds = [...seg.nodeIds];
+            newNodeIds.splice(k + 1, 0, node.id);
+            segments[si] = { ...seg, nodeIds: newNodeIds };
+            changed = true;
+            break outer;
+          }
+        }
+      }
+    }
+  }
+
+  return { ...fp, lineNodes: nodes, lineSegments: segments };
 }

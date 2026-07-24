@@ -140,7 +140,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 <StringLightsMesh key={l.id} light={l} fp={fp} selected={interactiveMode && selectedId === l.id}
                     onSelect={interactiveMode ? () => onSelect?.(l.id) : undefined} />
             ))}
-            {(fp.lights ?? []).map(light => {
+            {(fp.lights ?? []).filter(l => l.type !== 'string_lights').map(light => {
                 let pos: [number, number, number]
                 let rot = 0
                 const T = 0.15, normalOffset = T / 2 + 0.05

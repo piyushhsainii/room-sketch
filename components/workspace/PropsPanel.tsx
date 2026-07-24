@@ -1,4 +1,4 @@
-import { deriveClosedPolygons, snapFurniture, snapM } from "@/lib/helpers"
+import { deriveClosedPolygons, snapFurniture, snapM, uid } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
 import { ClosedShape, EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_LABELS, FURNITURE_MATERIALS, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
@@ -44,8 +44,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     )
     const shape: ClosedShape | undefined = derivedPolygonForSelection
         ? (matchClosedShape(derivedPolygonForSelection, fp.lineNodes, fp.closedShapes ?? [])
-            ?? { id: selectedId!, nodeIds: derivedPolygonForSelection, label: undefined })
-        : undefined
+            ?? { id: selectedId!, nodeIds: derivedPolygonForSelection, label: undefined }) : undefined
+
     const room = fp.rooms.find(r => r.id === selectedId)
     const opening = fp.openings.find(o => o.id === selectedId)
     const node = fp.lineNodes.find(n => n.id === selectedId)
@@ -129,10 +129,13 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
     const patchShape = (patch: Partial<ClosedShape>) => {
         if (!shape) return
-        const existing = (fp.closedShapes ?? []).find(s => s.id === shape.id)
+        const shapeNodeSet = new Set(shape.nodeIds)
+        const existing = (fp.closedShapes ?? []).find(
+            s => s.nodeIds.length === shape.nodeIds.length && s.nodeIds.every(id => shapeNodeSet.has(id))
+        )
         const shapes = existing
-            ? (fp.closedShapes ?? []).map(s => s.id === shape.id ? { ...s, ...patch } : s)
-            : [...(fp.closedShapes ?? []), { ...shape, ...patch }]
+            ? (fp.closedShapes ?? []).map(s => s === existing ? { ...s, ...patch } : s)
+            : [...(fp.closedShapes ?? []), { ...shape, id: uid(), ...patch }]  // always a real fresh id when creating
         onChange({ ...fp, closedShapes: shapes })
     }
 

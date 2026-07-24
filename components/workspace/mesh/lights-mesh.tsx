@@ -170,26 +170,21 @@ export function LightFixtureMesh({
     // plus an actual point light since (unlike the purely decorative wall
     // decor version) this needs to illuminate the room. ──
     if (light.type === 'shelf_strip') {
+        const w = (light.width ?? 1) * scale
         return (
-            <group {...clickHandlers}>
-                <WallDecorMesh
-                    decor={{
-                        id: light.id,
-                        type: 'led_strip',
-                        roomId: light.roomId ?? '',
-                        wall: light.wall,
-                        position: light.position ?? 0,
-                        width: light.width ?? 1,
-                        heightOffset: light.heightOffset,
-                        scale,
-                        segmentNodeIds: light.segmentNodeIds,
-                        segmentT: light.segmentT,
-                    } as any}
-                    angle={rotation}
-                    basePos={position}
-                />
+            <group position={position} rotation={[0, rotation, 0]} {...clickHandlers}>
+                <mesh position={[0, 0, 0.017]}>
+                    <boxGeometry args={[w * 0.96, 0.022, 0.008]} />
+                    <meshStandardMaterial
+                        color={light.color}
+                        emissive={light.color}
+                        emissiveIntensity={2.2}
+                        roughness={0.3}
+                        toneMapped={false}
+                    />
+                </mesh>
                 <pointLight
-                    position={position}
+                    position={[0, -0.02, 0.03]}
                     color={light.color}
                     intensity={light.intensity}
                     distance={2.5}
@@ -197,8 +192,8 @@ export function LightFixtureMesh({
                     castShadow={false}
                 />
                 {selected && (
-                    <mesh position={position} renderOrder={999}>
-                        <boxGeometry args={[(light.width ?? 1) * 1.05, 0.12, 0.12]} />
+                    <mesh renderOrder={999}>
+                        <boxGeometry args={[w * 1.05, 0.1, 0.1]} />
                         <meshBasicMaterial color="#3B82F6" wireframe transparent opacity={0.7} depthTest={false} />
                     </mesh>
                 )}

@@ -19,7 +19,8 @@ export type MaterialCategory =
   | "pvc-panel"
   | "glass"
   | "leather"
-  | "outdoor";
+  | "outdoor"
+  | "wicker";
 
 export type MaterialDomain =
   | "wall"

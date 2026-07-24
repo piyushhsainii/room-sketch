@@ -1,14 +1,3 @@
-// components/workspace/MaterialsPanel.tsx
-//
-// CHANGES FROM YOUR VERSION (search for "// HISTORY:" to find every one):
-// 1. New required prop `pushHistory: () => void`.
-// 2. Every place that calls `onChange(...)` (global materials, room
-//    overrides) or `onChangeFp(...)` (area overrides) now calls
-//    `pushHistory()` immediately before it. Each swatch click is already a
-//    single discrete action — same granularity as how tool handlers in
-//    FloorPlanEditor already do `pushHistory(); setFp(...)` for e.g.
-//    placing furniture — so no debouncing/settle logic is needed here,
-//    unlike a continuous slider.
 'use client'
 
 import React, { useMemo, useState } from 'react'
@@ -55,7 +44,8 @@ const CATEGORY_META: Record<MaterialCategory, { label: string; icon: string; ord
     glass: { label: 'Glass', icon: '🔷', order: 9 },
     solid: { label: 'Solid Colors', icon: '🎨', order: 10 },
     leather: { label: 'Leather', icon: '', order: 11 },
-    outdoor: { label: 'Outdoor', icon: '', order: 11 }
+    outdoor: { label: 'Outdoor', icon: '', order: 12 },
+    wicker: { label: 'Wicker', icon: '', order: 13 }
 }
 
 function Swatch({

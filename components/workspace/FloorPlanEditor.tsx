@@ -30,6 +30,8 @@ import { PresetsPanel } from '../ui/PresetPanel'
 import { useDelayedUnmount } from './hooks/useDelayedAmt'
 import { insertNodeIntoShapesOnSplit } from './objects/line-walls-3d'
 import { DragKindEntry, DragOrigin, pastThreshold, runActiveDrag } from '@/lib/drag-controller'
+import { FloatingMenu } from '../ui/FloatingMenu'
+import { CameraViewPickerV2 } from '../ui/CameraViewPicker'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -2391,6 +2393,42 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     useEffect(() => { sceneConfigRef.current = sceneConfig }, [sceneConfig])
 
 
+    const [previewOpen, setPreviewOpen] = useState(true)
+    // Fraction of the row's width given to the 3D pane when preview is open.
+    // 0.46 matches your old fixed 46% split as the starting point.
+    const [splitRatio, setSplitRatio] = useState(0.46)
+    const splitContainerRef = useRef<HTMLDivElement>(null)
+    const dragStateRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null)
+
+    const handleDividerMouseMove = useCallback((e: MouseEvent) => {
+        const drag = dragStateRef.current
+        if (!drag) return
+        const dx = e.clientX - drag.startX
+        // Divider sits between 2D (left) and 3D (right) — dragging right shrinks
+        // the 3D pane, dragging left grows it.
+        const deltaRatio = -dx / drag.containerWidth
+        const next = Math.min(0.75, Math.max(0.22, drag.startRatio + deltaRatio))
+        setSplitRatio(next)
+    }, [])
+
+    const handleDividerMouseUp = useCallback(() => {
+        dragStateRef.current = null
+        window.removeEventListener('mousemove', handleDividerMouseMove)
+        window.removeEventListener('mouseup', handleDividerMouseUp)
+    }, [handleDividerMouseMove])
+
+    const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+        const container = splitContainerRef.current
+        if (!container) return
+        dragStateRef.current = {
+            startX: e.clientX,
+            startRatio: splitRatio,
+            containerWidth: container.getBoundingClientRect().width,
+        }
+        window.addEventListener('mousemove', handleDividerMouseMove)
+        window.addEventListener('mouseup', handleDividerMouseUp)
+    }, [splitRatio, handleDividerMouseMove, handleDividerMouseUp])
+
     const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
 
     return (
@@ -2416,7 +2454,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 projectId={projectId}
             />
             {/* ── Body ─────────────────────────────────────────────────────────── */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+            <div ref={splitContainerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
                 {/* ── Left tool panel ────────────────────────────────── */}
                 <div
@@ -2664,94 +2702,27 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 <div style={{ width: 1, background: THEME.border, flexShrink: 0 }} />
 
                 {/* ── Right: 3D preview + collapsible dock ─────────────────────── */}
-                <div style={{ width: rightPanelOpen ? '46%' : 30, flexShrink: 0, display: 'flex', transition: 'width 200ms ease', overflow: 'hidden' }}>
+                <div style={{ width: 1, background: THEME.border, flexShrink: 0 }} />
+                {previewOpen && (
+                    <>
+                        <div
+                            onMouseDown={handleDividerMouseDown}
+                            style={{
+                                width: 6, flexShrink: 0, cursor: 'col-resize', position: 'relative', zIndex: 20,
+                                background: 'transparent',
+                            }}
+                        >
+                            <div style={{ position: 'absolute', left: 2, top: 0, bottom: 0, width: 2, background: THEME.border }} />
+                        </div>
 
-                    <button
-                        ref={chevronRef}
-                        onClick={() => setRightPanelOpen(o => !o)}
-                        style={{
-                            width: 30, flexShrink: 0, border: 'none', borderLeft: `1px solid ${THEME.border}`,
-                            background: THEME.bgPanel, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                        title={rightPanelOpen ? 'Collapse panel' : 'Expand panel'}
-                    >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2" style={{ transform: rightPanelOpen ? 'none' : 'rotate(180deg)' }}>
-                            <polyline points="15 18 9 12 15 6" />
-                        </svg>
-                    </button>
-
-                    {rightPanelOpen && (
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: THEME.bgPanel, minWidth: 0 }}>
-                            {/* 3D viewport */}
+                        {/* 3D pane */}
+                        <div
+                            style={{
+                                width: `${splitRatio * 100}%`, flexShrink: 0, display: 'flex', flexDirection: 'column',
+                                overflow: 'hidden', background: THEME.bgPanel, minWidth: 260, position: 'relative',
+                            }}
+                        >
                             <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#EFEFEC' }}>
-                                <div style={{ position: 'absolute', top: 10, left: 12, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: THEME.textMuted }}>3D PREVIEW</span>
-                                    <button
-                                        onClick={() => setWalkMode(w => !w)}
-                                        disabled={interactiveMode}
-                                        style={{
-                                            height: 26, padding: '0 10px', borderRadius: 6,
-                                            border: walkMode ? '1px solid rgba(16,185,129,0.5)' : `1px solid ${THEME.borderStrong}`,
-                                            background: walkMode ? 'rgba(16,185,129,0.12)' : THEME.bgPanel,
-                                            color: walkMode ? '#059669' : THEME.textMuted,
-                                            fontSize: 10, fontWeight: 600, cursor: 'pointer',
-                                            display: 'flex', alignItems: 'center', gap: 4, transition: 'all 150ms',
-                                            boxShadow: THEME.shadow,
-                                        }}
-                                    >
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                                            <circle cx="12" cy="7" r="4" />
-                                        </svg>
-                                        {walkMode ? 'Exit Walk' : 'Walk Mode'}
-                                    </button>
-                                    <button
-                                        onClick={handleToggleInteractive}
-                                        style={{
-                                            height: 26, padding: '0 10px', borderRadius: 6,
-                                            border: interactiveMode ? '1px solid rgba(99,102,241,0.5)' : `1px solid ${THEME.borderStrong}`,
-                                            background: interactiveMode ? 'rgba(99,102,241,0.12)' : THEME.bgPanel,
-                                            color: interactiveMode ? THEME.accent : THEME.textMuted,
-                                            fontSize: 10, fontWeight: 600, cursor: 'pointer',
-                                            display: 'flex', alignItems: 'center', gap: 4, transition: 'all 150ms',
-                                            boxShadow: THEME.shadow,
-                                        }}
-                                    >
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                                        </svg>
-                                        {interactiveMode ? 'Interactive: On' : 'Interactive: Off'}
-                                    </button>
-                                    {
-                                        scene3DRef && onSave !== undefined &&
-                                        <CameraViewPicker
-                                            fp={fp}
-                                            setFp={setFp}
-                                            sceneConfig={sceneConfig}
-                                            pushHistory={pushHistory}
-                                            scene3DRef={scene3DRef}
-                                            onSave={onSave}
-                                        />
-                                    }
-                                </div>
-
-                                {/* {walkMode && (
-                                    <div style={{
-                                        position: 'absolute', top: 44, left: 12, zIndex: 5,
-                                        background: THEME.bgPanel, border: '1px solid rgba(16,185,129,0.3)',
-                                        borderRadius: 8, padding: '8px 12px', fontSize: 10,
-                                        color: '#059669', lineHeight: 1.8, boxShadow: THEME.shadowLg,
-                                    }}>
-                                        <div style={{ fontWeight: 700, marginBottom: 2 }}> WALK MODE</div>
-                                        <div>Click canvas to lock cursor</div>
-                                        <div><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>W A S D</kbd> Move</div>
-                                        <div><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>Mouse</kbd> Look around</div>
-                                        <div><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace' }}>ESC</kbd> Unlock cursor</div>
-                                    </div>
-                                )} */}
-
-                                {/* <SceneErrorBoundary fallback={null} > */}
-                                {/* <Suspense fallback={null} > */}
                                 <ResilientCanvas
                                     shadows
                                     gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', stencil: false, depth: true }}
@@ -2784,50 +2755,40 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                         }
                                         overlappingIds={overlappingIds}
                                     />
-                                    {/* <CameraOrientationReporter gizmoApiRef={gizmoApiRef} /> */}
                                 </ResilientCanvas>
-
+                                {/* FloatingMenu no longer renders here — see below, it's now
+                    fixed-positioned and mounted regardless of previewOpen. */}
                             </div>
                         </div>
-                    )}
-                </div>
+                    </>
+                )}
             </div>
-            {/* <Dock
-                items={[
-                    {
-                        id: 'properties', label: 'Properties', onClick: () => setRightTab('properties'), icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
-                            </svg>
-                        )
-                    },
-                    {
-                        id: 'scene', label: 'Scene', onClick: () => setRightTab('scene'), icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M4 4h16v16H4zM4 12h16M12 4v16" />
-                            </svg>
-                        )
-                    }
-                ]}
-                activeId={rightTab}
-                expanded={sheetOpen}
-                onExpandedChange={setSheetOpen}
-
-            > */}
-            {/* <div style={{ display: 'flex', gap: 2, padding: 10, borderBottom: `1px solid ${THEME.border}`, flexShrink: 0 }}>
-                    {(['properties', 'scene'] as const).map(t => (
-                        <button key={t} onClick={() => setRightTab(t)} style={{
-                            height: 26, padding: '0 10px', borderRadius: 5, border: 'none', flex: 1,
-                            background: rightTab === t ? THEME.accent : 'transparent',
-                            color: rightTab === t ? 'white' : THEME.textMuted,
-                            fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 150ms',
-                        }}>
-                            {t === 'properties' ? 'PROPERTIES' : "SCENE"}
-                        </button>
-                    ))}
-                </div> */}
-            {/* </Dock> */}
+            {typeof document !== 'undefined' && createPortal(
+                <div style={{ position: 'fixed', top: 64, right: 16, zIndex: 9998 }}>
+                    <FloatingMenu
+                        walkMode={walkMode}
+                        onToggleWalkMode={() => setWalkMode(w => !w)}
+                        interactiveMode={interactiveMode}
+                        onToggleInteractive={handleToggleInteractive}
+                        previewOpen={previewOpen}
+                        onTogglePreview={() => setPreviewOpen(o => !o)}
+                        cameraViewPickerSlot={
+                            scene3DRef && onSave !== undefined ? (
+                                <CameraViewPickerV2
+                                    embedded
+                                    fp={fp}
+                                    setFp={setFp}
+                                    sceneConfig={sceneConfig}
+                                    pushHistory={pushHistory}
+                                    scene3DRef={scene3DRef}
+                                    onSave={onSave}
+                                />
+                            ) : null
+                        }
+                    />
+                </div>,
+                document.body
+            )}
             <FloatingDock
                 activeId={sheetOpen ? rightTab : null}
                 items={[

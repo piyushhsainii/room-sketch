@@ -394,6 +394,13 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         <PropField label="Height (m)"><NumInput value={opening.height} min={0.3} max={2.5} step={0.1} onChange={v => patchOpening({ height: v })} /></PropField>
                         <PropField label="Sill (m)"><NumInput value={opening.sillHeight} min={0} max={2} step={0.1} onChange={v => patchOpening({ sillHeight: v })} /></PropField>
                     </>}
+                    {opening.type === 'window' && (opening.variant === 'window-casement' || opening.variant === 'window-sliding') && (
+                        <PropField label="State">
+                            <Button variant="secondary" onClick={() => patchOpening({ isOpen: !opening.isOpen })}>
+                                {opening.isOpen ? '🪟 Open' : '🪟 Closed'}
+                            </Button>
+                        </PropField>
+                    )}
                     <PropField label="Position (m)"><NumInput value={opening.position} min={0.3} max={20} step={0.1} onChange={v => patchOpening({ position: v })} /></PropField>
                     {opening.type === 'door' && <>
                         <PropField label="Swing">

@@ -386,6 +386,8 @@ function LineWalls3DImpl({
                                             op={op}
                                             angle={angle}
                                             basePos={[ox, glazingCenterY, oz]}
+                                            interactive={interactive}
+                                            onToggleOpen={onToggleDoorOpen ? () => onToggleDoorOpen(op.id) : undefined}
                                         />
                                     )
                                 } else if (op.type === 'door') {

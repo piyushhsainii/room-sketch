@@ -5,15 +5,6 @@ import { Scene3DHandle } from '../workspace/3DScene'
 import { CameraView, getBuiltInViews } from '../workspace/lib/camera'
 import { uid } from '@/lib/helpers'
 
-// ---------------------------------------------------------------------------
-// Persistence — reuses the same onSave(fp, sceneConfig) the editor's manual
-// Save button already calls, so saved views land in the same DB column
-// (floorplan_editor_state) that the loader actually reads back on mount.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Naming popover — replaces window.prompt()
-// ---------------------------------------------------------------------------
 
 function SaveViewPopover({
     onConfirm,
@@ -72,9 +63,17 @@ function SaveViewPopover({
     )
 }
 
-// ---------------------------------------------------------------------------
-// Main view-picker control
-// ---------------------------------------------------------------------------
+const EMBEDDED_DARK = {
+    bg: '#18181B',
+    border: 'rgba(255,255,255,0.08)',
+    text: '#E4E4E7',
+    textMuted: '#A1A1AA',
+    accent: '#C7C9FF',
+    divider: 'rgba(255,255,255,0.1)',
+    shadow: '0 10px 30px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.25)',
+    errorBg: 'rgba(239,68,68,0.15)',
+    errorText: '#FCA5A5',
+}
 
 export function CameraViewPickerV2({
     fp,
@@ -170,20 +169,20 @@ export function CameraViewPickerV2({
                     height: embedded ? 30 : undefined,
                     borderRadius: embedded ? 999 : 8,
                     border: embedded ? 'none' : `1px solid ${THEME.border}`,
-                    background: embedded ? (open ? 'rgba(99,102,241,0.12)' : 'transparent') : THEME.bgPanel,
-                    color: embedded ? (open ? THEME.accent : THEME.textMuted) : undefined,
+                    background: embedded ? (open ? 'rgba(165,168,255,0.18)' : 'transparent') : THEME.bgPanel,
+                    color: embedded ? (open ? EMBEDDED_DARK.accent : EMBEDDED_DARK.textMuted) : undefined,
                     cursor: 'pointer', fontSize: embedded ? 11 : 13, fontWeight: embedded ? 600 : undefined,
                 }}
             >
                 📷 Views
-                {savingState === 'saving' && <span style={{ fontSize: 10, color: THEME.textMuted }}>saving…</span>}
+                {savingState === 'saving' && <span style={{ fontSize: 10, color: embedded ? EMBEDDED_DARK.textMuted : THEME.textMuted }}>saving…</span>}
             </button>
 
             {open && (
                 <div style={embedded ? {
                     position: 'absolute', top: 40, right: 0,
-                    background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 8, minWidth: 190,
-                    boxShadow: THEME.shadowLg,
+                    background: EMBEDDED_DARK.bg, border: `1px solid ${EMBEDDED_DARK.border}`, borderRadius: 8, minWidth: 190,
+                    boxShadow: EMBEDDED_DARK.shadow,
                 } : {
                     position: 'absolute', top: 32, right: 0, background: THEME.bgPanel,
                     border: `1px solid ${THEME.border}`, borderRadius: 8, minWidth: 190,
@@ -192,7 +191,9 @@ export function CameraViewPickerV2({
                     <div style={{ padding: 6 }}>
                         {errorMsg && (
                             <div style={{
-                                fontSize: 11, color: '#c0392b', background: '#fdecea',
+                                fontSize: 11,
+                                color: embedded ? EMBEDDED_DARK.errorText : '#c0392b',
+                                background: embedded ? EMBEDDED_DARK.errorBg : '#fdecea',
                                 borderRadius: 6, padding: '6px 8px', marginBottom: 6
                             }}>
                                 {errorMsg}
@@ -202,7 +203,13 @@ export function CameraViewPickerV2({
                             <button
                                 key={v.id}
                                 onClick={() => { scene3DRef.current?.flyTo(v); setOpen(false) }}
-                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                style={{
+                                    display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: 12,
+                                    border: 'none', background: 'transparent', cursor: 'pointer',
+                                    color: embedded ? EMBEDDED_DARK.text : undefined, borderRadius: embedded ? 6 : 0,
+                                }}
+                                onMouseEnter={embedded ? (e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)') : undefined}
+                                onMouseLeave={embedded ? (e => e.currentTarget.style.background = 'transparent') : undefined}
                             >
                                 {v.label}
                             </button>
@@ -210,19 +217,28 @@ export function CameraViewPickerV2({
 
                         {(fp.savedViews ?? []).length > 0 && (
                             <>
-                                <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
+                                <div style={{ height: 1, background: embedded ? EMBEDDED_DARK.divider : THEME.border, margin: '4px 0' }} />
                                 {fp.savedViews!.map(v => (
                                     <div key={v.id} style={{ display: 'flex', alignItems: 'center' }}>
                                         <button
                                             onClick={() => { scene3DRef.current?.flyTo(v); setOpen(false) }}
-                                            style={{ flex: 1, textAlign: 'left', padding: '6px 8px', fontSize: 12, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                            style={{
+                                                flex: 1, textAlign: 'left', padding: '6px 8px', fontSize: 12,
+                                                border: 'none', background: 'transparent', cursor: 'pointer',
+                                                color: embedded ? EMBEDDED_DARK.text : undefined, borderRadius: embedded ? 6 : 0,
+                                            }}
+                                            onMouseEnter={embedded ? (e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)') : undefined}
+                                            onMouseLeave={embedded ? (e => e.currentTarget.style.background = 'transparent') : undefined}
                                         >
                                             {v.label}
                                         </button>
                                         <button
                                             onClick={() => deleteView(v.id)}
                                             title="Delete view"
-                                            style={{ padding: '4px 8px', fontSize: 11, border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted }}
+                                            style={{
+                                                padding: '4px 8px', fontSize: 11, border: 'none', background: 'transparent', cursor: 'pointer',
+                                                color: embedded ? EMBEDDED_DARK.textMuted : THEME.textMuted,
+                                            }}
                                         >
                                             ✕
                                         </button>
@@ -231,7 +247,7 @@ export function CameraViewPickerV2({
                             </>
                         )}
 
-                        <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
+                        <div style={{ height: 1, background: embedded ? EMBEDDED_DARK.divider : THEME.border, margin: '4px 0' }} />
 
                         {naming ? (
                             <SaveViewPopover
@@ -241,7 +257,11 @@ export function CameraViewPickerV2({
                         ) : (
                             <button
                                 onClick={() => { setNaming(true); setErrorMsg(null) }}
-                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: 12, color: THEME.accent, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                                style={{
+                                    display: 'block', width: '100%', textAlign: 'left', padding: '6px 8px', fontSize: 12,
+                                    color: embedded ? EMBEDDED_DARK.accent : THEME.accent, border: 'none', background: 'transparent', cursor: 'pointer',
+                                    borderRadius: embedded ? 6 : 0,
+                                }}
                             >
                                 + Save current view
                             </button>

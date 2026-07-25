@@ -1,10 +1,17 @@
 import { useState } from 'react'
-import { THEME } from '../workspace/FloorPlanEditor'
 
-// ─────────────────────────────────────────────────────────────────────────
-// Small shared building blocks for the dock — kept local since nothing else
-// needs a pill-shaped icon+label toggle button yet.
-// ─────────────────────────────────────────────────────────────────────────
+
+const DOCK = {
+    bg: '#18181B',
+    border: 'rgba(255,255,255,0.08)',
+    text: '#E4E4E7',
+    textMuted: '#A1A1AA',
+    textFaint: '#71717A',
+    activeBg: 'rgba(165,168,255,0.18)',
+    activeText: '#C7C9FF',
+    divider: 'rgba(255,255,255,0.1)',
+    shadow: '0 10px 30px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.25)',
+}
 
 function DockButton({
     active, disabled, onClick, icon, label,
@@ -22,12 +29,14 @@ function DockButton({
             title={label}
             style={{
                 height: 30, padding: '0 10px', borderRadius: 999, border: 'none',
-                background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
-                color: active ? THEME.accent : disabled ? THEME.textFaint : THEME.textMuted,
+                background: active ? DOCK.activeBg : 'transparent',
+                color: active ? DOCK.activeText : disabled ? DOCK.textFaint : DOCK.textMuted,
                 fontSize: 11, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
                 transition: 'background 120ms, color 120ms',
             }}
+            onMouseEnter={e => { if (!active && !disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+            onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
         >
             {icon}
             {label}
@@ -36,15 +45,13 @@ function DockButton({
 }
 
 function DockDivider() {
-    return <div style={{ width: 1, height: 18, background: THEME.border, flexShrink: 0 }} />
+    return <div style={{ width: 1, height: 18, background: DOCK.divider, flexShrink: 0 }} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// FloatingDock — bottom-center floating pill over the 3D viewport, replacing
-// the old absolutely-positioned top-left button row. Everything that lived
-// there before (Walk Mode, Interactive toggle, Camera Views) moves in here,
-// plus a new Preview toggle and a Display menu (left empty per current
-// scope — Grid/annotations to be filled in later).
+// FloatingDock — Walk Mode, Interactive toggle, Display menu (placeholder
+// content), Camera Views, Preview toggle. Rendered fixed top-right by the
+// caller; this component only owns its own visual chrome.
 // ─────────────────────────────────────────────────────────────────────────
 
 export function FloatingMenu({
@@ -72,8 +79,8 @@ export function FloatingMenu({
         <div
             style={{
                 display: 'flex', alignItems: 'center', gap: 2,
-                background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 999,
-                padding: '5px 6px', boxShadow: THEME.shadowLg,
+                background: DOCK.bg, border: `1px solid ${DOCK.border}`, borderRadius: 999,
+                padding: '5px 6px', boxShadow: DOCK.shadow,
             }}
         >
             <DockButton
@@ -117,14 +124,33 @@ export function FloatingMenu({
                     <div
                         style={{
                             position: 'absolute', top: 40, right: 0,
-                            minWidth: 200, background: THEME.bgPanel, border: `1px solid ${THEME.border}`,
-                            borderRadius: 10, padding: 8, boxShadow: THEME.shadowLg,
+                            minWidth: 200, background: DOCK.bg, border: `1px solid ${DOCK.border}`,
+                            borderRadius: 10, padding: 6, boxShadow: DOCK.shadow,
                         }}
                     >
                         {/* Intentionally empty — Grid toggle / Floor plan annotations land
-                            here later, per current scope ("leave it blank for now"). */}
-                        <div style={{ fontSize: 11, color: THEME.textFaint, padding: '6px 8px' }}>
-                            Coming soon
+                            here later, per current scope ("leave it blank for now"). Styled
+                            as inert-looking rows so it reads as "coming soon", matching the
+                            dark dropdown look from the reference. */}
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                            borderRadius: 6, fontSize: 12.5, color: DOCK.text,
+                        }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DOCK.textMuted} strokeWidth="2">
+                                <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                                <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+                            </svg>
+                            <span style={{ flex: 1 }}>Grid</span>
+                        </div>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                            borderRadius: 6, fontSize: 12.5, color: DOCK.text,
+                        }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DOCK.textMuted} strokeWidth="2">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                            </svg>
+                            <span style={{ flex: 1 }}>Floor plan annotations</span>
+                            <span style={{ color: DOCK.textFaint }}>›</span>
                         </div>
                     </div>
                 )}

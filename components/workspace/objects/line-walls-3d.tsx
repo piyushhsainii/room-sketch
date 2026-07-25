@@ -41,6 +41,22 @@ function resolveWallSides(
     return { interior, exterior }
 }
 
+function shapesForSegment(segNodeIds: string[], shapes: ClosedShape[]): ClosedShape[] {
+    return shapes.filter(s => segmentBelongsToShape(segNodeIds, s.nodeIds))
+}
+
+function pointInPolygon(px: number, pz: number, nodeIds: string[], nodesById: Map<string, LineNode>): boolean {
+    const pts = nodeIds.map(id => nodesById.get(id)).filter(Boolean) as LineNode[]
+    let inside = false
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const xi = pts[i]!.x, zi = pts[i]!.z, xj = pts[j]!.x, zj = pts[j]!.z
+        const intersect = ((zi > pz) !== (zj > pz)) &&
+            (px < (xj - xi) * (pz - zi) / (zj - zi) + xi)
+        if (intersect) inside = !inside
+    }
+    return inside
+}
+
 function segmentBelongsToShape(segNodeIds: string[], shapeNodeIds: string[]): boolean {
     for (let i = 0; i < shapeNodeIds.length; i++) {
         const a = shapeNodeIds[i]!
@@ -155,7 +171,6 @@ function LineWalls3DImpl({
                     segmentBelongsToShape(seg.nodeIds, s.nodeIds)
                 )
                 const wallType = seg.wallType ?? 'solid'
-
                 for (let i = 0; i < nodes.length - 1; i++) {
                     const a = nodes[i]!, b = nodes[i + 1]!
                     const dx = b.x - a.x, dz = b.z - a.z
@@ -166,24 +181,48 @@ function LineWalls3DImpl({
                     const mcz = (a.z + b.z) / 2
                     const angle = Math.atan2(dz, dx)
 
-                    // Openings are rejected at placement time on non-solid segments
-                    // (see handleMouseDown), so this should normally be empty for
-                    // railing/open segments — but if data ever arrives from an older
-                    // save or an external edit, treat as solid-with-openings rather
-                    // than silently dropping the openings.
                     const segOpenings = fp.openings.filter(op =>
                         op.roomId === seg.id &&
                         op.segmentNodeIds?.[0] === a.id &&
                         op.segmentNodeIds?.[1] === b.id
                     )
 
+                    // ── NEW: find every shape this piece borders (not just the first) ──
+                    const matchingShapes = shapesForSegment(seg.nodeIds, closedShapes ?? fp.closedShapes ?? [])
+                    const nodesById = new Map(fp.lineNodes.map(n => [n.id, n]))
+                    const nx = Math.sin(angle), nz = -Math.cos(angle)
+                    const probeDist = 0.3
+
+                    let shapeFacingA: ClosedShape | undefined
+                    let shapeFacingB: ClosedShape | undefined
+
+                    if (matchingShapes.length === 2) {
+                        const [s1, s2] = matchingShapes
+                        const insideS1AtPlusZ = pointInPolygon(mcx + nx * probeDist, mcz + nz * probeDist, s1!.nodeIds, nodesById)
+                        if (insideS1AtPlusZ) { shapeFacingA = s1; shapeFacingB = s2 }
+                        else { shapeFacingA = s2; shapeFacingB = s1 }
+                    } else {
+                        shapeFacingA = matchingShapes[0]
+                        shapeFacingB = undefined
+                    }
+
                     const pieceKey = `${seg.id}_${i}`
-                    const pieceOverride = matchedShape?.wallOverrides?.[pieceKey] as WallSideOverride
-                    const baseMat = segWallMaterial.get(seg.id) ?? wallMaterial
-                    const baseColor = segWallColor.get(seg.id) ?? wallColor
-                    const baseExteriorMat = segExteriorWallMaterial.get(seg.id)
-                    const baseExteriorColor = segExteriorWallColor.get(seg.id)
-                    const { interior, exterior } = resolveWallSides(pieceOverride, baseMat, baseColor, baseExteriorMat, baseExteriorColor)
+                    const overrideA = shapeFacingA?.wallOverrides?.[pieceKey] as WallSideOverride
+                    const overrideB = shapeFacingB?.wallOverrides?.[pieceKey] as WallSideOverride
+
+                    const baseMatA = shapeFacingA?.wallMaterial ?? segWallMaterial.get(seg.id) ?? wallMaterial
+                    const baseColorA = segWallColor.get(seg.id) ?? wallColor
+                    const baseMatB = shapeFacingB?.wallMaterial ?? segExteriorWallMaterial.get(seg.id) ?? baseMatA
+                    const baseColorB = segExteriorWallColor.get(seg.id) ?? baseColorA
+
+                    const interior = { mat: overrideA?.material ?? baseMatA, color: overrideA?.color ?? baseColorA }
+                    const exterior = shapeFacingB
+                        ? { mat: overrideB?.material ?? baseMatB, color: overrideB?.color ?? baseColorB }
+                        : {
+                            mat: overrideA?.exteriorMaterial ?? segExteriorWallMaterial.get(seg.id) ?? interior.mat,
+                            color: overrideA?.exteriorColor ?? segExteriorWallColor.get(seg.id) ?? interior.color,
+                        }
+
                     const pieceId = `${seg.id}::piece::${i}`
                     const isPieceSelected = interactive && selectedId === pieceId
 

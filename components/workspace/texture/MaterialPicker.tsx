@@ -4,44 +4,6 @@ import { COLOR, EASE, RADIUS, SPACE } from './inspector-ui'
 
 const MAX_CATEGORY_HEIGHT = 216 // ~3 rows before internal scroll kicks in
 
-const SCROLLBAR_STYLE_ID = 'inspector-themed-scrollbar'
-
-/** Injects a themed thin/rounded scrollbar once per document. Firefox gets
- *  scrollbar-color/-width via the class; WebKit gets the ::-webkit-scrollbar
- *  rules, which can only be defined in a real stylesheet, not inline styles. */
-function useThemedScrollbar() {
-    useEffect(() => {
-        if (document.getElementById(SCROLLBAR_STYLE_ID)) return
-        const style = document.createElement('style')
-        style.id = SCROLLBAR_STYLE_ID
-        style.textContent = `
-            .inspector-scroll {
-                scrollbar-width: thin;
-                scrollbar-color: ${COLOR.borderStrong} transparent;
-            }
-            .inspector-scroll::-webkit-scrollbar {
-                width: 6px;
-                height: 6px;
-            }
-            .inspector-scroll::-webkit-scrollbar-track {
-                background: transparent;
-            }
-            .inspector-scroll::-webkit-scrollbar-thumb {
-                background-color: transparent;
-                border-radius: 999px;
-                transition: background-color 150ms ${EASE};
-            }
-            .inspector-scroll:hover::-webkit-scrollbar-thumb {
-                background-color: ${COLOR.borderStrong};
-            }
-            .inspector-scroll::-webkit-scrollbar-thumb:hover {
-                background-color: ${COLOR.accent};
-            }
-        `
-        document.head.appendChild(style)
-    }, [])
-}
-
 export function MaterialTexturePicker({
     items,
     currentId,

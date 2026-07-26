@@ -1,11 +1,14 @@
 import * as THREE from 'three'
 
-export function Railing3D({ len, wallRoughness = 0.6, color = '#8A8A8A' }: {
+export function Railing3D({ len, wallRoughness = 0.6, color = '#8A8A8A', height }: {
     len: number
     wallRoughness?: number
     color?: string
+    height?: number
 }) {
-    const railHeight = 0.9   // waist-height handrail
+    // Waist-height handrail, but never taller than the segment's own
+    // effective height (e.g. a 0.6m parapet shouldn't grow a 0.9m rail).
+    const railHeight = Math.min(0.9, height ?? 0.9)
     const postThickness = 0.04
     const railThickness = 0.05
     const balusterSpacing = 0.12
@@ -25,17 +28,14 @@ export function Railing3D({ len, wallRoughness = 0.6, color = '#8A8A8A' }: {
 
     return (
         <group>
-            {/* Bottom rail */}
             <mesh position={[0, 0.04, 0]} castShadow>
                 <boxGeometry args={[len, 0.03, railThickness]} />
                 <meshStandardMaterial color={color} roughness={wallRoughness} metalness={0.2} />
             </mesh>
-            {/* Top handrail */}
             <mesh position={[0, railHeight, 0]} castShadow>
                 <boxGeometry args={[len, railThickness, railThickness]} />
                 <meshStandardMaterial color={color} roughness={wallRoughness} metalness={0.2} />
             </mesh>
-            {/* End posts — slightly thicker/taller for visual anchoring */}
             <mesh position={[-len / 2, railHeight / 2, 0]} castShadow>
                 <boxGeometry args={[postThickness, railHeight + 0.03, postThickness]} />
                 <meshStandardMaterial color={color} roughness={wallRoughness} metalness={0.25} />
@@ -44,7 +44,6 @@ export function Railing3D({ len, wallRoughness = 0.6, color = '#8A8A8A' }: {
                 <boxGeometry args={[postThickness, railHeight + 0.03, postThickness]} />
                 <meshStandardMaterial color={color} roughness={wallRoughness} metalness={0.25} />
             </mesh>
-            {/* Balusters */}
             {balusters}
         </group>
     )

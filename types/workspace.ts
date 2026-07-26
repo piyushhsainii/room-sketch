@@ -69,9 +69,14 @@ export type SceneJSON = {
     >;
   }[];
   line_nodes?: { id: string; x: number; z: number }[];
-  line_segments?: { id: string; node_ids: string[]; thickness?: number }[];
-  lights?: SceneLight[]; // was an inline literal locked to the old 4 types
-  outdoor_objects: SceneOutdoorObject[]; // NEW
+  line_segments?: {
+    id: string;
+    node_ids: string[];
+    thickness?: number;
+    height?: number;
+  }[];
+  lights?: SceneLight[];
+  outdoor_objects: SceneOutdoorObject[];
   saved_views?: {
     id: string;
     label: string;

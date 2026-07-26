@@ -18,29 +18,6 @@ type WallSideOverride = {
     exteriorColor?: string
 } | undefined
 
-function resolveWallSides(
-    pieceOverride: WallSideOverride,
-    baseMat: WallMaterial,
-    baseColor: string,
-    baseExteriorMat?: WallMaterial,
-    baseExteriorColor?: string,
-) {
-    const interior = {
-        mat: pieceOverride?.material ?? baseMat,
-        color: pieceOverride?.color ?? baseColor,
-    }
-    const exterior = {
-        // Precedence: this piece's own exterior override > the segment's
-        // exterior default (set via the whole-segment picker in PropsPanel)
-        // > this piece's resolved interior (old single-material behavior).
-        // That last fallback is what keeps every wall that's never had an
-        // exterior configured looking exactly as it did before this existed.
-        mat: pieceOverride?.exteriorMaterial ?? baseExteriorMat ?? interior.mat,
-        color: pieceOverride?.exteriorColor ?? baseExteriorColor ?? interior.color,
-    }
-    return { interior, exterior }
-}
-
 function shapesForSegment(segNodeIds: string[], shapes: ClosedShape[]): ClosedShape[] {
     return shapes.filter(s => segmentBelongsToShape(segNodeIds, s.nodeIds))
 }
@@ -68,7 +45,6 @@ function segmentBelongsToShape(segNodeIds: string[], shapeNodeIds: string[]): bo
     }
     return false
 }
-/* ------------------------------------------------------------------ */
 
 export function insertNodeIntoShapesOnSplit(
     closedShapes: ClosedShape[] | undefined,
@@ -170,7 +146,12 @@ function LineWalls3DImpl({
                 const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
                     segmentBelongsToShape(seg.nodeIds, s.nodeIds)
                 )
-                const wallType = seg.wallType ?? 'solid'
+                // Effective height for this segment — per-segment override falls
+                // back to global roomHeight. Computed independently here (and
+                // again in Railing3D's caller-supplied `height` prop below) per
+                // Step 3, since wallType already branches between solid/railing/
+                // open rendering paths and each must stay internally consistent.
+                const effH = seg.height ?? H
                 for (let i = 0; i < nodes.length - 1; i++) {
                     const a = nodes[i]!, b = nodes[i + 1]!
                     const dx = b.x - a.x, dz = b.z - a.z
@@ -235,9 +216,8 @@ function LineWalls3DImpl({
                     const wallType = seg.wallType ?? 'solid'
                     const segT = seg.thickness ?? 0.15
                     const outlineMesh = (
-                        <mesh position={[mcx, H / 2, mcz]} rotation={[0, -angle, 0]} renderOrder={999}>
-                            {/* OLD: <boxGeometry args={[len * 1.01, H * 1.01, T * 1.4]} /> */}
-                            <boxGeometry args={[len * 1.01, H * 1.01, segT * 1.4]} />
+                        <mesh position={[mcx, effH / 2, mcz]} rotation={[0, -angle, 0]} renderOrder={999}>
+                            <boxGeometry args={[len * 1.01, effH * 1.01, segT * 1.4]} />
                             <meshBasicMaterial
                                 color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
                                 wireframe
@@ -257,12 +237,12 @@ function LineWalls3DImpl({
                                 <group key={`${seg.id}_${i}`}>
                                     {interactive && (
                                         <mesh
-                                            position={[mcx, H / 2, mcz]}
+                                            position={[mcx, effH / 2, mcz]}
                                             rotation={[0, -angle, 0]}
                                             {...handlers}
                                             visible={false}
                                         >
-                                            <boxGeometry args={[len, H, T]} />
+                                            <boxGeometry args={[len, effH, T]} />
                                             <meshBasicMaterial />
                                         </mesh>
                                     )}
@@ -273,11 +253,11 @@ function LineWalls3DImpl({
                             panels.push(
                                 <group key={`${seg.id}_${i}`} position={[mcx, 0, mcz]} rotation={[0, -angle, 0]}>
                                     <group {...handlers}>
-                                        <Railing3D len={len} wallRoughness={wallRoughness} color={interior.color} />
+                                        <Railing3D len={len} wallRoughness={wallRoughness} color={interior.color} height={effH} />
                                     </group>
                                     {showOutline && (
-                                        <mesh position={[0, H / 2, 0]} renderOrder={999}>
-                                            <boxGeometry args={[len * 1.01, H * 1.01, T * 1.4]} />
+                                        <mesh position={[0, effH / 2, 0]} renderOrder={999}>
+                                            <boxGeometry args={[len * 1.01, effH * 1.01, T * 1.4]} />
                                             <meshBasicMaterial
                                                 color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
                                                 wireframe
@@ -293,24 +273,20 @@ function LineWalls3DImpl({
                             panels.push(
                                 <group key={`${seg.id}_${i}`}>
                                     <mesh
-                                        position={[mcx, H / 2, mcz]}
+                                        position={[mcx, effH / 2, mcz]}
                                         rotation={[0, -angle, 0]}
                                         castShadow
                                         receiveShadow
                                         {...handlers}
                                     >
-                                        <boxGeometry args={[len, H, T]} />
-                                        <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={len} height={H} depth={T} />
+
+                                        <boxGeometry args={[len, effH, segT]} />
+                                        <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={len} height={effH} depth={segT} />
                                     </mesh>
-                                    {/* Exterior overlay — sits just outside the box's -z face.
-                                        Falls back to `interior` when no exterior override is
-                                        set, so it's visually a no-op (just an extra draw call)
-                                        until someone actually configures a different exterior
-                                        texture for this piece. */}
-                                    <group position={[mcx, H / 2, mcz]} rotation={[0, -angle, 0]}>
-                                        <mesh position={[0, 0, -(T / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}>
-                                            <planeGeometry args={[len, H]} />
-                                            <WallMat mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={len} height={H} depth={0.01} />
+                                    <group position={[mcx, effH / 2, mcz]} rotation={[0, -angle, 0]}>
+                                        <mesh position={[0, 0, -(segT / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}>
+                                            <planeGeometry args={[len, effH]} />
+                                            <WallMat mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={len} height={effH} depth={0.01} />
                                         </mesh>
                                     </group>
                                     {showOutline && outlineMesh}
@@ -335,28 +311,24 @@ function LineWalls3DImpl({
                                 panels.push(
                                     <group key={`${seg.id}_${i}_l${si}`}>
                                         <mesh
-                                            position={[wx, H / 2, wz]}
+                                            position={[wx, effH / 2, wz]}
                                             rotation={[0, -angle, 0]}
                                             castShadow
                                             receiveShadow
                                             {...handlers}
                                         >
-                                            {/* OLD: <boxGeometry args={[segLen, H, T]} /> */}
-                                            <boxGeometry args={[segLen, H, segT]} />
-                                            {/* OLD: ... depth={T} /> */}
-                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={segLen} height={H} depth={segT} />
+                                            <boxGeometry args={[segLen, effH, segT]} />
+                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={segLen} height={effH} depth={segT} />
                                         </mesh>
-                                        <group position={[wx, H / 2, wz]} rotation={[0, -angle, 0]}>
-                                            {/* OLD: <mesh position={[0, 0, -(T / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}> */}
+                                        <group position={[wx, effH / 2, wz]} rotation={[0, -angle, 0]}>
                                             <mesh position={[0, 0, -(segT / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}>
-                                                <planeGeometry args={[segLen, H]} />
-                                                <WallMat mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={segLen} height={H} depth={0.01} />
+                                                <planeGeometry args={[segLen, effH]} />
+                                                <WallMat mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={segLen} height={effH} depth={0.01} />
                                             </mesh>
                                         </group>
                                         {showOutline && (
-                                            <mesh position={[wx, H / 2, wz]} rotation={[0, -angle, 0]} renderOrder={999}>
-                                                {/* OLD: <boxGeometry args={[segLen * 1.01, H * 1.01, T * 1.4]} /> */}
-                                                <boxGeometry args={[segLen * 1.01, H * 1.01, segT * 1.4]} />
+                                            <mesh position={[wx, effH / 2, wz]} rotation={[0, -angle, 0]} renderOrder={999}>
+                                                <boxGeometry args={[segLen * 1.01, effH * 1.01, segT * 1.4]} />
                                                 <meshBasicMaterial
                                                     color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
                                                     wireframe
@@ -373,7 +345,10 @@ function LineWalls3DImpl({
                             if (op) {
                                 const opPos2 = (op.segmentT ?? 0) * len
 
-                                const headerH = H - op.height
+                                // Header uses the segment's effective height, not the
+                                // global roomHeight, so a header on a partial-height
+                                // wall doesn't extend past that wall's own top.
+                                const headerH = effH - op.height
                                 if (headerH > 0.02) {
                                     const hx = a.x + (dx / len) * opPos2
                                     const hz = a.z + (dz / len) * opPos2
@@ -386,9 +361,7 @@ function LineWalls3DImpl({
                                             receiveShadow
                                             {...handlers}
                                         >
-                                            {/* OLD: <boxGeometry args={[op.width, headerH, T]} /> */}
                                             <boxGeometry args={[op.width, headerH, segT]} />
-                                            {/* OLD: ... depth={T} /> */}
                                             <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} />
                                         </mesh>
                                     )
@@ -517,11 +490,16 @@ function LineWalls3DImpl({
                 const owningSeg = (fp.lineSegments ?? []).find(seg => seg.nodeIds.includes(node.id))
                 const nodeMat = owningSeg ? (segWallMaterial.get(owningSeg.id) ?? wallMaterial) : wallMaterial
                 const nodeT = owningSeg?.thickness ?? 0.15
+                // Node cylinders are drawn at each shared corner. When two
+                // segments of different heights meet at a node, this uses
+                // whichever segment matched first — a full per-node blend
+                // isn't attempted here, same scope as before this feature.
+                const nodeH = owningSeg?.height ?? H
 
                 return (
-                    <mesh key={node.id} position={[node.x, H / 2, node.z]} castShadow receiveShadow>
-                        <cylinderGeometry args={[nodeT / 2, nodeT / 2, H, 8]} />
-                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={nodeT} height={H} depth={nodeT} />
+                    <mesh key={node.id} position={[node.x, nodeH / 2, node.z]} castShadow receiveShadow>
+                        <cylinderGeometry args={[nodeT / 2, nodeT / 2, nodeH, 8]} />
+                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={nodeT} height={nodeH} depth={nodeT} />
                     </mesh>
                 )
             })}
@@ -555,13 +533,8 @@ function LineWalls3DImpl({
     )
 }
 
-// Memoized export — LineWalls3D rebuilds every wall panel, opening cutout,
-// and floor shape geometry on every render. None of that needs to re-run
-// just because the 2D editor's hover/pan/tooltip state changed elsewhere in
-// FloorPlanEditor — same fix as FurnitureMesh/StairsMesh.
 export const LineWalls3D = React.memo(LineWalls3DImpl)
 
-// Separate component so the floor mesh can carry its own hover state cleanly.
 function FloorPiece({
     geometry, shapeMat, worldW, worldD, interactive, roomId, selected, onSelect,
 }: {
@@ -619,7 +592,6 @@ function FloorPiece({
         </group>
     )
 }
-
 
 function DerivedFloorShape({
     nodeIds, nodes, minX, minZ, worldW, worldD,

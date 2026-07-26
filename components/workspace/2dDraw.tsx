@@ -4,15 +4,6 @@ import { LIGHT_FIXTURE_LABELS, LIGHT_PLACEMENT_KIND } from "./lights-constant";
 import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./lib/outdoor-constants";
 import { FURNITURE_FOOTPRINTS } from "./lib/furniture-constants";
 
-// NOTE — deriveClosedPolygons is intentionally NOT imported/called here anymore.
-// It's an expensive graph traversal that only needs to re-run when wall
-// topology (fp.lineSegments) actually changes, not on every redraw. The
-// caller now computes it once (cached, keyed on lineSegments identity) and
-// passes the result in via `closedPolygons`. Same story for the openings
-// filter (was O(rooms × openings) + O(segments × openings) per frame, now
-// two Map lookups) and the closedShapes .find() (was O(shapes × polygons)
-// per frame, now a Map lookup). See caller-side caching helpers.
-
 export function draw2D(
     ctx: CanvasRenderingContext2D,
     fp: FloorPlanState,
@@ -521,7 +512,6 @@ export function draw2D(
         if (seg.closed) ctx.closePath()
         ctx.stroke()
         ctx.setLineDash([])
-
         // Segment length labels
         for (let i = 0; i < nodes.length - 1; i++) {
             const a = nodes[i]!, b = nodes[i + 1]!
@@ -540,10 +530,7 @@ export function draw2D(
             ctx.restore()
         }
         ctx.restore()
-
         // Draw openings on line segments
-        // was: fp.openings.filter(o => o.roomId === seg.id && o.segmentNodeIds)
-        // now: O(1) map lookup instead of an O(M) scan per segment, every frame
         for (const op of openingsBySegment.get(seg.id) ?? []) {
             const pos = getSegmentOpeningWorldPos(op, fp.lineNodes)
             if (!pos) continue
@@ -608,11 +595,27 @@ export function draw2D(
             }
             ctx.restore()
         }
+        if (seg.height !== undefined && seg.height !== fp.roomHeight) {
+            for (let i = 0; i < nodes.length - 1; i++) {
+                const a = nodes[i]!, b = nodes[i + 1]!
+                const midX = cx((a.x + b.x) / 2), midZ = cy((a.z + b.z) / 2)
+                ctx.save()
+                ctx.font = `600 ${Math.max(8, 9 * zoom)}px system-ui`
+                const label = `H: ${seg.height.toFixed(2)}m`
+                const tw = ctx.measureText(label).width
+                ctx.fillStyle = 'rgba(234,179,8,0.9)'
+                ctx.beginPath()
+                ctx.roundRect(midX - tw / 2 - 4, midZ + 8, tw + 8, 14, 3)
+                ctx.fill()
+                ctx.fillStyle = '#1E1B18'
+                ctx.textAlign = 'center'
+                ctx.textBaseline = 'middle'
+                ctx.fillText(label, midX, midZ + 15)
+                ctx.restore()
+            }
+        }
     }
     // ── Closed shapes ──────────────────────────────────────────────────────────
-    // was: for (const nodeIds of deriveClosedPolygons(fp.lineNodes, fp.lineSegments))
-    // now: caller passes the cached result in (recomputed only when
-    // fp.lineSegments identity changes, i.e. topology actually changed)
     for (const nodeIds of closedPolygons) {
         const nodes = nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
         if (nodes.length < 3) continue

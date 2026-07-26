@@ -320,8 +320,12 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 <Card>
                     <SectionLabel>Appearance</SectionLabel>
                     <PropField label="Thickness (m)">
-                        <NumInput value={seg.thickness ?? 0.15} min={0.02} max={2} step={0.01}
-                            onChange={v => patchSegment({ thickness: v })} />
+                        <RangeRow
+                            value={Math.round((seg.thickness ?? 0.15) * 100)}
+                            onChange={v => patchSegment({ thickness: v / 100 })}
+                            format={v => `${(v / 100).toFixed(2)}m`}
+                            min={2} max={200} step={1}
+                        />
                     </PropField>
                     <PropField label="Wall type">
                         <SegmentedControl
@@ -333,6 +337,28 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             value={seg.wallType ?? 'solid'}
                             onChange={wt => patchSegment({ wallType: wt })}
                         />
+                    </PropField>
+                    <PropField label="Height (m)">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+                            <RangeRow
+                                value={Math.round((seg.height ?? fp.roomHeight) * 100)}
+                                onChange={v => patchSegment({ height: v / 100 })}
+                                format={v => `${(v / 100).toFixed(2)}m`}
+                                min={10} max={1000} step={5}
+                            />
+                            {seg.height !== undefined && (
+                                <button
+                                    onClick={() => patchSegment({ height: undefined })}
+                                    style={{
+                                        alignSelf: 'flex-start', fontSize: 10.5, color: COLOR.accent,
+                                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                        textDecoration: 'underline',
+                                    }}
+                                >
+                                    Reset to room height ({fp.roomHeight.toFixed(2)}m)
+                                </button>
+                            )}
+                        </div>
                     </PropField>
                     <PropField label="Side">
                         <SegmentedControl

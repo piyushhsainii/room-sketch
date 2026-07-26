@@ -214,7 +214,7 @@ export interface EditorOpening {
     segmentNodeIds?: string[]
     segmentT?: number
     material?: DoorStyle
-    isOpen?: boolean   // NEW — persisted open/closed state, default false (closed)
+    isOpen?: boolean
 }
 export type StairsType = 'stairs-straight' | 'stairs-l' | 'stairs-u' | 'stairs-spiral' | 'stairs-ramp' | 'elevator'
 
@@ -229,19 +229,6 @@ export type DoorStyle =
     | 'metal_steel'
     | 'panel_white'
 
-// export const DOOR_MATERIALS: { id: DoorStyle; label: string; swatch: string; textured: boolean }[] = [
-//     { id: 'wood_oak', label: 'Oak', swatch: '#C8A878', textured: true },
-//     { id: 'wood_dark', label: 'Dark Wood', swatch: '#4A3220', textured: true },
-//     { id: 'wood_white', label: 'White', swatch: '#F0EDE8', textured: true },
-//     { id: 'glass_frosted', label: 'Frosted Glass', swatch: '#C8D8E4', textured: false },
-//     { id: 'glass_clear', label: 'Clear Glass', swatch: '#B8D0E0', textured: false },
-//     { id: 'metal_steel', label: 'Steel', swatch: '#9AABB8', textured: true },
-//     { id: 'panel_white', label: 'Panel White', swatch: '#F5F2EE', textured: true },
-// ]
-
-// export const DOOR_STYLES: { value: DoorStyle; label: string; color: string; textured: boolean }[] =
-//     DOOR_MATERIALS.map(d => ({ value: d.id, label: d.label, color: d.swatch, textured: d.textured }))
-
 export type PlacedStairs = {
     id: string
     type: StairsType
@@ -250,6 +237,7 @@ export type PlacedStairs = {
     width: number   // footprint
     depth: number
     rotation: number // radians
+    anchorSegmentId?: string
 }
 
 export type FloorPlanState = {
@@ -312,6 +300,7 @@ export type LineSegment = {
     thickness: number
     closed: boolean
     wallType?: WallType
+    height?: number
 }
 
 

@@ -59,6 +59,12 @@ export function floorPlanStateToSceneJSON(
         height: o.height,
         sillHeight: o.sillHeight,
       }));
+    const line_segments = (fp.lineSegments ?? []).map((s) => ({
+      id: s.id,
+      node_ids: s.nodeIds,
+      thickness: s.thickness,
+      height: s.height,
+    }));
 
     const roomCfg = cfg.rooms.find((r) => r.roomId === room.id);
 
@@ -192,10 +198,6 @@ export function sceneJSONToFloorPlanState(
   const rooms: EditorRoom[] = [];
   const roomConfigs: RoomSceneConfig[] = [];
   const openings: EditorOpening[] = [];
-
-  // Reverse map: serialized room id ("room_1") → freshly generated editor
-  // room id — built during room reconstruction below, then used to resolve
-  // each light's room_id back to a live editor room id.
   const roomIdReverseMap = new Map<string, string>();
 
   let lineNodes: LineNode[] = [];
@@ -264,8 +266,8 @@ export function sceneJSONToFloorPlanState(
       nodeIds: s.node_ids,
       thickness: s.thickness ?? 0.15,
       closed: false,
+      height: s.height,
     }));
-
     closedShapes = (json.closed_shapes ?? []).map((s) => ({
       id: s.id,
       nodeIds: s.node_ids,
@@ -289,11 +291,6 @@ export function sceneJSONToFloorPlanState(
     width: l.width, // NEW
     aimRotation: l.aim_rotation, // NEW
     aimTilt: l.aim_tilt, // NEW
-    // pathNodeIds references raw lineNode ids directly (unlike roomId, line
-    // node ids are NOT remapped through roomIdReverseMap during load — see
-    // `lineNodes = json.line_nodes.map(...)` above, which preserves the
-    // original ids verbatim) — so no reverse-lookup needed here, a straight
-    // passthrough is correct.
     pathNodeIds: l.path_node_ids, // NEW
     bulbCount: l.bulb_count, // NEW
     heightOffset: l.height_offset,

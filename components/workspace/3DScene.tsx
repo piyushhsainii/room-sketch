@@ -224,16 +224,23 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                     onSelect={interactiveMode ? () => onSelect?.(o.id) : undefined}
                 />
             ))}
-            {cfg.showFurniture !== false && (fp.stairs ?? []).map(s => (
-                <group
-                    key={s.id}
-                    onClick={interactiveMode ? (e) => { e.stopPropagation(); onSelect?.(s.id) } : undefined}
-                    onPointerOver={interactiveMode ? () => { document.body.style.cursor = 'pointer' } : undefined}
-                    onPointerOut={interactiveMode ? () => { document.body.style.cursor = 'auto' } : undefined}
-                >
-                    <StairsMesh s={s} roomHeight={fp.roomHeight} />
-                </group>
-            ))}
+            {cfg.showFurniture !== false && (fp.stairs ?? []).map(s => {
+                const anchorSeg = s.anchorSegmentId
+                    ? fp.lineSegments?.find(seg => seg.id === s.anchorSegmentId)
+                    : undefined
+                const effectiveHeight = anchorSeg?.height ?? fp.roomHeight
+
+                return (
+                    <group
+                        key={s.id}
+                        onClick={interactiveMode ? (e) => { e.stopPropagation(); onSelect?.(s.id) } : undefined}
+                        onPointerOver={interactiveMode ? () => { document.body.style.cursor = 'pointer' } : undefined}
+                        onPointerOut={interactiveMode ? () => { document.body.style.cursor = 'auto' } : undefined}
+                    >
+                        <StairsMesh s={s} roomHeight={effectiveHeight} />
+                    </group>
+                )
+            })}
             {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
                 <group key={f.id} /* ...existing handlers */>
                     <FurnitureMesh

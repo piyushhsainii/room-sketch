@@ -6,58 +6,78 @@ else is a render helper, dumb display component, or a panel that patches
 state via `(value, onChange)` callbacks — nothing else holds its own copy of
 plan data.
 
-**Recurring bug pattern, seen 5+ times across this project's history**:
-fields/types get silently renamed, dropped, or duplicated into a second
-parallel source of truth when a file is rewritten wholesale instead of
-incrementally patched. Before editing any file, view its actual current
-contents — don't assume a prior description matches what's live. After
-editing, re-view to confirm the change landed. This single habit prevents
-most of the bugs documented below from recurring.
+**Recurring bug pattern, seen repeatedly across this project's history**:
+fields/types silently renamed, dropped, or duplicated into a second parallel
+source of truth when a file is rewritten wholesale instead of incrementally
+patched. Before editing any file, view its actual current contents — don't
+assume a prior description matches what's live. After editing, re-view to
+confirm the change landed.
 
 ---
 
-## 1. File map
+## 1. File map (current)
 
-FloorPlanEditor.tsx // State owner, mouse handlers, 2D canvas draw, layout
-2dDraw.tsx // ? — likely draw2D extracted out; verify before assuming
-3dRoom.tsx / 3DScene.tsx // ? — likely Room3D / Scene3D; verify before assuming
-Tools/constants.ts // Types, MATERIAL_REGISTRY (see §3), tool defs, ICONS
-Tools/ToolBar.tsx, GroupComponent.tsx // Toolbar UI
-Tools/door-style-migration.ts // Legacy DoorMaterial → registry key translation
-MaterialsPanel.tsx // Dock tab — global + per-room/shape material swatches
-PropsPanel.tsx // Per-entity property editor (room/wall/opening/furniture/etc.)
-SceneConfigPanel.tsx // Scene-wide lighting/toggle controls
-FloorPlanEditorModal.tsx, FloorplanMinimap.tsx // ? — not yet pasted, verify before touching
-ResilientCanvas.tsx // <Canvas> wrapper with WebGL context-loss recovery (see §6)
-WorkspaceContainer.tsx, WorkspaceCanvas.tsx, WorkspaceConfigPanel.tsx,
-WorkspaceLoader.tsx, WorkspaceToolbar.tsx // AI-extraction flow — separate from
-// the manual editor, ? not yet pasted
+FloorPlanEditor.tsx // State owner, mouse handlers, layout, split-pane 2D/3D, floating dock/menu wiring
+Tools/2dDraw.tsx // draw2D — imperative canvas render (was inline, now its own file)
+Tools/3dRoom.tsx, 3DScene.tsx // Room3D / Scene3D
+Tools/constants.ts // Types, tool defs, ICONS, FURNITURE_CATEGORIES
+Tools/CameraViewPicker.tsx // Saved camera views UI (embedded in FloatingMenu)
+Tools/FloorPlanEditorModal.tsx, FloorplanMinimap.tsx
+Tools/MaterialPicker.tsx, MaterialsPanel.tsx, PropsPanel.tsx, SceneConfigPanel.tsx
+Tools/QuickActionMenu.tsx // NEW — floating per-object action menu (see §5)
+Tools/ResilientCanvas.tsx // <Canvas> wrapper with WebGL context-loss recovery
+Tools/WalkModeControls.tsx
+Tools/WorkspaceCanvas.tsx, WorkspaceConfigPanel.tsx, WorkspaceContainer.tsx,
+WorkspaceLoader.tsx, WorkspaceToolbar.tsx // AI-extraction flow, separate from manual editor
+Tools/lights-constant.ts // PlacedLight defaults/labels/placement-kind map
+
+hooks/
+useDelayedAmt.ts // ? not yet pasted
+useFurnitureCollisions.ts // Overlap detection — drives 2D draw2D's overlappingIds param (item 10, shipped)
+
+mesh/ // NEW top-level grouping — mesh components split out of objects/
+door-style-migration.ts
+furnitureMesh.tsx
+lights-mesh.tsx // Point/wall/free-placed light fixtures
+outdoor-object-mesh.tsx // Crosswalk/dustbin/bench/mailbox etc. — ObjectBody switch, MUST have a case per OutdoorObjectType + explicit default: return null
+stairsMesh.tsx
+string-lights-mesh.tsx // Path-based light type, separate from point/strip lights — see §4b
+
+objects/
+arch-header.tsx, door-leaf.tsx, door-variants.tsx, doormat.tsx,
+error-boundary.tsx (SceneErrorBoundary — required around any <Canvas> using real textures),
+floormat.tsx, wallmat.tsx, wall-decor-mesh.tsx, window-variant3d.tsx
+line-walls-3d.tsx // Line-wall extrusion, openings, wall decor, floors, wallType branch (§3)
+railing-3d.tsx // NEW — railing/open wall-type geometry, split out of line-walls-3d (§3)
+scene-graph.tsx
+
 texture/
-MaterialPicker.tsx // Swatch grid UI — check for eager-load-all bug (§5)
-materials-registry.ts // ? — possibly duplicate of Tools/constants.ts's MATERIAL_REGISTRY, verify
-textureCategorize.ts // ?
-universalMaterials.ts // LEGACY — getMaterialsFor(domain), likely superseded by
-// Tools/constants.ts's getMaterialsForDomain; confirm which
-// is authoritative before touching either (see §3)
+MaterialPicker.tsx, inspector-ui.tsx
+materials-registry.ts, textureCategorize.ts, universalMaterials.ts
+// ⚠️ STILL VERIFY: confirm whether universalMaterials.ts / materials-registry.ts
+// are legacy duplicates of Tools/constants.ts's MATERIAL_REGISTRY or the
+// current canonical source — this ambiguity was flagged before and has not
+// been explicitly resolved/confirmed closed.
+
 three/
 CameraController.tsx, NavigationGizmo.tsx, RoomCeiling.tsx, RoomFloor.tsx,
 RoomFurniture.tsx, RoomGroup.tsx, RoomLabel.tsx, RoomWall.tsx, SceneLighting.tsx
-// ? none pasted yet — this may be a newer decomposition of what was
-// previously monolithic Room3D/Scene3D logic; verify before assuming old
-// Room3D/LineWalls3D descriptions below still apply as-is
-objects/
-wallmat.tsx, floormat.tsx // Material renderers (real-texture + procedural fallback)
-doormat.tsx // Door material resolution (registry-first, see §3)
-door-variants.tsx, window-variant3d.tsx, arch-header.tsx
-line-walls-3d.tsx // Line-wall extrusion, openings, wall decor, floors
-wall-decor-mesh.tsx // LED/PVC panel/painting decor meshes
-lights-mesh.tsx // Light fixture meshes (wall sconce/pendant/recessed/floor lamp)
-scene-graph.tsx // Collapsible entity tree panel
-error-boundary.tsx // SceneErrorBoundary — required around any <Canvas> using real textures
-furniture/furnitureMesh.tsx, stairsMesh.tsx
-WalkModeControls.tsx
-lights-constant.ts // PlacedLight defaults/labels (parallel to Tools/constants — verify not a dup)
-../ui/Dock.tsx, ScrollableList.tsx
+// Decomposition of what were previously monolithic Room3D/Scene3D pieces —
+// if editing wall/floor/ceiling/furniture 3D rendering, check whether the
+// logic now lives here rather than in 3dRoom.tsx/3DScene.tsx directly.
+
+lib/
+drag-controller.ts // ? — likely centralizes the various xxxDragRef patterns; verify before assuming shape
+errorMessage.ts // ?
+helpers.ts // deriveClosedPolygons(), toCanvas/toWorld, getSegmentOpeningWorldPos, misc geometry
+outdoor-constants.ts, furniture-constants.ts
+
+../ui/Dock.tsx, ScrollableList.tsx, FloatingDock.tsx (NEW), FloatingMenu.tsx (NEW)
+
+**Files referenced but not yet pasted into this context — treat as unknown,
+verify before editing**: `useDelayedAmt.ts`, `drag-controller.ts`,
+`errorMessage.ts`, `3dRoom.tsx`/`3DScene.tsx` internals, everything under
+`three/`, `texture/inspector-ui.tsx`, `WorkspaceContainer.tsx` and siblings.
 
 ---
 
@@ -66,181 +86,182 @@ lights-constant.ts // PlacedLight defaults/labels (parallel to Tools/constants �
 ```ts
 FloorPlanState {
   rooms, lineNodes, lineSegments, closedShapes, openings,
-  furniture, stairs, wallDecor, lights, annotations, roomHeight
+  furniture, stairs, wallDecor, lights, outdoorObjects, annotations, roomHeight
 }
+LineSegment { id, nodeIds, thickness, closed, wallType?: 'solid'|'railing'|'open' }  // wallType shipped (§3)
 SceneConfig {
   ambientIntensity, wallRoughness, wallTextured, showFurniture, showLabels,
   fogEnabled, doorStyle, globalFloorMaterial, globalWallMaterial,
-  rooms: RoomSceneConfig[]   // ⚠️ field name is `rooms`, NEVER `roomOverrides` — renamed 3+ times historically
+  rooms: RoomSceneConfig[]   // ⚠️ field name is `rooms`, NEVER `roomOverrides`
 }
 RoomSceneConfig { roomId, wallColor?, wallMaterial?, floorMaterial?, wallOverrides? }
 ClosedShape { id, nodeIds, label?, floorMaterial?, wallMaterial?, wallOverrides? }
 ```
 
-**Two parallel wall systems**, always check `segmentNodeIds` presence to know which:
+**Two parallel wall systems**, check `segmentNodeIds` presence to know which
+(room-wall `wall`/`position` vs. line-wall `segmentNodeIds`/`segmentT`).
+Openings, wall decor, and lights all use this identical dual pattern.
 
-- Room walls: `wall: 'north'|'south'|'east'|'west'` + `position` (offset along wall)
-- Line walls: `segmentNodeIds: [fromId, toId]` + `segmentT` (0–1 interpolation)
-  Openings, wall decor, and lights (`PlacedLight`) all use this identical dual pattern.
+**Room wall synthetic id**: `` `${roomId}::wall::${wall}` ``.
 
-**Per-wall/per-segment overrides** (`wallOverrides` on `RoomSceneConfig`/`ClosedShape`,
-keyed by `'north'|...` or `` `${segId}_${i}` ``): data model + save/load round-trip
-exist; confirm current `Room3D`/`LineWalls3D`/`MaterialsPanel` actually read/write
-them before assuming the feature works end-to-end — this was scoped as a multi-step
-build and needs re-verification against current files.
-
-**Room wall synthetic id**: `` `${roomId}::wall::${wall}` `` — not a real entity id,
-special-cased via `selectedId?.includes('::wall::')` in PropsPanel/hit-testing.
-
----
-
-## 3. Materials system — MATERIAL_REGISTRY is the single source of truth
-
-```ts
-type MaterialDomain = 'wall' | 'floor' | 'door' | 'furniture'
-type MaterialDef = { color, roughness, metalness, repeatScale, category, domains: MaterialDomain[], label?, preview?, textureUrl?, normalMapUrl?, roughnessMapUrl? }
-MATERIAL_REGISTRY: Record<string, MaterialDef>   // ~60 entries, tagged by domain
-getMaterialsForDomain(domain) → { key, def }[]
-getMaterialsByCategory(domain) → Record<category, { key, def }[]>
-```
-
-Legacy `WALL_MAT_DEFS`/`FLOOR_MAT_DEFS` are derived from the registry
-(`Object.fromEntries(getMaterialsForDomain(...))`) so old call sites keep working.
-
-**⚠️ `texture/universalMaterials.ts`'s `getMaterialsFor(domain)` may be a second,
-older parallel catalog** — confirm whether it's still used anywhere before trusting
-it; `PropsPanel.tsx` was found calling both `getMaterialsFor` (wall/floor/furniture)
-and `getMaterialsForDomain` (door) inconsistently in the same file. Prefer
-`getMaterialsForDomain` (registry-backed, confirmed working) and migrate/remove the
-other if truly redundant.
-
-**Door material resolution** (`objects/doormat.tsx`): `resolveDoorMaterial(style)`
-must check `MATERIAL_REGISTRY[style]` **first** (direct registry key, what the
-picker now writes), falling back to a legacy 7-value `DoorMaterial`→registry-key
-translation map only for old saved data, then a hardcoded oak fallback. If a door
-material "does nothing," check this resolution order first — checking the legacy
-map before the registry silently discards any material not in the original 7.
-
-**Wall/floor real-texture loading** (`RealTextureWallMat`/`RealTextureFloorMat`):
-`useLoader` per map (color/normal/roughness) — can suspend, wrap every `<Canvas>`
-using textured materials in both `<Suspense>` and `<SceneErrorBoundary>` (a bad
-texture path throws past Suspense, blanking the whole canvas with no recovery
-otherwise). Real photo textures live flat under `public/textures/` (some in
-subfolders like `wood/Wood052_1K-JPG/`) — **filenames are inconsistent even within
-one pack** (e.g. `Tiles101_Roughness.jpg` has no `_1K-JPG` segment unlike its
-siblings) — always verify the exact real filename before writing a `textureUrl`.
-`repeatScale` needs per-material, per-surface-type tuning by eye — no formula
-works across materials; wall-scale and floor-scale surfaces need very different
-values for the same texture.
-
-**Swatch/picker eager-loading bug**: rendering every material's `<img>`/
-background-image unconditionally (even for collapsed categories) causes 60+
-simultaneous texture fetches on mount, defeating the deliberate lazy
-load-on-select + hover-prefetch design. Collapsed categories must not mount
-image elements at all (conditional render, not CSS visibility).
-
-**Texture cache staleness bug** (furniture materials, possibly others using a
-similar pattern): a module-level cache that inserts a placeholder (`null`)
-_before_ a texture finishes loading, then checks `.has()` to skip re-requesting,
-permanently blocks retry if the component unmounts mid-load (e.g. Fast Refresh).
-Fix: track "loaded" and "in-flight" as separate `Map`/`Set`s — never cache a
-placeholder as if it were a real (if absent) result.
+**⚠️ KNOWN UNRESOLVED BUG — shared/partition wall material override.**
+When a line-wall segment forms the shared boundary between two adjacent
+`ClosedShape`s (e.g. a partition line splitting one drawn area into two),
+the existing `wallOverrides` resolution assumes a segment has exactly ONE
+owning shape. A shared segment's node-pair legitimately belongs to both
+shapes' `nodeIds` sets, so selecting either sub-area and overriding its wall
+material produces ambiguous/order-dependent results on the shared wall
+specifically (non-shared/outer walls of the same shapes are unaffected and
+work correctly — floor material per sub-area also works correctly, this is
+wall-material-only). **Fix requires a genuinely two-sided data model** for
+shared segments — likely keying overrides by `(segmentId, ownerShapeId)`
+rather than `segmentId` alone, detecting shared-segment-ness by checking
+node-pair membership across all shapes, and rendering shared wall panels as
+two independently-materialed faces rather than one uniform box. Scoped, not
+yet implemented — see prior planning message for full breakdown before
+touching `wallOverrides` resolution in `line-walls-3d.tsx`/`railing-3d.tsx`.
 
 ---
 
-## 4. Lighting system (`PlacedLight`)
+## 3. Wall types — solid / railing / open (SHIPPED)
 
-```ts
-type LightFixtureType = 'wall_sconce' | 'ceiling_pendant' | 'ceiling_recessed' | 'floor_lamp'
-PlacedLight { id, type, roomId?, wall?, position?, segmentNodeIds?, segmentT?,  // wall_sconce
-              x?, z?,                                                          // ceiling/floor free placement
-              heightOffset, color, intensity, castShadow, scale, facingInward? }
-```
+`LineSegment.wallType` (`'solid' | 'railing' | 'open'`, defaults to `solid`
+when absent). Set via a control in the segment's `PropsPanel` section
+(alongside its existing wall color/material pickers) — no separate toolbar
+tool, reuses the existing draw-then-select-then-edit flow.
 
-Follows the exact wall-decor dual-placement pattern (§2) for `wall_sconce`; free
-x/z placement (via `hitRoom` + `snapM`) for the other three types. Rendered via
-`objects/lights-mesh.tsx` — visible fixture body + emissive "bulb" mesh + real
-`<pointLight>`. Given only 2–5 lights expected per scene, shadow-casting is
-acceptable but use a smaller `shadow-mapSize` (512²) than the main directional
-light. `facingInward` flips which side of the wall a sconce projects toward — same
-normal-offset math as wall decor (§ below), just negatable.
-
-**Verify before assuming complete**: hit-testing (`hitLight`) wired into all 3
-required sites (select, hover, delete — see §6), PropsPanel editing section, and
-save/load round-trip (`SceneJSON.lights`, snake_case ↔ camelCase translation same
-as `closed_shapes`) — this was built in stages across several handoffs, confirm
-each stage actually landed rather than assuming the full chain works.
+- **2D** (`Tools/2dDraw.tsx`): `railing` → dashed stroke, distinct color;
+  `open` → faint/minimal dotted boundary marker; `solid` → unchanged existing
+  appearance.
+- **3D**: `railing` geometry (bottom rail + top handrail + evenly spaced
+  vertical balusters) now lives in `objects/railing-3d.tsx`, split out of
+  `line-walls-3d.tsx` rather than inlined — check there for wall-type-specific
+  geometry construction. `open` renders no geometry at all. `solid` unchanged
+  full-height box.
+- **Openings** (doors/windows) should be rejected/skipped on `railing`/`open`
+  segments at placement time — verify this guard exists in the relevant
+  `hitLineSegment` placement branches if extending opening tools further.
+- Round-trips through `SceneJSON.line_segments[].wall_type`.
 
 ---
 
-## 5. Wall-mounted mesh occlusion bug (recurring — check this FIRST for new mesh types)
+## 4. Materials, lighting, outdoor objects
 
-Any wall-mounted mesh (decor, lights, future fixture types) placed at the wall's
-raw centerline coordinates renders **invisible in 3D, correct in 2D, no console
-error** — it's buried inside the solid wall box. Diagnostic tell: works in 2D,
-silently absent in 3D, nothing logs. Fix: offset `basePos` outward along the
-wall's normal by `T/2 + smallGap` before use. Has recurred independently in
-`Room3D`, `LineWalls3D`, and needs re-checking for any new fixture type (lights)
-built without explicit awareness of this pattern.
+### 4a. Materials — MATERIAL_REGISTRY is the single source of truth
 
----
+`getMaterialsForDomain(domain: 'wall'|'floor'|'door'|'furniture')`,
+`getMaterialsByCategory(domain)`. Legacy `WALL_MAT_DEFS`/`FLOOR_MAT_DEFS`
+derived from the registry. Door material resolution (`objects/doormat.tsx`)
+checks `MATERIAL_REGISTRY[style]` directly FIRST, falls back to a legacy
+7-value translation map only for old saved data.
 
-## 6. Rendering, persistence, and known gotchas
+**Default material for newly-created entities**: per the "keep sketching
+lightweight" fix, new rooms/walls should start on flat solid (`'paint'`/
+`'plain'`) regardless of the current global default material, so drawing a
+fresh plan doesn't eagerly trigger texture loads. Verify this is still true
+if entity-creation code is touched.
 
-- **`Scene3D`'s prop contract is `{ fp, sceneConfig?, walkMode? }`** — takes the
-  whole `fp` object, never decomposed individual fields. A decomposed-props
-  rewrite silently drops line walls/furniture/stairs. Recurred 2×.
-- **`ResilientCanvas`** wraps `<Canvas>` for context-loss recovery — only remount
-  on a confirmed-still-lost context after a delay (`onLost` → `scheduleRemount`
-  → re-check `isContextLost()`); do NOT remount on every successful
-  `webglcontextrestored` event, that turns harmless momentary context loss into
-  a visible full-scene reload/flicker loop.
-- **Persistence has (had) 3 independently-writable copies of the same data**
-  (`scene_json`, `floorplan_editor_state`, `workspace_config`) — reportedly
-  consolidated to one source of truth as of this writing; if "changes aren't
-  saving/loading" resurfaces, check for a second write path before assuming a
-  logic bug, this exact failure mode has recurred multiple times.
-- **`SceneJSON.furniture` was `unknown[]`** and silently dropped furniture on
-  save — fixed once already (should be `PlacedFurniture[]`); if it regresses to
-  `unknown[]` again, furniture will silently stop persisting. `annotations` and
-  `wallDecor` may have the same unaddressed gap — verify before assuming they save.
-- **Hit-testing priority order** (duplicated 3×: select, hover, delete — no
-  shared `hitTestAll()`): node → opening → wall decor → light → furniture →
-  stairs → closed shape → room → room wall → line segment → furniture fallback.
-  Changing priority in one place requires checking the other two.
-- **Every new draggable/selectable entity type needs its drag ref cleared in
-  BOTH `handleMouseUp` AND canvas `onMouseLeave`** — forgetting one permanently
-  sticks the cursor in drag mode after one use. Has happened before (`wallDragRef`).
-- **`PropsPanel`'s "nothing selected" early-return guard** must include every
-  new entity type's presence check, not just its JSX branch — forgetting this
-  silently shows the empty state instead of the new entity's fields. Has
-  happened before (closed shapes).
-- **`Suspense fallback={null}` on a shared/top-level boundary** causes a full
-  visible blank flash on ANY texture load anywhere in the scene. Scope
-  `<Suspense>` per-mesh with a real loading placeholder (pulsing gray material)
-  instead of one wrapper around the whole `<Canvas>`.
-- **`ScrollableList`**, not `overflowY: 'auto'` — the 2D canvas's native wheel
-  listener hijacks scroll events inside floating panels; this is settled, don't
-  re-litigate it.
-- **Stray debug `console.count`/`console.log` calls** have caused false "infinite
-  loop" bug reports — a per-render debug log during 3D orbit (which re-renders
-  every frame) looks identical to a real re-render bug. Check for leftover
-  debug statements before assuming a memoization/effect-dependency bug.
+**Swatch eager-loading**: collapsed material categories must not mount
+`<img>`/background-image elements at all (conditional render, not CSS
+visibility) — confirmed fix pattern, re-check if `MaterialPicker.tsx` /
+`texture/MaterialPicker.tsx` is regenerated wholesale.
+
+### 4b. Lighting (`PlacedLight`, `lights-constant.ts`, `mesh/lights-mesh.tsx`)
+
+`LIGHT_PLACEMENT_KIND` maps each `LightFixtureType` to one of: `'wall-point'`,
+`'wall-strip'`, `'free-point'` (ceiling/floor fixtures), or `'path'` (string
+lights specifically — `mesh/string-lights-mesh.tsx`, a distinct render path
+from the other three since it's a chain of many small lights along
+`pathNodeIds`, not a single fixture at one point/wall position). `spotlight`
+type carries an `aimRotation` — rendered as a small direction wedge in 2D.
+2D rendering for all 4 placement kinds lives in `Tools/2dDraw.tsx`'s lights
+section — follow that file's existing per-kind branching pattern if adding
+a new light type rather than bolting another `if` onto one kind's branch.
+
+### 4c. Outdoor objects (`mesh/outdoor-object-mesh.tsx`)
+
+`OutdoorObjectType` union, `OUTDOOR_OBJECT_FOOTPRINTS`, `OUTDOOR_OBJECT_LABELS`,
+`OUTDOOR_FLAT_TYPES` (ground-decal, no bounding-box/volume — currently just
+`crosswalk`). **`ObjectBody`'s switch statement must have a case for every
+type in the union, plus a `default: return null`.** History: 3 of 4 types
+(dustbin/bench/mailbox) were silently unimplemented for a period — the
+switch fell through to `undefined`, which renders nothing with zero console
+error, while the SAME objects rendered correctly in 2D (separate `draw2D`
+icon path) — this asymmetry (correct in 2D, blank in 3D, no error) is the
+exact "wall-mounted mesh occlusion" diagnostic pattern from §5, but caused by
+a missing switch case instead of a centerline-offset bug. **Any time a new
+outdoor type is added to the type union, immediately add its `ObjectBody`
+case in the same change** — don't let the type union and the switch drift.
 
 ---
 
-## 7. Quick recipes
+## 5. Floating UI — Quick Action Menu, Floating Dock, Presets panel (NEW)
 
-**New entity type**: type + array on `FloorPlanState` → `draw2D` block → 3D mesh
-(offset off wall centerline if wall-mounted, §5) → hit-testing in 3 places (§6) →
-drag ref + both cleanup sites → `pushHistory`'s `hadDrag` → `PropsPanel` branch +
-guard-clause update → delete-key handler → toolbar entry/icon → SceneJSON
-round-trip (both directions, snake_case↔camelCase).
+**`QuickActionMenu`** (`Tools/QuickActionMenu.tsx`): appears anchored near a
+selected 2D object (`quickMenuAnchor` state, computed from the selection's
+world position converted to screen coords) offering move/duplicate/delete/
+bend-style quick actions without opening the full properties panel. Visible
+only when `tool === 'select'` and not `isDraggingSelection`. Wired to the
+SAME underlying delete/duplicate logic used elsewhere (the delete handler
+here is textually duplicated across at least 3 places in `FloorPlanEditor.tsx`
+— the keyboard handler, `PropsPanel`'s `onDelete`, and this menu's
+`onDelete` — **all three must stay in sync when a new entity type is added
+to the delete-type-check chain**; this is the same "3 hit-test-order sites"
+risk pattern already documented for hit-testing, now also applies to
+deletion). `onBend`/`handleBendSelectedSegment` and `onMove`/`handleArmMove`
+are new — confirm their implementations before assuming they follow other
+established patterns.
 
-**New material**: add one entry to `MATERIAL_REGISTRY` with correct `domains`
-array — nothing else to touch. Don't add to a per-domain list separately.
+**`FloatingMenu`** (rendered via portal, fixed top-right): houses Walk Mode
+toggle, Interactive Mode toggle, Preview pane show/hide toggle, and an
+embedded `CameraViewPickerV2` slot (camera presets, shipped — see §6).
 
-**Before debugging "state not syncing"**: grep for field-name drift
-(`roomOverrides` vs `rooms`, two parallel material catalogs, decomposed `Scene3D`
-props) and stray debug logs before assuming a logic error — these have been the
-actual cause more often than not.
+**`FloatingDock`**: bottom-positioned tab switcher for Properties/Scene
+panels (replaces or sits alongside the older `Dock.tsx` — confirm which is
+actually still in use). Panels themselves are now `position: absolute`
+floating cards (not docked inline), each independently closable.
+
+**Presets tab / `PresetsPanel`**: toolbar flyout (portaled, anchored to the
+toolbar group) offering wall presets and room templates —
+`armedWallPresetId`/`armedTemplateId` state, `armWallPreset`/
+`armRoomTemplate` handlers "arm" a preset for placement (click-then-place
+pattern, consistent with existing tool interaction model, not drag-and-drop).
+This is the asset-library feature — confirm scope (template-based inserts of
+existing entity types vs. genuinely new geometry types like true curved
+walls) before extending further.
+
+**Split-pane 2D/3D layout**: `splitRatio` + `handleDividerMouseDown` — the
+2D/3D panes are now user-resizable via a draggable divider, not a fixed
+percentage. `previewOpen` toggles the entire 3D pane's mount/unmount.
+
+---
+
+## 6. Shipped since last update (confirmed, per explicit sign-off)
+
+- **Wall thickness** — user-editable per-segment property (was hardcoded `T = 0.15`).
+- **Camera view presets** (`CameraViewPickerV2`) — saved viewpoints, embedded in `FloatingMenu`.
+- **Duplicate/copy-paste** (`handleDuplicateSelected`, `handleMirrorSelected`) — rooms and furniture groups.
+- **Real dimension/measurement SVG export** — printable 2D plan with scale, dimension lines, area labels.
+- **Furniture overlap/collision detection** (`useFurnitureCollisions` hook) — feeds `overlappingIds` into `draw2D`, rendered as a dashed red outline on overlapping furniture (see the `overlappingIds.has(f.id)` block in the furniture-drawing loop).
+- **Area/shape custom labels** — persist and render correctly in both 2D and 3D (was broken, now fixed — labels visibly show custom names like "Area 17"/"Area 18" rather than a hardcoded literal).
+- **Railing / partial-wall segments** — see §3.
+- **Texture cache staleness** — confirmed no longer an issue as of this writing.
+
+## 7. Known open items (not yet done, don't assume otherwise)
+
+- **Shared/partition wall material override** — see §2's detailed writeup. Floor override works correctly for sub-areas split by a partition; wall override does not.
+- **Window variant rendering** — reported as rendering flat/dark with no visible frame or glass distinction across variants; root cause not yet isolated (candidates: `WindowVariant3D` not invoked, wrong/lost `variant` value, glass material issue, or the wall-mounted-centerline-burial bug per §5-of-prior-doc applying to window glass specifically). Not yet fixed — diagnose via the 3-step isolation (mesh invocation → variant data → material) before patching blind.
+- **`universalMaterials.ts` vs `MATERIAL_REGISTRY`** — still unconfirmed whether this is dead/legacy or actively used; do not assume resolved.
+- **2D redraw performance** — `deriveClosedPolygons()` and the `fp.openings.filter(...)` calls inside `draw2D` were identified as running unmemoized every frame/redraw; fix is to precompute these once per `fp` change (`useMemo` in `FloorPlanEditor.tsx`) and pass as params into `draw2D` rather than recomputing inside it. Confirm this landed before assuming 2D pan/drag performance is solved — the deeper "why does mousemove trigger so many redraws" question also depends on `handleMouseMove`/`scheduleRedraw`'s current throttling, which was flagged but not yet reviewed.
+
+---
+
+## 8. Standing gotchas (still apply, condensed from prior versions)
+
+- `Scene3D` prop contract: takes the whole `fp` object, never decomposed fields.
+- `ResilientCanvas`: only remount on a CONFIRMED-still-lost context after a delay; never remount on every successful `webglcontextrestored`.
+- Persistence: confirm single source of truth (`floorplan_editor_state` as canonical, `scene_json` derived) hasn't regressed to multiple independent writers.
+- Every new draggable/selectable/deletable entity type needs updating in ALL of: 3 hit-test-priority sites, delete-handler chain (now at least 3 sites per §5), `PropsPanel`'s early-return guard, `pushHistory`'s `hadDrag` boolean, save/load round-trip.
+- Wall-mounted mesh centerline-burial bug: offset `basePos` along the wall normal, don't place at raw centerline — check this FIRST for any new mesh type that's invisible in 3D but fine in 2D (see §4c's outdoor-object case for a variant of this same symptom class, caused by a missing switch case rather than centerline burial specifically — both produce "2D correct, 3D blank, no error").
+- Stray debug `console.log`/`console.count` calls have caused false "performance bug" reports before — check for leftover debug statements before assuming a re-render/memoization bug.
+- `ScrollableList`, not `overflowY: auto`, for any scrollable floating panel content.

@@ -18,6 +18,7 @@ export type Scene3DHandle = {
 }
 
 type Scene3DProps = {
+    exportRootRef: any
     fp: FloorPlanState
     sceneConfig?: SceneConfig
     walkMode?: boolean
@@ -29,7 +30,7 @@ type Scene3DProps = {
 }
 
 const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
-    { fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen, overlappingIds },
+    { exportRootRef, fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen, overlappingIds },
     ref
 ) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
@@ -112,99 +113,113 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 </mesh>
             )}
 
-            {fp.rooms.map(room => {
-                const roomCfg = cfg.rooms.find(r => r.roomId === room.id)
-                return (
-                    <Room3D
-                        key={room.id}
-                        room={room}
-                        openings={fp.openings.filter(o => o.roomId === room.id)}
-                        roomHeight={fp.roomHeight}
-                        wallColor={roomCfg?.wallColor ?? '#FFFFFF'}
-                        wallRoughness={cfg.wallRoughness}
-                        wallTextured={cfg.wallTextured}
-                        floorMat={roomCfg?.floorMaterial ?? cfg.globalFloorMaterial ?? 'plain'}
-                        doorStyle={cfg.doorStyle ?? 'natural'}
-                        wallDecor={fp.wallDecor}
-                        interactive={interactiveMode}
-                        selectedId={selectedId}
-                        onSelect={onSelect}
-                        wallMaterial={roomCfg?.wallMaterial ?? cfg.globalWallMaterial ?? 'paint'}
-                        onSelectRoom={(roomId) => onSelect?.(roomId)}
-                        onToggleDoorOpen={onToggleDoorOpen}
-                        roomWallOverrides={roomCfg?.wallOverrides}
-                    />
-                )
-            })}
-            {(fp.lights ?? []).filter(l => l.type === 'string_lights').map(l => (
-                <StringLightsMesh key={l.id} light={l} fp={fp} selected={interactiveMode && selectedId === l.id}
-                    onSelect={interactiveMode ? () => onSelect?.(l.id) : undefined} />
-            ))}
-            {(fp.lights ?? []).filter(l => l.type !== 'string_lights').map(light => {
-                let pos: [number, number, number]
-                let rot = 0
-                const T = 0.15, normalOffset = T / 2 + 0.05
-                const inward = light.facingInward ?? true
-                const faceDir = inward ? 1 : -1   // NEW — mirrors WallDecorMesh's faceDir
+            <group ref={exportRootRef}>
+                {fp.rooms.map(room => {
+                    const roomCfg = cfg.rooms.find(r => r.roomId === room.id)
+                    return (
+                        <Room3D
+                            key={room.id}
+                            room={room}
+                            openings={fp.openings.filter(o => o.roomId === room.id)}
+                            roomHeight={fp.roomHeight}
+                            wallColor={roomCfg?.wallColor ?? '#FFFFFF'}
+                            wallRoughness={cfg.wallRoughness}
+                            wallTextured={cfg.wallTextured}
+                            floorMat={roomCfg?.floorMaterial ?? cfg.globalFloorMaterial ?? 'plain'}
+                            doorStyle={cfg.doorStyle ?? 'natural'}
+                            wallDecor={fp.wallDecor}
+                            interactive={interactiveMode}
+                            selectedId={selectedId}
+                            onSelect={onSelect}
+                            wallMaterial={roomCfg?.wallMaterial ?? cfg.globalWallMaterial ?? 'paint'}
+                            onSelectRoom={(roomId) => onSelect?.(roomId)}
+                            onToggleDoorOpen={onToggleDoorOpen}
+                            roomWallOverrides={roomCfg?.wallOverrides}
+                        />
+                    )
+                })}
+                {(fp.lights ?? []).filter(l => l.type === 'string_lights').map(l => (
+                    <StringLightsMesh key={l.id} light={l} fp={fp} selected={interactiveMode && selectedId === l.id}
+                        onSelect={interactiveMode ? () => onSelect?.(l.id) : undefined} />
+                ))}
+                {(fp.lights ?? []).filter(l => l.type !== 'string_lights').map(light => {
+                    let pos: [number, number, number]
+                    let rot = 0
+                    const T = 0.15, normalOffset = T / 2 + 0.05
+                    const inward = light.facingInward ?? true
+                    const faceDir = inward ? 1 : -1   // NEW — mirrors WallDecorMesh's faceDir
 
-                if (light.segmentNodeIds) {
-                    const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
-                    const b = fp.lineNodes.find(n => n.id === light.segmentNodeIds![1])
-                    if (!a || !b) return null
-                    const t = light.segmentT ?? 0
-                    const px = a.x + (b.x - a.x) * t
-                    const pz = a.z + (b.z - a.z) * t
-                    const angle = Math.atan2(b.z - a.z, b.x - a.x)
-                    const nx = Math.sin(angle), nz = -Math.cos(angle)
-                    // NEW — faceDir flips which side of the segment the fixture sits on
-                    pos = [px + nx * normalOffset * faceDir, light.heightOffset, pz + nz * normalOffset * faceDir]
-                    rot = inward ? -angle : -angle + Math.PI   // NEW — flip facing 180° on exterior
-                } else if (light.roomId && light.wall) {
-                    const room = fp.rooms.find(r => r.id === light.roomId)
-                    if (!room) return null
-                    if (light.wall === 'north') {
-                        pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + normalOffset * faceDir]
-                        rot = inward ? 0 : Math.PI
-                    } else if (light.wall === 'south') {
-                        pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + room.depth - normalOffset * faceDir]
-                        rot = inward ? Math.PI : 0
-                    } else if (light.wall === 'west') {
-                        pos = [room.x + normalOffset * faceDir, light.heightOffset, room.z + (light.position ?? 0)]
-                        rot = inward ? Math.PI / 2 : -Math.PI / 2
+                    if (light.segmentNodeIds) {
+                        const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
+                        const b = fp.lineNodes.find(n => n.id === light.segmentNodeIds![1])
+                        if (!a || !b) return null
+                        const t = light.segmentT ?? 0
+                        const px = a.x + (b.x - a.x) * t
+                        const pz = a.z + (b.z - a.z) * t
+                        const angle = Math.atan2(b.z - a.z, b.x - a.x)
+                        const nx = Math.sin(angle), nz = -Math.cos(angle)
+                        // NEW — faceDir flips which side of the segment the fixture sits on
+                        pos = [px + nx * normalOffset * faceDir, light.heightOffset, pz + nz * normalOffset * faceDir]
+                        rot = inward ? -angle : -angle + Math.PI   // NEW — flip facing 180° on exterior
+                    } else if (light.roomId && light.wall) {
+                        const room = fp.rooms.find(r => r.id === light.roomId)
+                        if (!room) return null
+                        if (light.wall === 'north') {
+                            pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + normalOffset * faceDir]
+                            rot = inward ? 0 : Math.PI
+                        } else if (light.wall === 'south') {
+                            pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + room.depth - normalOffset * faceDir]
+                            rot = inward ? Math.PI : 0
+                        } else if (light.wall === 'west') {
+                            pos = [room.x + normalOffset * faceDir, light.heightOffset, room.z + (light.position ?? 0)]
+                            rot = inward ? Math.PI / 2 : -Math.PI / 2
+                        } else {
+                            pos = [room.x + room.width - normalOffset * faceDir, light.heightOffset, room.z + (light.position ?? 0)]
+                            rot = inward ? -Math.PI / 2 : Math.PI / 2
+                        }
                     } else {
-                        pos = [room.x + room.width - normalOffset * faceDir, light.heightOffset, room.z + (light.position ?? 0)]
-                        rot = inward ? -Math.PI / 2 : Math.PI / 2
+                        pos = [light.x ?? 0, light.heightOffset, light.z ?? 0]
                     }
-                } else {
-                    pos = [light.x ?? 0, light.heightOffset, light.z ?? 0]
-                }
 
-                return (
-                    <LightFixtureMesh
-                        key={light.id}
-                        light={light}
-                        position={pos}
-                        rotation={rot}
-                        selected={interactiveMode && selectedId === light.id}
-                        onSelect={interactiveMode ? () => onSelect?.(light.id) : undefined}
+                    return (
+                        <LightFixtureMesh
+                            key={light.id}
+                            light={light}
+                            position={pos}
+                            rotation={rot}
+                            selected={interactiveMode && selectedId === light.id}
+                            onSelect={interactiveMode ? () => onSelect?.(light.id) : undefined}
+                        />
+                    )
+                })}
+                {(fp.outdoorObjects ?? []).map(o => (
+                    <OutdoorObjectMesh
+                        key={o.id}
+                        obj={o}
+                        selected={interactiveMode && selectedId === o.id}
+                        interactive={interactiveMode}
+                        onSelect={interactiveMode ? () => onSelect?.(o.id) : undefined}
                     />
-                )
-            })}
+                ))}
+                <LineWalls3D
+                    fp={fp}
+                    wallRoughness={cfg.wallRoughness}
+                    wallColor="#FFFFFF"
+                    wallMaterial={cfg.globalWallMaterial ?? 'paint'}
+                    floorMaterial={cfg.globalFloorMaterial ?? 'plain'}
+                    doorStyle={cfg.doorStyle ?? 'natural'}
+                    closedShapes={fp.closedShapes}
+                    interactive={interactiveMode}
+                    selectedId={selectedId}
+                    onSelect={onSelect}
+                    onToggleDoorOpen={onToggleDoorOpen}
+                    roomSceneConfigs={cfg.rooms}
+                />
 
-            <LineWalls3D
-                fp={fp}
-                wallRoughness={cfg.wallRoughness}
-                wallColor="#FFFFFF"
-                wallMaterial={cfg.globalWallMaterial ?? 'paint'}
-                floorMaterial={cfg.globalFloorMaterial ?? 'plain'}
-                doorStyle={cfg.doorStyle ?? 'natural'}
-                closedShapes={fp.closedShapes}
-                interactive={interactiveMode}
-                selectedId={selectedId}
-                onSelect={onSelect}
-                onToggleDoorOpen={onToggleDoorOpen}
-                roomSceneConfigs={cfg.rooms}
-            />
+            </group>
+
+
+
             {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
                 <group
                     key={f.id}
@@ -214,15 +229,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 >
                     <FurnitureMesh f={f} selected={interactiveMode && selectedId === f.id} />
                 </group>
-            ))}
-            {(fp.outdoorObjects ?? []).map(o => (
-                <OutdoorObjectMesh
-                    key={o.id}
-                    obj={o}
-                    selected={interactiveMode && selectedId === o.id}
-                    interactive={interactiveMode}
-                    onSelect={interactiveMode ? () => onSelect?.(o.id) : undefined}
-                />
             ))}
             {cfg.showFurniture !== false && (fp.stairs ?? []).map(s => {
                 const anchorSeg = s.anchorSegmentId

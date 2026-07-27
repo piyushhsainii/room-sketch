@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 import { useRef } from 'react'
 import { LightFixtureType, PlacedLight, LIGHT_PLACEMENT_KIND } from '../lights-constant'
-import { WallDecorMesh } from './wall-decor-mesh'
 
 function FixtureBody({ type }: { type: LightFixtureType }) {
     switch (type) {
@@ -87,8 +86,6 @@ function FixtureBody({ type }: { type: LightFixtureType }) {
             )
         case 'shelf_strip':
         case 'string_lights':
-            // Rendered entirely by their own bulb/emissive logic — no
-            // fixture housing mesh for either.
             return null
         case 'floor_lamp':
         default:
@@ -141,21 +138,8 @@ export function LightFixtureMesh({
     const bulbPos = bulbLocalPosition(light.type)
     const scale = light.scale ?? 1
     const kind = LIGHT_PLACEMENT_KIND[light.type]
-
-    // FIX — hooks must run unconditionally on every render, in the same
-    // order, regardless of which branch below eventually returns. This was
-    // previously declared inside `if (light.type === 'spotlight') {...}`,
-    // which violates the Rules of Hooks: React tracks hook call order per
-    // component instance, and skipping a hook call on some renders (any
-    // non-spotlight instance) can throw and unmount a much larger part of
-    // the tree than just this component, especially under Strict Mode's
-    // double-invoke or Fast Refresh — a plausible cause for "every light
-    // type except wall_sconce/shelf_strip stopped rendering" reports.
     const targetRef = useRef(new THREE.Object3D())
 
-    // string_lights are rendered by a separate <StringLightsMesh> that walks
-    // fp.lineNodes along light.pathNodeIds — this component only handles
-    // single-point/strip fixtures with a fixed position+rotation.
     if (light.type === 'string_lights') return null
 
     const clickHandlers = onSelect
@@ -166,9 +150,7 @@ export function LightFixtureMesh({
         }
         : {}
 
-    // ── Shelf / cabinet strip — reuses WallDecorMesh's led_strip visual,
-    // plus an actual point light since (unlike the purely decorative wall
-    // decor version) this needs to illuminate the room. ──
+
     if (light.type === 'shelf_strip') {
         const w = (light.width ?? 1) * scale
         return (
@@ -201,10 +183,6 @@ export function LightFixtureMesh({
         )
     }
 
-    // ── Directional spotlight — separate aim rotation/tilt applied inside
-    // the group, independent of the wall/segment-derived `rotation` prop so
-    // the fixture housing still sits flush on the wall while the beam aims
-    // wherever the user set it. ──
     if (light.type === 'spotlight') {
         const aimYaw = light.aimRotation ?? 0
         const aimTilt = light.aimTilt ?? -0.3
@@ -246,9 +224,6 @@ export function LightFixtureMesh({
         )
     }
 
-    // ── Everything else — wall_sconce, ceiling_pendant, ceiling_recessed,
-    // floor_lamp, track_lighting, chandelier, outdoor_bollard — the
-    // existing single point-light + emissive-bulb pattern. ──
     return (
         <group
             position={position}
@@ -257,9 +232,6 @@ export function LightFixtureMesh({
             {...clickHandlers}
         >
             <FixtureBody type={light.type} />
-
-            {/* Emissive "bulb" — reads as lit even before checking illumination
-                on nearby surfaces */}
             <mesh position={bulbPos}>
                 <sphereGeometry args={[light.type === 'chandelier' ? 0.022 : 0.035, 12, 12]} />
                 <meshStandardMaterial
@@ -269,10 +241,6 @@ export function LightFixtureMesh({
                     toneMapped={false}
                 />
             </mesh>
-
-            {/* Actual light source — smaller shadow map than the scene's main
-                directional light since these are secondary/accent lights
-                (project constraint: expects only 2–5 placed at once) */}
             <pointLight
                 position={bulbPos}
                 color={light.color}

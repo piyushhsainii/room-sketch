@@ -18,6 +18,7 @@
     "@tabler/icons-react": "^3.45.0",
     "cal-sans": "^1.0.1",
     "clsx": "^2.1.1",
+    "dxf-writer": "^1.18.4",
     "ideogram": "^1.53.0",
     "jose": "^6.2.1",
     "lucide-react": "^1.24.0",

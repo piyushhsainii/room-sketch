@@ -4,8 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import ResilientCanvas from './ResilientCanvas'
 import { TOOL_CURSORS, Toolbar } from './Tools/ToolBar'
 import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_LABELS, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
-import { deriveClosedPolygons, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
-import { Dock } from '../ui/Dock'
+import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
+import * as THREE from 'three'
 import { SceneGraphPanel } from './objects/scene-graph'
 import { ScrollableList } from '../ui/ScrollableList'
 import { matchClosedShape, MaterialsPanel } from './MaterialsPanel'
@@ -32,6 +32,7 @@ import { insertNodeIntoShapesOnSplit } from './objects/line-walls-3d'
 import { DragKindEntry, DragOrigin, pastThreshold, runActiveDrag } from '@/lib/drag-controller'
 import { FloatingMenu } from '../ui/FloatingMenu'
 import { CameraViewPickerV2 } from '../ui/CameraViewPicker'
+import { deriveFlatPlan2D } from './lib/export/flatten2d'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -82,76 +83,127 @@ type Props = {
     isSaved?: boolean
 }
 export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialState, initialSceneConfig, isSaving = false, isSaved = false }: Props) {
+    // ─────────────────────────────────────────────────────────────────────────
+    // Canvas / viewport
+    // ─────────────────────────────────────────────────────────────────────────
     const canvasRef = useRef<HTMLCanvasElement>(null)
-    const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
-    const [isFullscreen, setIsFullscreen] = useState(false)
-    const [sheetOpen, setSheetOpen] = useState(false)
+    const canvasDivRef = useRef<HTMLDivElement>(null)
     const editorRef = useRef<HTMLDivElement>(null)
-    const drawStartRef = useRef<{ x: number; z: number } | null>(null)
-    const drawRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
-    const isDrawingRef = useRef(false)
-    const [openFurnitureCats, setOpenFurnitureCats] = useState<Set<string>>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
-    const [tool, setTool] = useState<EditorTool>('room')
-    const lightDragRef = useRef<{ id: string; roomId?: string; wall?: 'north' | 'south' | 'east' | 'west'; segmentNodeIds?: string[]; isFree: boolean } | null>(null)
-    const [pencilPoints, setPencilPoints] = useState<{ x: number, z: number }[]>([])
-    const isPencilDrawing = useRef(false)
-    const wallDecorDragRef = useRef<{ id: string; roomId: string; wall?: 'north' | 'south' | 'east' | 'west'; segmentNodeIds?: string[] } | null>(null)
-    const isWallDecorTool = tool.startsWith('wall-decor-')
-    const [preview, setPreview] = useState<{ x: number; z: number } | null>(null)
-    const lineActiveNodeRef = useRef<string | null>(null);
-
+    const [zoom, setZoom] = useState(1)
+    const zoomRef = useRef(zoom)
+    const [pan, setPan] = useState({ x: 60, y: 60 })
+    const panRef = useRef(pan)
+    const [canvasCursor, setCanvasCursor] = useState('default')
+    const [midPan, setMidPan] = useState<{ sx: number; sy: number; px: number; py: number } | null>(null)
     const spaceHeldRef = useRef(false)
     const spacePanRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
     const panToolRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
-    const dragRoomRef = useRef<{ id: string; ox: number; oz: number; type: 'room' | 'node' } | null>(null)
-
-    const shapeDragRef = useRef<{ shapeId: string; ox: number; oz: number; startPositions: Map<string, { x: number, z: number }> } | null>(null)
-    const segDragRef = useRef<{ segId: string; ox: number; oz: number; nodeIds?: string[]; startPositions?: Map<string, { x: number, z: number }> } | null>(null)
-    const isMouseDownRef = useRef(false)
-    const [selectedId, setSelectedId] = useState<string | null>(null)
-    const [hoveredId, setHoveredId] = useState<string | null>(null)
-    const canvasDivRef = useRef<HTMLDivElement>(null)
-    const [zoom, setZoom] = useState(1)
-    const [pan, setPan] = useState({ x: 60, y: 60 })
-    const panRef = useRef(pan)
-    const zoomRef = useRef(zoom)
-    const [drawStart, setDrawStart] = useState<{ x: number; z: number } | null>(null)
-    const [drawRect, setDrawRect] = useState<{ x: number; z: number; w: number; d: number } | null>(null)
-    const [midPan, setMidPan] = useState<{ sx: number; sy: number; px: number; py: number } | null>(null)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Floor plan data + scene config
+    // ─────────────────────────────────────────────────────────────────────────
+    const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
     const fpRef = useRef(fp); fpRef.current = fp
+    const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
+    const sceneConfigRef = useRef(sceneConfig)
     const historyRef = useRef<HistoryEntry[]>([])
     const historyIndexRef = useRef(-1)
-    const [canvasCursor, setCanvasCursor] = useState('default')
-    const [hoverTooltip, setHoverTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tool / mode
+    // ─────────────────────────────────────────────────────────────────────────
+    const [tool, setTool] = useState<EditorTool>('room')
+    const isWallDecorTool = tool.startsWith('wall-decor-')
     const isDoorTool = tool.startsWith('door-')
     const isWindowTool = tool.startsWith('window-')
     const isOpeningTool = tool.startsWith('opening-')
     const isStairsTool = tool.startsWith('stairs-') || tool === 'elevator'
-    const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
-    const [walkMode, setWalkMode] = useState(false)
-    const [rightPanelOpen, setRightPanelOpen] = useState(true)
-    const [rightTab, setRightTab] = useState<'properties' | 'scene' | 'materials'>('properties')
-    const [editingAnnotation, setEditingAnnotation] = useState<{ id: string; text: string; x: number; y: number } | null>(null)
-    const annotationInputRef = useRef<HTMLInputElement>(null)
-    const outdoorDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
-    const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
-    const pathDraftRef = useRef<string[] | null>(null)
-    const wallDragRef = useRef<{ roomId: string; wall: 'north' | 'south' | 'east' | 'west'; startRoom: EditorRoom } | null>(null)
-    const furnitureDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
-    const shapeResizeRef = useRef<{ shapeId: string; handle: string; startNodes: Map<string, { x: number; z: number }>; bbox: { minX: number; maxX: number; minZ: number; maxZ: number } } | null>(null)
-    const resizeHandleRef = useRef<{ handle: string; room: EditorRoom; startWx: number; startWz: number } | null>(null)
-    fpRef.current = fp
-    // const mainCameraRef = useRef<THREE.Camera | null>(null)
     const [interactiveMode, setInteractiveMode] = useState(false)
+    const [walkMode, setWalkMode] = useState(false)
     const justToggledRef = useRef(false)
-    const { checkCollisions, overlappingRef, hasChanged, clear } = useFurnitureCollisions()
-    const [overlappingIds, setOverlappingIds] = useState<Set<string>>(new Set())    // const gizmoApiRef = 
-    // 
-    const sceneConfigRef = useRef(sceneConfig)
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Selection                                                          NEW/CHANGED
+    // ─────────────────────────────────────────────────────────────────────────
+    const [selectedIds, setSelectedIds] = useState<string[]>([])          // NEW — replaces selectedId as source of truth
+    const selectedIdsRef = useRef<string[]>([]); selectedIdsRef.current = selectedIds  // NEW
+    const selectedId = selectedIds.length === 1 ? selectedIds[0] : null   // CHANGED — derived, not primary state
+    const setSelectedId = useCallback((id: string | null) => {
+        const next = id ? [id] : []
+        selectedIdsRef.current = next
+        setSelectedIds(next)
+    }, [])
+    const [hoveredId, setHoveredId] = useState<string | null>(null)
+    const hoveredIdRef = useRef<string | null>(null)                      // (referenced in your handleMouseMove — add if not already present)
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Marquee select (Plan 4)                                             NEW
+    // ─────────────────────────────────────────────────────────────────────────
+    const marqueeRef = useRef<{ startWx: number; startWz: number; curWx: number; curWz: number } | null>(null)
+    const marqueeRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
+    const groupDragStartRef = useRef<{
+        entityStarts: Map<string, { x: number; z: number }>
+        nodeStarts: Map<string, { x: number; z: number }>   // NEW — raw lineNode id -> start pos, for shape/segment members
+    } | null>(null)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Mouse-down bookkeeping / drag threshold (shared across all drag kinds)
+    // ─────────────────────────────────────────────────────────────────────────
+    const isMouseDownRef = useRef(false)
     const dragOriginRef = useRef<DragOrigin>(null)
     const dragConfirmedRef = useRef(false)
-    const [isDraggingSelection, setIsDraggingSelection] = useState(false)
-    const [moveArmedForId, setMoveArmedForId] = useState<string | null>(null)
+    const [isDraggingSelection, setIsDraggingSelection] = useState(false)  // confirm current usage before reusing for marquee
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Per-entity-type drag refs (single-select drag; group-move in Step 5
+    // layers on top of these via groupDragStartRef, doesn't replace them)
+    // ─────────────────────────────────────────────────────────────────────────
+    const dragRoomRef = useRef<{ id: string; ox: number; oz: number; type: 'room' | 'node' } | null>(null)
+    const wallDragRef = useRef<{ roomId: string; wall: 'north' | 'south' | 'east' | 'west'; startRoom: EditorRoom } | null>(null)
+    const resizeHandleRef = useRef<{ handle: string; room: EditorRoom; startWx: number; startWz: number } | null>(null)
+    const shapeDragRef = useRef<{ shapeId: string; ox: number; oz: number; startPositions: Map<string, { x: number; z: number }> } | null>(null)
+    const shapeResizeRef = useRef<{ shapeId: string; handle: string; startNodes: Map<string, { x: number; z: number }>; bbox: { minX: number; maxX: number; minZ: number; maxZ: number } } | null>(null)
+    const segDragRef = useRef<{ segId: string; ox: number; oz: number; nodeIds?: string[]; startPositions?: Map<string, { x: number; z: number }> } | null>(null)
+    const furnitureDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
+    const outdoorDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
+    const wallDecorDragRef = useRef<{ id: string; roomId: string; wall?: 'north' | 'south' | 'east' | 'west'; segmentNodeIds?: string[] } | null>(null)
+    const lightDragRef = useRef<{ id: string; roomId?: string; wall?: 'north' | 'south' | 'east' | 'west'; segmentNodeIds?: string[]; isFree: boolean } | null>(null)
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Drawing tools (room-rect, pencil, line/bend)
+    // ─────────────────────────────────────────────────────────────────────────
+    const isDrawingRef = useRef(false)
+    const drawStartRef = useRef<{ x: number; z: number } | null>(null)
+    const drawRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
+    const [drawStart, setDrawStart] = useState<{ x: number; z: number } | null>(null)
+    const [drawRect, setDrawRect] = useState<{ x: number; z: number; w: number; d: number } | null>(null)
+    const isPencilDrawing = useRef(false)
+    const [pencilPoints, setPencilPoints] = useState<{ x: number; z: number }[]>([])
+    const lineActiveNodeRef = useRef<string | null>(null)
+    const [preview, setPreview] = useState<{ x: number; z: number } | null>(null)
+    const pathDraftRef = useRef<string[] | null>(null)
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Furniture placement + collisions
+    // ─────────────────────────────────────────────────────────────────────────
+    const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
+    const [openFurnitureCats, setOpenFurnitureCats] = useState<Set<string>>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
+    const { checkCollisions, overlappingRef, hasChanged, clear } = useFurnitureCollisions()
+    const [overlappingIds, setOverlappingIds] = useState<Set<string>>(new Set())
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Annotations
+    // ─────────────────────────────────────────────────────────────────────────
+    const [editingAnnotation, setEditingAnnotation] = useState<{ id: string; text: string; x: number; y: number } | null>(null)
+    const annotationInputRef = useRef<HTMLInputElement>(null)
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // UI chrome (panels, tooltip, fullscreen)
+    // ─────────────────────────────────────────────────────────────────────────
+    const [isFullscreen, setIsFullscreen] = useState(false)
+    const [sheetOpen, setSheetOpen] = useState(false)
+    const [rightPanelOpen, setRightPanelOpen] = useState(true)
+    const [rightTab, setRightTab] = useState<'properties' | 'scene' | 'materials'>('properties')
+    const [hoverTooltip, setHoverTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
+    const [moveArmedForId, setMoveArmedForId] = useState<string | null>(null)  // QuickActionMenu click-to-relocate, unrelated to marquee
 
     const handleToggleInteractive = () => {
         justToggledRef.current = true
@@ -199,34 +251,86 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         fp: FloorPlanState
         sceneConfig: SceneConfig
     }
-    const pushHistory = useCallback(() => {
+    const pushHistory = useCallback((overrideFp?: FloorPlanState, overrideSceneConfig?: SceneConfig) => {
         const entry: HistoryEntry = {
-            fp: fpRef.current,
-            sceneConfig: sceneConfigRef.current,
+            fp: overrideFp ?? fpRef.current,
+            sceneConfig: overrideSceneConfig ?? sceneConfigRef.current,
         }
-        // Truncate redo stack
         historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1)
         historyRef.current.push(JSON.parse(JSON.stringify(entry)))
         historyIndexRef.current = historyRef.current.length - 1
     }, [])
 
     const quickMenuAnchor = useMemo(() => {
-        if (!selectedId || !canvasRef.current) return null
+        if (!canvasRef.current) return null
+        const rect = canvasRef.current.getBoundingClientRect()
+        const scale = PX_PER_M * zoomRef.current
+
+        if (selectedIds.length > 1) {
+            const boxes = selectedIds
+                .map(id => bboxForEntity(fp, id))
+                .filter((b): b is NonNullable<typeof b> => b !== null)
+            if (boxes.length === 0) return null
+
+            const minX = Math.min(...boxes.map(b => b.minX))
+            const maxX = Math.max(...boxes.map(b => b.maxX))
+            const minZ = Math.min(...boxes.map(b => b.minZ))
+
+            const worldX = (minX + maxX) / 2
+            const worldZ = minZ
+
+            return {
+                x: worldX * scale + panRef.current.x + rect.left,
+                y: worldZ * scale + panRef.current.y + rect.top,
+            }
+        }
+
+        // Single-select — unchanged
+        if (!selectedId) return null
         const kind = classifySelection(fp, selectedId)
         const world = getSelectionAnchorWorld(fp, selectedId, kind)
         if (!world) return null
-        const rect = canvasRef.current.getBoundingClientRect()
-        const scale = PX_PER_M * zoomRef.current
         return {
             x: world.x * scale + panRef.current.x + rect.left,
             y: world.z * scale + panRef.current.y + rect.top,
         }
-    }, [fp, selectedId, pan, zoom])
+    }, [fp, selectedId, selectedIds, pan, zoom])
 
     const handleBendSelectedSegment = useCallback((segId: string) => {
         pushHistory()
         setFp(prev => bendSegment(prev, segId, uid))
     }, [pushHistory])
+
+    // Call at the top of every hit-test branch, right where you'd normally
+    // do setSelectedId(hitId). Returns true if group-drag was armed (caller
+    // should skip the normal single-select call); false means proceed as
+    // single-select normally.
+    function tryArmGroupDrag(hitId: string): boolean {
+        if (selectedIdsRef.current.length > 1 && selectedIdsRef.current.includes(hitId)) {
+            const entityStarts = new Map<string, { x: number; z: number }>()
+            const nodeStarts = new Map<string, { x: number; z: number }>()
+
+            for (const id of selectedIdsRef.current) {
+                const b = bboxForEntity(fpRef.current, id)
+                if (b) entityStarts.set(id, { x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 })
+
+                // If this id is a closed shape, also snapshot every one of its
+                // constituent lineNodes' own positions — needed to translate the
+                // shape's actual geometry, since a shape has no x/z of its own.
+                const shape = (fpRef.current.closedShapes ?? []).find(s => s.id === id)
+                if (shape) {
+                    for (const nid of shape.nodeIds) {
+                        const n = fpRef.current.lineNodes.find(nd => nd.id === nid)
+                        if (n) nodeStarts.set(nid, { x: n.x, z: n.z })
+                    }
+                }
+            }
+            groupDragStartRef.current = { entityStarts, nodeStarts }
+            return true
+        }
+        groupDragStartRef.current = null
+        return false
+    }
 
     const restoreHistoryEntry = useCallback((entry: HistoryEntry) => {
         const cloned = JSON.parse(JSON.stringify(entry)) as HistoryEntry
@@ -236,7 +340,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     // ── Optimized Redraw with rAF ────────────────────────────────────────────
     const closedPolygonsCacheRef = useRef<{ segs: FloorPlanState['lineSegments']; result: string[][] } | null>(null)
     const rafIdRef = useRef(0)
-    const hoveredIdRef = useRef<string | null>(null)
     const lastCanvasSizeRef = useRef({ w: 0, h: 0 })
     const chevronRef = useRef<HTMLButtonElement | null>(null)
     const groupAnchorsRef = useRef<Record<string, HTMLDivElement | null>>({})
@@ -245,8 +348,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const scene3DRef = useRef<Scene3DHandle>(null)
     const pendingTooltipRef = useRef<{ text: string; x: number; y: number } | null | undefined>(undefined)
     const tooltipRafRef = useRef<number | null>(null)
-    const [viewPickerOpen, setViewPickerOpen] = useState(false)
-    const [shapeDragModeActive, setShapeDragModeActive] = useState(false)
+    const exportRootRef = useRef<THREE.Group>(null)
 
     function scheduleTooltipUpdate(next: { text: string; x: number; y: number } | null) {
         pendingTooltipRef.current = next
@@ -263,13 +365,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         })
     }
 
-    // function getClosedPolygons(fp: FloorPlanState): string[][] {
-    //     const cache = closedPolygonsCacheRef.current
-    //     if (cache && cache.segs === fp.lineSegments) return cache.result
-    //     const result = deriveClosedPolygons(fp.lineNodes, fp.lineSegments)
-    //     closedPolygonsCacheRef.current = { segs: fp.lineSegments, result }
-    //     return result
-    // }
 
     useEffect(() => {
         const topView = getBuiltInViews(fp).find(v => v.id === "preset-top")
@@ -363,6 +458,17 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         return map
     }
 
+    const flat2D = useMemo(() => deriveFlatPlan2D(fp), [fp])
+    const flat2DRef = useRef(flat2D)
+    useEffect(() => { flat2DRef.current = flat2D }, [flat2D])
+
+    const openingsIndex = useMemo(() => getOpeningsIndex(fp), [fp])
+    const openingsIndexRef = useRef(openingsIndex)
+    useEffect(() => { openingsIndexRef.current = openingsIndex }, [openingsIndex])
+
+    const shapesIndex = useMemo(() => getShapesIndex(fp), [fp])
+    const shapesIndexRef = useRef(shapesIndex)
+    useEffect(() => { shapesIndexRef.current = shapesIndex }, [shapesIndex])
 
     const scheduleRedraw = useCallback(() => {
         cancelAnimationFrame(rafIdRef.current)
@@ -378,19 +484,18 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 canvas.height = ch
                 lastCanvasSizeRef.current = { w: cw, h: ch }
             }
-
             const fp = fpRef.current
-            const closedPolygons = getClosedPolygons(fp)
-            const { byRoom: openingsByRoom, bySegment: openingsBySegment } = getOpeningsIndex(fp)
-            const shapesIndex = getShapesIndex(fp)
+            const closedPolygons = flat2DRef.current.closedPolygons
+            const { byRoom: openingsByRoom, bySegment: openingsBySegment } = openingsIndexRef.current
+            const shapesIndex = shapesIndexRef.current
 
             draw2D(
-                ctx, fp, tool, selectedId, hoveredIdRef.current, drawRect, pencilPoints,
+                ctx, fp, tool, selectedId, selectedIds, hoveredIdRef.current, drawRect, pencilPoints,
                 zoom, pan, preview, lineActiveNodeRef.current, overlappingIds,
-                closedPolygons, openingsByRoom, openingsBySegment, shapesIndex
+                closedPolygons, openingsByRoom, openingsBySegment, shapesIndex, marqueeRectRef.current
             )
         })
-    }, [tool, selectedId, drawRect, pencilPoints, zoom, pan, preview])
+    }, [tool, selectedId, selectedIds, drawRect, pencilPoints, zoom, pan, preview, marqueeRectRef, overlappingIds])
 
     useEffect(() => { scheduleRedraw() }, [scheduleRedraw, fp, pencilPoints, preview, hoveredId])
     useEffect(() => () => cancelAnimationFrame(rafIdRef.current), [])
@@ -668,11 +773,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 if ((zi > wz) !== (zj > wz) && wx < ((xj - xi) * (wz - zi)) / (zj - zi) + xi) inside = !inside
             }
             if (inside) {
-                // Prefer a real saved override record if one matches (via the
-                // resilient centroid/area matcher, not raw exact-match, so it
-                // survives incidental node-id churn). Otherwise return a
-                // synthetic, unpersisted stub — this area is still selectable
-                // and editable even though nothing's been saved for it yet.
                 const existing = matchClosedShape(nodeIds, fpRef.current.lineNodes, fpRef.current.closedShapes ?? [])
                 if (existing) return existing
                 return { id: `unconfigured::${[...nodeIds].sort().join(',')}`, nodeIds, label: undefined } as ClosedShape
@@ -808,12 +908,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         isMouseDownRef.current = true
         const { wx, wz, cx, cy } = evWorld(e)
 
-        // if (tool === 'select' && moveArmedForId && moveArmedForId === selectedId) {
-        //     commitMove(moveArmedForId, wx, wz)
-        //     setMoveArmedForId(null)
-        //     isMouseDownRef.current = false
-        //     return
-        // }
         if (spaceHeldRef.current) {
             spacePanRef.current = { sx: cx, sy: cy, px: panRef.current.x, py: panRef.current.y }
             if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing'
@@ -955,7 +1049,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             if (typeof hitLight === 'function') {
                 const lightHit = hitLight(wx, wz);
                 if (lightHit) {
-                    setSelectedId(lightHit.id);
+                    if (!tryArmGroupDrag(lightHit.id)) setSelectedId(lightHit.id)
+
                     if (lightDragRef) {
                         (lightDragRef as any).current = {
                             id: lightHit.id,
@@ -969,7 +1064,40 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     return;
                 }
             }
+            // ── Marquee trigger — only when select tool, empty canvas, no drag armed ──
+            if (tool === 'select' && !resizeHandleRef.current && !shapeResizeRef.current) {
+                // Re-run the SAME hit-test priority chain used for single-select.
+                // If literally nothing is hit, this is empty canvas.
+                const hitNode = hitLineNode(wx, wz)
+                const hitDecor = hitWallDecor(wx, wz)
+                const hitOp = hitOpening(wx, wz)
+                const hitWall = hitRoomWall(wx, wz)
+                const hitSeg = hitLineSegment(wx, wz)
+                const hitShape = hitClosedShape(wx, wz)
+                const hitFurn = (fpRef.current.furniture ?? []).findLast(f => {
+                    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                    const dx = wx - f.x, dz = wz - f.z
+                    const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                    const lx = dx * cosR - dz * sinR, lz = dx * sinR + dz * cosR
+                    return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
+                })
+                const hitStair = (fpRef.current.stairs ?? []).findLast(st => {
+                    const dx2 = wx - (st.x + st.width / 2), dz2 = wz - (st.z + st.depth / 2)
+                    const cosR2 = Math.cos(-st.rotation), sinR2 = Math.sin(-st.rotation)
+                    const lx2 = dx2 * cosR2 - dz2 * sinR2, lz2 = dx2 * sinR2 + dz2 * cosR2
+                    return Math.abs(lx2) < st.width / 2 + 0.05 && Math.abs(lz2) < st.depth / 2 + 0.05
+                })
+                const hitRm = hitRoom(wx, wz)
 
+                const nothingHit = !hitNode && !hitDecor && !hitOp && !hitWall && !hitSeg
+                    && !hitShape && !hitFurn && !hitStair && !hitRm
+
+                if (nothingHit) {
+                    marqueeRef.current = { startWx: wx, startWz: wz, curWx: wx, curWz: wz }
+                    isMouseDownRef.current = true
+                    return
+                }
+            }
             // 2. Decor & Openings on walls
             const wd = hitWallDecor(wx, wz)
             if (wd) {
@@ -1009,8 +1137,9 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
             })
             if (hitFurnitureFirst) {
-                setSelectedId(hitFurnitureFirst.id)
-                if (moveArmedForId === hitFurnitureFirst.id) {
+                const isGroupDrag = tryArmGroupDrag(hitFurnitureFirst.id)
+                if (!isGroupDrag) setSelectedId(hitFurnitureFirst.id)
+                if (isGroupDrag || moveArmedForId === hitFurnitureFirst.id) {
                     furnitureDragRef.current = { id: hitFurnitureFirst.id, ox: wx - hitFurnitureFirst.x, oz: wz - hitFurnitureFirst.z }
                 }
                 dragRoomRef.current = null
@@ -1024,8 +1153,9 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 return Math.abs(lx) < s.width / 2 + 0.05 && Math.abs(lz) < s.depth / 2 + 0.05
             })
             if (hitStairsFirst) {
-                setSelectedId(hitStairsFirst.id)
-                if (moveArmedForId === hitStairsFirst.id) {
+                const isGroupDrag = tryArmGroupDrag(hitStairsFirst.id)
+                if (!isGroupDrag) setSelectedId(hitStairsFirst.id)
+                if (isGroupDrag || moveArmedForId === hitStairsFirst.id) {
                     furnitureDragRef.current = { id: hitStairsFirst.id, ox: wx - hitStairsFirst.x, oz: wz - hitStairsFirst.z }
                 }
                 dragRoomRef.current = null
@@ -1044,8 +1174,9 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
 
             const segHit = hitLineSegment(wx, wz)
             if (segHit) {
-                setSelectedId(segHit.seg.id)
-                if (moveArmedForId === segHit.seg.id) {
+                const isGroupDrag = tryArmGroupDrag(segHit.seg.id)
+                if (!isGroupDrag) setSelectedId(segHit.seg.id)
+                if (isGroupDrag || moveArmedForId === segHit.seg.id) {
                     const allSegs = fpRef.current.lineSegments
                     const adj = new Map<string, string[]>()
                     for (const s of allSegs) {
@@ -1079,12 +1210,15 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             // 6. Closed Shapes — only reached if the click missed every wall segment
             const shape = hitClosedShape(wx, wz)
             if (shape) {
-                if (moveArmedForId && moveArmedForId !== shape.id) {
-                    setMoveArmedForId(null)
+                const isGroupDrag = tryArmGroupDrag(shape.id)
+                if (isGroupDrag) {
+                    if (moveArmedForId) setMoveArmedForId(null)
+                    // don't collapse selection
+                } else {
+                    if (moveArmedForId && moveArmedForId !== shape.id) setMoveArmedForId(null)
+                    setSelectedId(shape.id)
                 }
-                setSelectedId(shape.id)
-
-                if (moveArmedForId === shape.id) {
+                if (isGroupDrag || moveArmedForId === shape.id) {
                     const startPositions = new Map<string, { x: number, z: number }>()
                     for (const nid of shape.nodeIds) {
                         const n = fpRef.current.lineNodes.find(nd => nd.id === nid)
@@ -1099,8 +1233,9 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             // 7. LOWEST PRIORITY: Room areas (clicked on the floor area)
             const room = hitRoom(wx, wz)
             if (room) {
-                setSelectedId(room.id)
-                if (moveArmedForId === room.id) {
+                const isGroupDrag = tryArmGroupDrag(room.id)
+                if (!isGroupDrag) setSelectedId(room.id)
+                if (isGroupDrag || moveArmedForId === room.id) {
                     dragRoomRef.current = { id: room.id, ox: wx - room.x, oz: wz - room.z, type: 'room' }
                 }
                 isMouseDownRef.current = true
@@ -1108,8 +1243,9 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             }
             const hitOutdoorFirst = hitOutdoorObject(wx, wz)
             if (hitOutdoorFirst) {
-                setSelectedId(hitOutdoorFirst.id)
-                if (moveArmedForId === hitOutdoorFirst.id) {
+                const isGroupDrag = tryArmGroupDrag(hitOutdoorFirst.id)
+                if (!isGroupDrag) setSelectedId(hitOutdoorFirst.id)
+                if (isGroupDrag || moveArmedForId === hitOutdoorFirst.id) {
                     outdoorDragRef.current = { id: hitOutdoorFirst.id, ox: wx - hitOutdoorFirst.x, oz: wz - hitOutdoorFirst.z }
                 }
                 dragRoomRef.current = null
@@ -1439,13 +1575,10 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             }
             const node = hitLineNode(wx, wz)
             if (node) {
-                pushHistory();
-                setFp(prev => ({
-                    ...prev,
-                    lineNodes: prev.lineNodes.filter(n => n.id !== node.id),
-                    lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(node.id)),
-                    openings: prev.openings.filter(o => !o.segmentNodeIds?.includes(node.id)),
-                }))
+                const isGroupDrag = tryArmGroupDrag(node.id)
+                if (!isGroupDrag) setSelectedId(node.id)
+                dragRoomRef.current = { id: node.id, ox: wx - node.x, oz: wz - node.z, type: 'node' }
+                isMouseDownRef.current = true
                 return
             }
 
@@ -1737,6 +1870,15 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const { wx, wz, cx, cy } = evWorld(e)
 
+        if (marqueeRef.current) {
+            const m = marqueeRef.current
+            m.curWx = wx
+            m.curWz = wz
+            marqueeRectRef.current = { x: m.startWx, z: m.startWz, w: wx - m.startWx, d: wz - m.startWz }
+            scheduleRedraw()
+            return
+        }
+
         // ── Cursor — unchanged from your version ────────────────────────────
         let newCursor: string
         if (spaceHeldRef.current || tool === 'pan') {
@@ -2022,10 +2164,69 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         const wasActiveDrag = runActiveDrag(dragEntries, dragOriginRef, cx, cy, wx, wz)
         if (wasActiveDrag) {
             if (pastThreshold(dragOriginRef.current, cx, cy)) dragConfirmedRef.current = true
+
+            if (groupDragStartRef.current) {
+                const draggedId =
+                    dragRoomRef.current?.id ??
+                    furnitureDragRef.current?.id ??
+                    outdoorDragRef.current?.id ??
+                    segDragRef.current?.segId ??
+                    shapeDragRef.current?.shapeId ??
+                    null
+
+                const { entityStarts, nodeStarts } = groupDragStartRef.current
+
+                if (draggedId && entityStarts.has(draggedId)) {
+                    const start = entityStarts.get(draggedId)!
+                    const curB = bboxForEntity(fpRef.current, draggedId)
+
+                    if (curB) {
+                        const curCx = (curB.minX + curB.maxX) / 2, curCz = (curB.minZ + curB.maxZ) / 2
+                        const dx = curCx - start.x, dz = curCz - start.z
+
+                        setFp(prev => {
+                            let next = prev
+                            for (const [id, s0] of entityStarts) {
+                                if (id === draggedId) continue
+
+                                // Closed shape — translate its member lineNodes using
+                                // their own recorded starts, not the shape's bbox center.
+                                const shape = (prev.closedShapes ?? []).find(sh => sh.id === id)
+                                if (shape) {
+                                    next = {
+                                        ...next,
+                                        lineNodes: next.lineNodes.map(n => {
+                                            const ns = nodeStarts.get(n.id)
+                                            return shape.nodeIds.includes(n.id) && ns
+                                                ? { ...n, x: snapM(ns.x + dx), z: snapM(ns.z + dz) }
+                                                : n
+                                        }),
+                                    }
+                                    continue
+                                }
+
+                                next = {
+                                    ...next,
+                                    rooms: next.rooms.map(r => r.id === id ? {
+                                        ...r,
+                                        x: snapM(s0.x + dx - (bboxForEntity(prev, id)!.maxX - bboxForEntity(prev, id)!.minX) / 2),
+                                        z: snapM(s0.z + dz - (bboxForEntity(prev, id)!.maxZ - bboxForEntity(prev, id)!.minZ) / 2),
+                                    } : r),
+                                    furniture: (next.furniture ?? []).map(f => f.id === id ? { ...f, x: snapFurniture(s0.x + dx), z: snapFurniture(s0.z + dz) } : f),
+                                    stairs: (next.stairs ?? []).map(s => s.id === id ? { ...s, x: snapM(s0.x + dx - s.width / 2), z: snapM(s0.z + dz - s.depth / 2) } : s),
+                                    lineNodes: next.lineNodes.map(n => n.id === id ? { ...n, x: snapM(s0.x + dx), z: snapM(s0.z + dz) } : n),
+                                    outdoorObjects: (next.outdoorObjects ?? []).map(o => o.id === id ? { ...o, x: snapM(s0.x + dx), z: snapM(s0.z + dz) } : o),
+                                    annotations: (next.annotations ?? []).map(a => a.id === id ? { ...a, x: s0.x + dx, z: s0.z + dz } : a),
+                                }
+                            }
+                            return next
+                        })
+                    }
+                }
+            }
+
             return
         }
-
-        // ── Hover detection — unchanged from your version ──────────────────────
         let newHoverId: string | null = null
         const node = hitLineNode(wx, wz)
         if (node) {
@@ -2096,10 +2297,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
 
     const handleMouseUp = useCallback(() => {
         isMouseDownRef.current = false
-
-        // Only push history if a drag actually crossed the threshold and
-        // mutated something — a plain click-no-move (the exact case that was
-        // buggy before) is not a history-worthy action.
         const hadDrag = dragConfirmedRef.current
 
         shapeResizeRef.current = null
@@ -2123,6 +2320,43 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         dragConfirmedRef.current = false
 
         if (hadDrag) pushHistory()
+
+        if (marqueeRef.current) {
+            const m = marqueeRef.current
+            const minX = Math.min(m.startWx, m.curWx), maxX = Math.max(m.startWx, m.curWx)
+            const minZ = Math.min(m.startWz, m.curWz), maxZ = Math.max(m.startWz, m.curWz)
+
+            const draggedFar = Math.hypot(m.curWx - m.startWx, m.curWz - m.startWz) > 0.05 // ~ world-space threshold
+            if (draggedFar) {
+                const fp = fpRef.current
+                const allIds = [
+                    ...fp.rooms.map(r => r.id),
+                    ...fp.lineNodes.map(n => n.id),
+                    ...fp.lineSegments.map(s => s.id),
+                    ...(fp.closedShapes ?? []).map(s => s.id),
+                    ...(fp.furniture ?? []).map(f => f.id),
+                    ...(fp.stairs ?? []).map(s => s.id),
+                    ...(fp.lights ?? []).filter(l => l.x !== undefined).map(l => l.id),
+                    ...(fp.outdoorObjects ?? []).map(o => o.id),
+                    ...(fp.annotations ?? []).map(a => a.id),
+                ]
+                const matched = allIds.filter(id => {
+                    const b = bboxForEntity(fp, id)
+                    return b && bboxFullyInside(b, [minX, maxX], [minZ, maxZ])
+                })
+                selectedIdsRef.current = matched
+                setSelectedIds(matched)
+            } else {
+                // plain click, no real drag → clear selection (Step 8)
+                selectedIdsRef.current = []
+                setSelectedIds([])
+            }
+            marqueeRef.current = null
+            marqueeRectRef.current = null
+            isMouseDownRef.current = false
+            return
+        }
+
         if (shapeDragRef.current) {
             shapeDragRef.current = null
             setMoveArmedForId(null)   // one-shot: dragging once consumes the arm
@@ -2177,91 +2411,90 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     }, [tool, pencilPoints, pushHistory])
 
     const handleDuplicateSelected = useCallback(() => {
-        if (!selectedId) return
-        const currentFp = fpRef.current
-        // Room
-        const room = currentFp.rooms.find(r => r.id === selectedId)
-        if (room) {
-            const result = duplicateRoom(currentFp, sceneConfig, room.id, room.width + 0.5, 0)
-            if (!result) return
-            setFp(result.fp)
-            setSceneConfig(result.sceneConfig)
-            setSelectedId(result.newRoomId)
-            pushHistory()
-            return
-        }
-        // Furniture
-        const furniture = (currentFp.furniture ?? []).find(f => f.id === selectedId)
-        if (furniture) {
-            const result = duplicateFurniture(currentFp, furniture.id)
-            if (!result) return
-            setFp(result.fp)
-            setSelectedId(result.newId)
-            pushHistory()
-            return
-        }
-        // Stairs / elevator
-        const stairs = (currentFp.stairs ?? []).find(s => s.id === selectedId)
-        if (stairs) {
-            const result = duplicateStairs(currentFp, stairs.id)
-            if (!result) return
-            setFp(result.fp)
-            setSelectedId(result.newId)
-            pushHistory()
-            return
-        }
-        // Outdoor object
-        const outdoorObj = (currentFp.outdoorObjects ?? []).find(o => o.id === selectedId)
-        if (outdoorObj) {
-            const result = duplicateOutdoorObject(currentFp, outdoorObj.id)
-            if (!result) return
-            setFp(result.fp)
-            setSelectedId(result.newId)
-            pushHistory()
-            return
-        }
-        // Wall decor
-        const wallDecor = (currentFp.wallDecor ?? []).find(d => d.id === selectedId)
-        if (wallDecor) {
-            const result = duplicateWallDecor(currentFp, wallDecor.id)
-            if (!result) return
-            setFp(result.fp)
-            setSelectedId(result.newId)
-            pushHistory()
-            return
+        if (selectedIds.length === 0) return
+
+        let workingFp = fpRef.current
+        let workingSceneConfig = sceneConfig
+        const newIds: string[] = []
+
+        for (const id of selectedIds) {
+            // Room
+            const room = workingFp.rooms.find(r => r.id === id)
+            if (room) {
+                const result = duplicateRoom(workingFp, workingSceneConfig, room.id, room.width + 0.5, 0)
+                if (result) {
+                    workingFp = result.fp
+                    workingSceneConfig = result.sceneConfig
+                    newIds.push(result.newRoomId)
+                }
+                continue
+            }
+            // Furniture
+            const furniture = (workingFp.furniture ?? []).find(f => f.id === id)
+            if (furniture) {
+                const result = duplicateFurniture(workingFp, furniture.id)
+                if (result) { workingFp = result.fp; newIds.push(result.newId) }
+                continue
+            }
+            // Stairs / elevator
+            const stairs = (workingFp.stairs ?? []).find(s => s.id === id)
+            if (stairs) {
+                const result = duplicateStairs(workingFp, stairs.id)
+                if (result) { workingFp = result.fp; newIds.push(result.newId) }
+                continue
+            }
+            // Outdoor object
+            const outdoorObj = (workingFp.outdoorObjects ?? []).find(o => o.id === id)
+            if (outdoorObj) {
+                const result = duplicateOutdoorObject(workingFp, outdoorObj.id)
+                if (result) { workingFp = result.fp; newIds.push(result.newId) }
+                continue
+            }
+            // Wall decor
+            const wallDecor = (workingFp.wallDecor ?? []).find(d => d.id === id)
+            if (wallDecor) {
+                const result = duplicateWallDecor(workingFp, wallDecor.id)
+                if (result) { workingFp = result.fp; newIds.push(result.newId) }
+                continue
+            }
+            // Opening (door / window / archway)
+            const opening = workingFp.openings.find(o => o.id === id)
+            if (opening) {
+                const result = duplicateOpening(workingFp, opening.id)
+                if (result) { workingFp = result.fp; newIds.push(result.newId) }
+                continue
+            }
+            // Closed shape (incl. unconfigured derived shapes)
+            const targetShape = workingFp.closedShapes?.find(s => s.id === id)
+            const shapeNodeIds = targetShape?.nodeIds
+                ?? deriveClosedPolygons(workingFp.lineNodes, workingFp.lineSegments).find(
+                    ids => [...ids].sort().join(',') === id.replace(/^unconfigured::/, '')
+                )
+            if (shapeNodeIds) {
+                const xs = shapeNodeIds
+                    .map(nid => workingFp.lineNodes.find(n => n.id === nid)?.x)
+                    .filter((x): x is number => x !== undefined)
+                const shapeWidth = xs.length ? Math.max(...xs) - Math.min(...xs) : 3
+
+                const result = duplicateClosedShape(workingFp, workingSceneConfig, id, shapeWidth + 0.5, 0)
+                if (result) {
+                    workingFp = result.fp
+                    workingSceneConfig = result.sceneConfig
+                    newIds.push(result.newRoomId)
+                }
+            }
+
         }
 
-        // Opening (door / window / archway)
-        const opening = currentFp.openings.find(o => o.id === selectedId)
-        if (opening) {
-            const result = duplicateOpening(currentFp, opening.id)
-            if (!result) return
-            setFp(result.fp)
-            setSelectedId(result.newId)
-            pushHistory()
-            return
-        }
-        const shapeId = selectedId
-        const targetShape = currentFp.closedShapes?.find(s => s.id === shapeId)
-        const shapeNodeIds = targetShape?.nodeIds
-            ?? deriveClosedPolygons(currentFp.lineNodes, currentFp.lineSegments).find(
-                ids => [...ids].sort().join(',') === shapeId.replace(/^unconfigured::/, '')
-            )
-        const shapeWidth = shapeNodeIds
-            ? (() => {
-                const xs = shapeNodeIds.map(id => currentFp.lineNodes.find(n => n.id === id)?.x).filter((x): x is number => x !== undefined)
-                return xs.length ? Math.max(...xs) - Math.min(...xs) : 3
-            })()
-            : 3
-
-        const result = duplicateClosedShape(currentFp, sceneConfig, shapeId, shapeWidth + 0.5, 0)
-        if (result) {
-            setFp(result.fp)
-            setSceneConfig(result.sceneConfig)
-            setSelectedId(result.newRoomId)
-            pushHistory()
-        }
-    }, [selectedId, sceneConfig, pushHistory])
+        if (newIds.length === 0) return
+        fpRef.current = workingFp
+        sceneConfigRef.current = workingSceneConfig
+        setFp(workingFp)
+        setSceneConfig(workingSceneConfig)
+        selectedIdsRef.current = newIds
+        setSelectedIds(newIds)
+        pushHistory(workingFp, workingSceneConfig)             // one history entry for the whole batch, same pattern as group-move
+    }, [selectedIds, sceneConfig, pushHistory])
 
     const handleMirrorSelected = useCallback((axis: MirrorAxis) => {
         if (!selectedId) return
@@ -2274,8 +2507,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const pendingWallPresetRef = useRef<WallPreset | null>(null)
     const [armedWallPresetId, setArmedWallPresetId] = useState<string | null>(null)
 
-    // Which room template is armed for click-to-place. Same lifecycle as
-    // furniture placement — one click commits it, tool then reverts to 'select'.
     const pendingTemplateRef = useRef<RoomTemplate | null>(null)
     const [armedTemplateId, setArmedTemplateId] = useState<string | null>(null)
 
@@ -2434,25 +2665,28 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     return (
         <div
             ref={editorRef}
-            style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', background: THEME.bg, fontFamily: 'system-ui, sans-serif', color: THEME.text, overflow: 'hidden', maxHeight: '100vh', maxWidth: '100vw' }}
+            style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', background: THEME.bg, fontFamily: 'system-ui, sans-serif', color: THEME.text, overflow: 'hidden', maxHeight: '100vh', maxWidth: '100vw' }}
         >
             {/* ── Top bar ────────────────────────────────────────────────────── */}
-            <WorkspaceNav
-                fp={fp}
-                isFullscreen={isFullscreen}
-                sceneConfig={sceneConfig}
-                setFp={setFp}
-                setSelectedId={setSelectedId}
-                setZoom={setZoom}
-                toggleFullscreen={toggleFullscreen}
-                zoom={zoom}
-                isSaved={isSaved}
-                isSaving={isSaving}
-                key={1}
-                onClose={onClose}
-                onSave={onSave}
-                projectId={projectId}
-            />
+            <div className='z-99999]'>
+                <WorkspaceNav
+                    fp={fp}
+                    isFullscreen={isFullscreen}
+                    sceneConfig={sceneConfig}
+                    sceneRootRef={exportRootRef}
+                    setFp={setFp}
+                    setSelectedId={setSelectedId}
+                    setZoom={setZoom}
+                    toggleFullscreen={toggleFullscreen}
+                    zoom={zoom}
+                    isSaved={isSaved}
+                    isSaving={isSaving}
+                    key={1}
+                    onClose={onClose}
+                    onSave={onSave}
+                    projectId={projectId}
+                />
+            </div>
             {/* ── Body ─────────────────────────────────────────────────────────── */}
             <div ref={splitContainerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
@@ -2741,6 +2975,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                 >
                                     <Scene3D
                                         ref={scene3DRef}
+                                        exportRootRef={exportRootRef}
                                         fp={fp}
                                         sceneConfig={sceneConfig}
                                         walkMode={walkMode}
@@ -2764,7 +2999,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 )}
             </div>
             {typeof document !== 'undefined' && createPortal(
-                <div style={{ position: 'fixed', top: 64, right: 16, zIndex: 9998 }}>
+                <div style={{ position: 'fixed', top: 64, right: 16, zIndex: 1000 }}>
                     <FloatingMenu
                         walkMode={walkMode}
                         onToggleWalkMode={() => setWalkMode(w => !w)}
@@ -2829,7 +3064,74 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     },
                 ]}
             />
-            {quickMenuAnchor && (
+            {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection && tool === 'select' ? (
+                <div
+                    onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
+                    style={{
+                        position: 'fixed',
+                        left: quickMenuAnchor.x,
+                        top: quickMenuAnchor.y,
+                        transform: 'translate(-50%, calc(-100% - 14px))',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 2,
+                        padding: 6,
+                        borderRadius: 999,
+                        background: 'rgba(28,28,32,0.95)',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
+                        backdropFilter: 'blur(6px)',
+                        zIndex: 50,
+                    }}
+                >
+                    <button
+                        onClick={e => { e.stopPropagation(); e.preventDefault(); handleDuplicateSelected() }}
+                        title="Duplicate all"
+                        style={{
+                            width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
+                            color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        }}
+                    >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="11" height="11" rx="2" />
+                            <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                        </svg>
+                    </button>
+                    <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.14)', margin: '0 2px' }} />
+                    <button
+                        onClick={e => {
+                            e.stopPropagation(); e.preventDefault()
+                            const idSet = new Set(selectedIds.filter(id => !id.includes('::wall::')))
+                            if (idSet.size === 0) return
+                            setFp(prev => ({
+                                ...prev,
+                                rooms: prev.rooms.filter(r => !idSet.has(r.id)),
+                                openings: prev.openings.filter(o => !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))),
+                                lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
+                                lineSegments: prev.lineSegments.filter(s => !idSet.has(s.id)).filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
+                                closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
+                                furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
+                                stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
+                                annotations: (prev.annotations ?? []).filter(a => !idSet.has(a.id)),
+                                wallDecor: (prev.wallDecor ?? []).filter(d => !idSet.has(d.id)),
+                                lights: (prev.lights ?? []).filter(l => !idSet.has(l.id)),
+                                outdoorObjects: (prev.outdoorObjects ?? []).filter(o => !idSet.has(o.id)),
+                            }))
+                            selectedIdsRef.current = []
+                            setSelectedIds([])
+                            pushHistory()
+                        }}
+                        title="Delete all"
+                        style={{
+                            width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
+                            color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        }}
+                    >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
+                        </svg>
+                    </button>
+                </div>
+            ) : quickMenuAnchor && (
                 <QuickActionMenu
                     fp={fp}
                     selectedId={selectedId}
@@ -2838,31 +3140,34 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     visible={!isDraggingSelection && tool === 'select'}
                     onDuplicate={handleDuplicateSelected}
                     onDelete={() => {
-                        if (!selectedId || selectedId.includes('::wall::')) return
-                        setFp(prev => {
-                            const isRoom = prev.rooms.some(r => r.id === selectedId)
-                            const isNode = prev.lineNodes.some(n => n.id === selectedId)
-                            const isSeg = prev.lineSegments.some(s => s.id === selectedId)
-                            const isShape = (prev.closedShapes ?? []).some(sh => sh.id === selectedId)
-                            const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
-                            const isStairs = (prev.stairs ?? []).some(st => st.id === selectedId)
-                            const isAnn = (prev.annotations ?? []).some(a => a.id === selectedId)
-                            const isWallDecor = (prev.wallDecor ?? []).some(d => d.id === selectedId)
-                            const isLight = (prev.lights ?? []).some(l => l.id === selectedId)
-                            const isOutdoor = (prev.outdoorObjects ?? []).some(o => o.id === selectedId)
-                            if (isWallDecor) return { ...prev, wallDecor: (prev.wallDecor ?? []).filter(d => d.id !== selectedId) }
-                            if (isLight) return { ...prev, lights: (prev.lights ?? []).filter(l => l.id !== selectedId) }
-                            if (isOutdoor) return { ...prev, outdoorObjects: (prev.outdoorObjects ?? []).filter(o => o.id !== selectedId) }
-                            if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                            if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
-                            if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                            if (isShape) return { ...prev, closedShapes: (prev.closedShapes ?? []).filter(sh => sh.id !== selectedId) }
-                            if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
-                            if (isStairs) return { ...prev, stairs: (prev.stairs ?? []).filter(st => st.id !== selectedId) }
-                            if (isAnn) return { ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== selectedId) }
-                            return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
-                        })
-                        setSelectedId(null)
+                        // CHANGED — was single-id, now handles the full selectedIds set.
+                        // Falls back to the old single-id path when only one thing is
+                        // selected, so behavior for the common case is unchanged.
+                        const idsToDelete = selectedIds.filter(id => !id.includes('::wall::'))
+                        if (idsToDelete.length === 0) return
+                        const idSet = new Set(idsToDelete)
+
+                        setFp(prev => ({
+                            ...prev,
+                            rooms: prev.rooms.filter(r => !idSet.has(r.id)),
+                            openings: prev.openings.filter(o =>
+                                !idSet.has(o.id) &&
+                                !(o.roomId && idSet.has(o.roomId))   // cascade: opening on a deleted room/segment
+                            ),
+                            lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
+                            lineSegments: prev.lineSegments
+                                .filter(s => !idSet.has(s.id))
+                                .filter(s => !s.nodeIds.some(nid => idSet.has(nid))), // cascade: segment referencing a deleted node
+                            closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
+                            furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
+                            stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
+                            annotations: (prev.annotations ?? []).filter(a => !idSet.has(a.id)),
+                            wallDecor: (prev.wallDecor ?? []).filter(d => !idSet.has(d.id)),
+                            lights: (prev.lights ?? []).filter(l => !idSet.has(l.id)),
+                            outdoorObjects: (prev.outdoorObjects ?? []).filter(o => !idSet.has(o.id)),
+                        }))
+                        selectedIdsRef.current = []
+                        setSelectedIds([])
                     }}
                     onBend={handleBendSelectedSegment}
                     onMove={handleArmMove}
@@ -2939,7 +3244,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                         if (isAnn) return { ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== selectedId) }
                                         return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
                                     })
-                                    setSelectedId(null)
+                                    setSelectedIds([])
                                 }}
                                 sceneConfig={sceneConfig}
                                 onChangeSceneConfig={setSceneConfig}

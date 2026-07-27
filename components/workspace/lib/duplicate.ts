@@ -17,17 +17,16 @@
 import {
   EditorRoom,
   EditorOpening,
-  PlacedFurniture,
   PlacedWallDecor,
   ClosedShape,
   LineNode,
   LineSegment,
   FloorPlanState,
-  FURNITURE_FOOTPRINTS,
 } from "./constants";
 import { SceneConfig, RoomSceneConfig } from "../FloorPlanEditor";
 import { deriveClosedPolygons } from "@/lib/helpers";
 import { PlacedLight } from "../lights-constant";
+import { PlacedFurniture } from "./furniture-constants";
 
 function uid() {
   return Math.random().toString(36).slice(2, 9);

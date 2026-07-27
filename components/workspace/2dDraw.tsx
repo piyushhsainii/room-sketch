@@ -9,6 +9,7 @@ export function draw2D(
     fp: FloorPlanState,
     tool: EditorTool,
     selectedId: string | null,
+    selectedIds: string[],
     hoveredId: string | null,
     drawRect: { x: number; z: number; w: number; d: number } | null,
     pencilPoints: { x: number, z: number }[],
@@ -21,7 +22,8 @@ export function draw2D(
     closedPolygons: string[][],
     openingsByRoom: Map<string, FloorPlanState['openings']>,
     openingsBySegment: Map<string, FloorPlanState['openings']>,
-    shapesIndex: Map<string, NonNullable<FloorPlanState['closedShapes']>[number]>
+    shapesIndex: Map<string, NonNullable<FloorPlanState['closedShapes']>[number]>,
+    marqueeRect: { x: number; z: number; w: number; d: number } | null
 ) {
     const W = ctx.canvas.width
     const H = ctx.canvas.height
@@ -47,7 +49,7 @@ export function draw2D(
     for (const room of fp.rooms) {
         const rx = cx(room.x), rz = cy(room.z)
         const rw = room.width * scale, rd = room.depth * scale
-        const isSel = selectedId === room.id
+        const isSel = selectedIds.includes(room.id)
         const isHov = hoveredId === room.id
 
         ctx.save()
@@ -212,6 +214,22 @@ export function draw2D(
             }
         }
     }
+    if (marqueeRect && (Math.abs(marqueeRect.w) > 0.02 || Math.abs(marqueeRect.d) > 0.02)) {
+        const rx = cx(Math.min(marqueeRect.x, marqueeRect.x + marqueeRect.w))
+        const rz = cy(Math.min(marqueeRect.z, marqueeRect.z + marqueeRect.d))
+        const rw = Math.abs(marqueeRect.w) * scale
+        const rd = Math.abs(marqueeRect.d) * scale
+        ctx.save()
+        ctx.fillStyle = 'rgba(99,102,241,0.10)'
+        ctx.strokeStyle = 'rgba(99,102,241,0.9)'
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([5, 3])
+        ctx.fillRect(rx, rz, rw, rd)
+        ctx.strokeRect(rx, rz, rw, rd)
+        ctx.setLineDash([])
+        ctx.restore()
+    }
+
     for (const d of fp.wallDecor ?? []) {
         let dx: number, dz: number, angle: number
         if (d.segmentNodeIds) {
@@ -230,7 +248,7 @@ export function draw2D(
             else if (d.wall === 'west') { dx = room.x; dz = room.z + d.position; angle = Math.PI / 2 }
             else { dx = room.x + room.width; dz = room.z + d.position; angle = Math.PI / 2 }
         }
-        const isSel = selectedId === d.id
+        const isSel = selectedIds.includes(d.id)
         const isHov = hoveredId === d.id
         const dw = d.width * scale
 
@@ -287,7 +305,7 @@ export function draw2D(
     }
     // ── Lights ─────────────────────────────────────────────────────────────
     for (const l of fp.lights ?? []) {
-        const isSel = selectedId === l.id
+        const isSel = selectedIds.includes(l.id)
         const isHov = hoveredId === l.id
         const label = LIGHT_FIXTURE_LABELS[l.type] ?? l.type
         const kind = LIGHT_PLACEMENT_KIND[l.type]
@@ -484,7 +502,7 @@ export function draw2D(
         const nodes = seg.nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
         if (nodes.length < 2) continue
 
-        const isSel = selectedId === seg.id
+        const isSel = selectedIds.includes(seg.id)
         const isHov = hoveredId === seg.id
         const wallType = seg.wallType ?? 'solid'
 
@@ -623,7 +641,7 @@ export function draw2D(
         // now: O(1) map lookup via sorted-id key instead of an O(shapes) scan per polygon
         const shapeKey = [...nodeIds].sort().join(',')
         const shapeMatch = shapesIndex.get(shapeKey)
-        const isSel = shapeMatch && selectedId === shapeMatch.id
+        const isSel = shapeMatch && selectedIds.includes(shapeMatch.id)
         const isHov = shapeMatch && hoveredId === shapeMatch.id
         ctx.save(); ctx.beginPath(); ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
         for (let i = 1; i < nodes.length; i++) ctx.lineTo(cx(nodes[i]!.x), cy(nodes[i]!.z))
@@ -643,7 +661,7 @@ export function draw2D(
     // ── Line nodes ─────────────────────────────────────────────────────────────
     for (const node of fp.lineNodes ?? []) {
         const isActive = activeLineNodeId === node.id
-        const isSel = selectedId === node.id
+        const isSel = selectedIds.includes(node.id)
         const isHov = hoveredId === node.id
         ctx.save()
         ctx.beginPath()
@@ -679,7 +697,7 @@ export function draw2D(
         const fd = fp2.d * scale
         const fx = toCanvas(f.x, pan.x, zoom)
         const fz = toCanvas(f.z, pan.y, zoom)
-        const isSel = selectedId === f.id
+        const isSel = selectedIds.includes(f.id)
         const isHov = hoveredId === f.id
 
         ctx.save()
@@ -751,7 +769,7 @@ export function draw2D(
         const sw = s.width * scale, sd = s.depth * scale
         const sx = toCanvas(s.x + s.width / 2, pan.x, zoom)
         const sz = toCanvas(s.z + s.depth / 2, pan.y, zoom)
-        const isSel = selectedId === s.id
+        const isSel = selectedIds.includes(s.id)
         const isHov = hoveredId === s.id
 
         ctx.save()
@@ -813,7 +831,7 @@ export function draw2D(
     }
     // ── Outdoor Objects ───────────────────────────────────────────────────
     for (const o of fp.outdoorObjects ?? []) {
-        const isSel = selectedId === o.id
+        const isSel = selectedIds.includes(o.id)
         const isHov = hoveredId === o.id
         const label = OUTDOOR_OBJECT_LABELS[o.type]
         const fp2 = OUTDOOR_OBJECT_FOOTPRINTS[o.type]

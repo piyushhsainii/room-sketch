@@ -38,10 +38,6 @@ function buildSceneGraph(fp: FloorPlanState) {
         id: d.id, label: WALL_DECOR_LABELS[d.type],
     }))
 
-    // NEW — lights were completely absent from the scene graph before, so a
-    // placed light had no way to be reselected here once deselected on
-    // canvas. string_lights get a node-count sub-label since they have no
-    // single "position" the way point fixtures do.
     const lights: SceneGraphEntry[] = (fp.lights ?? []).map(l => ({
         id: l.id,
         label: LIGHT_FIXTURE_LABELS[l.type],

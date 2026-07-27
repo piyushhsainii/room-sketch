@@ -11,6 +11,7 @@ import {
   PX_PER_M,
   STAIRS_LABELS,
 } from "@/components/workspace/lib/constants";
+import { FURNITURE_FOOTPRINTS } from "@/components/workspace/lib/furniture-constants";
 
 // export function deriveClosedPolygons(
 //   lineNodes: LineNode[],
@@ -718,4 +719,138 @@ export function repairDisconnectedNodes(
   }
 
   return { ...fp, lineNodes: nodes, lineSegments: segments };
+}
+
+// lib/helpers.ts
+export type WorldBBox = {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+};
+
+export function bboxForEntity(
+  fp: FloorPlanState,
+  id: string,
+): WorldBBox | null {
+  const room = fp.rooms.find((r) => r.id === id);
+  if (room)
+    return {
+      minX: room.x,
+      maxX: room.x + room.width,
+      minZ: room.z,
+      maxZ: room.z + room.depth,
+    };
+
+  const node = fp.lineNodes.find((n) => n.id === id);
+  if (node) return { minX: node.x, maxX: node.x, minZ: node.z, maxZ: node.z };
+
+  const seg = fp.lineSegments.find((s) => s.id === id);
+  if (seg) {
+    const nodes = seg.nodeIds
+      .map((nid) => fp.lineNodes.find((n) => n.id === nid))
+      .filter(Boolean) as LineNode[];
+    if (nodes.length === 0) return null;
+    const xs = nodes.map((n) => n.x),
+      zs = nodes.map((n) => n.z);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minZ: Math.min(...zs),
+      maxZ: Math.max(...zs),
+    };
+  }
+
+  const shape = (fp.closedShapes ?? []).find((s) => s.id === id);
+  if (shape) {
+    const nodes = shape.nodeIds
+      .map((nid) => fp.lineNodes.find((n) => n.id === nid))
+      .filter(Boolean) as LineNode[];
+    if (nodes.length === 0) return null;
+    const xs = nodes.map((n) => n.x),
+      zs = nodes.map((n) => n.z);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minZ: Math.min(...zs),
+      maxZ: Math.max(...zs),
+    };
+  }
+
+  const f = (fp.furniture ?? []).find((f) => f.id === id);
+  if (f) {
+    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 };
+    const hw = (fp2.w * (f.scale ?? 1)) / 2,
+      hd = (fp2.d * (f.scale ?? 1)) / 2;
+    // axis-aligned bbox of the rotated footprint — conservative (uses the
+    // rotated corner extents), consistent with "fully inside" being the
+    // stricter, safer default per Plan 4 Step 4.
+    const corners = [
+      [-hw, -hd],
+      [hw, -hd],
+      [hw, hd],
+      [-hw, hd],
+    ];
+    const cosR = Math.cos(f.rotation),
+      sinR = Math.sin(f.rotation);
+    const xs = corners.map(([lx, lz]) => f.x + lx * cosR - lz * sinR);
+    const zs = corners.map(([lx, lz]) => f.z + lx * sinR + lz * cosR);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minZ: Math.min(...zs),
+      maxZ: Math.max(...zs),
+    };
+  }
+
+  const st = (fp.stairs ?? []).find((s) => s.id === id);
+  if (st) {
+    const cx = st.x + st.width / 2,
+      cz = st.z + st.depth / 2;
+    const hw = st.width / 2,
+      hd = st.depth / 2;
+    const corners = [
+      [-hw, -hd],
+      [hw, -hd],
+      [hw, hd],
+      [-hw, hd],
+    ];
+    const cosR = Math.cos(st.rotation),
+      sinR = Math.sin(st.rotation);
+    const xs = corners.map(([lx, lz]) => cx + lx * cosR - lz * sinR);
+    const zs = corners.map(([lx, lz]) => cz + lx * sinR + lz * cosR);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minZ: Math.min(...zs),
+      maxZ: Math.max(...zs),
+    };
+  }
+
+  const l = (fp.lights ?? []).find((l) => l.id === id);
+  if (l && l.x !== undefined && l.z !== undefined)
+    return { minX: l.x, maxX: l.x, minZ: l.z, maxZ: l.z };
+
+  const o = (fp.outdoorObjects ?? []).find((o) => o.id === id);
+  if (o) return { minX: o.x, maxX: o.x, minZ: o.z, maxZ: o.z };
+
+  const ann = (fp.annotations ?? []).find((a) => a.id === id);
+  if (ann) return { minX: ann.x, maxX: ann.x, minZ: ann.z, maxZ: ann.z };
+
+  // wall-anchored decor/openings/lights intentionally excluded — Plan 4
+  // scopes marquee-select to freestanding + line/room entities; wall
+  // items stay single-click-select only (see note at bottom).
+  return null;
+}
+
+export function bboxFullyInside(
+  b: WorldBBox,
+  rx: [number, number],
+  rz: [number, number],
+): boolean {
+  const [rminX, rmaxX] = rx,
+    [rminZ, rmaxZ] = rz;
+  return (
+    b.minX >= rminX && b.maxX <= rmaxX && b.minZ >= rminZ && b.maxZ <= rmaxZ
+  );
 }

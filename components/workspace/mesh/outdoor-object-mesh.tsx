@@ -105,6 +105,12 @@ function ObjectBody({ type, materialId }: { type: OutdoorObjectType; materialId?
         }
 
         default:
+            if (process.env.NODE_ENV !== 'production') {
+                console.warn(
+                    `[OutdoorObjectMesh] type "${type}" has no ObjectBody case — ` +
+                    `it will render (and export to glTF/OBJ) as nothing, silently.`
+                )
+            }
             return null
     }
 }
@@ -126,6 +132,7 @@ export function OutdoorObjectMesh({
             position={[obj.x, isFlat ? 0.003 : 0, obj.z]}
             rotation={[0, obj.rotation, 0]}
             scale={scale}
+            userData={{ __meshType: obj.type, __id: obj.id }}
             onClick={onSelect ? (e: any) => { e.stopPropagation(); onSelect() } : undefined}
             onPointerOver={onSelect ? () => { document.body.style.cursor = 'pointer' } : undefined}
             onPointerOut={onSelect ? () => { document.body.style.cursor = 'auto' } : undefined}

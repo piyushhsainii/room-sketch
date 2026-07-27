@@ -1,23 +1,5 @@
-// components/workspace/QuickActionMenu.tsx
-//
-// Floating pill toolbar anchored to the current 2D selection. Mirrors the
-// existing `editingAnnotation` popup pattern (client-pixel x/y, positioned
-// div rendered on top of the canvas) rather than inventing a new overlay
-// mechanism.
-//
-// WHAT THIS DOES NOT DO: it does not reimplement move, duplicate, delete,
-// or bend. It calls your existing `handleDuplicateSelected` and `onDelete`
-// exactly as-is. The one genuinely new piece of logic is "insert a bend
-// point into a straight 2-node line segment," built from the same
-// node-splicing your `tool === 'bend'` path already does — not a new
-// curve/spline system.
-
 import React, { useMemo } from 'react'
 import { FloorPlanState, LineSegment } from './lib/constants'
-
-/* ------------------------------------------------------------------ */
-/* Entity → action lookup (Plan step 4)                                */
-/* ------------------------------------------------------------------ */
 
 export type QuickAction = 'move' | 'bend' | 'duplicate' | 'delete' | 'properties'
 
@@ -42,11 +24,7 @@ const ACTIONS_BY_ENTITY: Record<
     opening: ['properties', 'duplicate', 'delete'],     // doors/windows — same, slide-along-wall stays free
     shape: ['properties', 'move', 'duplicate', 'delete'],
     node: ['properties', 'delete'],
-    light: ['properties', 'duplicate', 'delete'],       // wall-point/wall-strip lights slide along wall (free);
-    // free-point lights (pendant, floor lamp, etc.) currently have no Move
-    // button either — flag if you want click-to-relocate for those too,
-    // it's a small addition once the free-point commit case exists (see
-    // move-commit.ts)
+    light: ['properties', 'duplicate', 'delete'],
 }
 
 const ICONS: Record<QuickAction, React.ReactNode> = {
@@ -81,10 +59,6 @@ const ICONS: Record<QuickAction, React.ReactNode> = {
     ),
 }
 
-/* ------------------------------------------------------------------ */
-/* Anchor computation (Plan step 2)                                    */
-/* ------------------------------------------------------------------ */
-
 type SelectionKind = keyof typeof ACTIONS_BY_ENTITY | 'light'
 
 export function classifySelection(fp: FloorPlanState, selectedId: string | null): SelectionKind | null {
@@ -105,12 +79,6 @@ export function classifySelection(fp: FloorPlanState, selectedId: string | null)
     return null
 }
 
-/**
- * World-space anchor point (in meters) for the current selection, or null
- * if there's nothing to anchor to. Caller converts this to screen pixels
- * with `toCanvas` + the canvas's bounding rect, same as the annotation
- * popup already does.
- */
 export function getSelectionAnchorWorld(
     fp: FloorPlanState,
     selectedId: string | null,
@@ -225,13 +193,6 @@ export function getSelectionAnchorWorld(
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Bend action — splice a midpoint node into a straight segment         */
-/* ------------------------------------------------------------------ */
-
-/** Only offered for a plain 2-node segment (a single straight edge) — a
- *  segment that's already been bent has intermediate nodes you can drag
- *  directly, so there's nothing more for this action to do there. */
 export function canBendSegment(fp: FloorPlanState, segId: string): boolean {
     const seg = fp.lineSegments.find(s => s.id === segId)
     return !!seg && seg.nodeIds.length === 2

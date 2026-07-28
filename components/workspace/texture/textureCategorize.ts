@@ -1,7 +1,4 @@
-import { labelize } from "../MaterialPicker";
-import { DOOR_STYLES, FLOOR_MAT_DEFS, WALL_MAT_DEFS } from "../lib/constants";
-import { DOOR_TEXTURE_MATERIALS } from "../Tools/textureMaterials";
-import { MaterialCategory, MaterialDomain } from "./materials-registry";
+import { MaterialCategory } from "./materials-registry";
 
 export const CATEGORY_META: Record<
   MaterialCategory,
@@ -18,6 +15,9 @@ export const CATEGORY_META: Record<
   glass: { label: "Glass", icon: "🫙", order: 8 },
   wallpaper: { label: "Wallpaper", icon: "📜", order: 9 },
   "pvc-panel": { label: "PVC Panels", icon: "🪵", order: 10 },
+  leather: { label: "Leather", icon: "", order: 11 },
+  outdoor: { label: "Outdoor", icon: "", order: 12 },
+  wicker: { label: "Wicker", icon: "", order: 13 },
 };
 
 // filename prefix (lowercased, digits stripped) → category

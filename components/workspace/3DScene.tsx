@@ -247,15 +247,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                     </group>
                 )
             })}
-            {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
-                <group key={f.id} /* ...existing handlers */>
-                    <FurnitureMesh
-                        f={f}
-                        selected={interactiveMode && selectedId === f.id}
-                        overlapping={overlappingIds?.has(f.id) ?? false}
-                    />
-                </group>
-            ))}
             {walkMode ? (
                 <WalkModeControls />
             ) : (

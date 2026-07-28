@@ -10,8 +10,8 @@ export default function Capabilities() {
             Every sheet you need, <em className="italic">in one editor.</em>
           </h2>
           <p className="text-[13.5px] font-light text-muted max-w-[440px] leading-[1.7]">
-            Like a real drawing set, each part of RenderAI is numbered and cross-referenced —
-            plan, model, walkthrough, finishes, revisions.
+            Like a real drawing set, each part of RoomSketch is numbered and cross-referenced —
+            plan, model, finishes, walkthrough, revisions.
           </p>
         </div>
 
@@ -20,8 +20,8 @@ export default function Capabilities() {
           <Sheet
             code="A-101"
             title="Floor plan"
-            desc="Node-based drawing. Rooms, walls, doors, windows, stairs, lifts — every coordinate converts to real metres."
-            tags={["Node editor", "Real units", "Trace an upload"]}
+            desc="Node-based drawing. Rooms, walls, doors, windows, stairs — every coordinate is real metres. Set each wall to solid, railing or open per segment."
+            tags={["Node editor", "Real units", "3 wall types"]}
             className="md:row-span-2"
           >
             <PlanIcon />
@@ -31,8 +31,8 @@ export default function Capabilities() {
           <Sheet
             code="A-201"
             title="Live 3D model"
-            desc="Your plan renders as a full 3D scene continuously — add a wall, watch it appear on the right."
-            tags={["Real-time", "WebGL"]}
+            desc="Your plan renders as a full 3D scene in a resizable split view — add a wall, watch it appear on the right, no re-modeling."
+            tags={["Real-time sync", "Resizable split view"]}
           >
             <CubeIcon />
           </Sheet>
@@ -40,9 +40,9 @@ export default function Capabilities() {
           {/* Scene config */}
           <Sheet
             code="A-401"
-            title="Finishes"
-            desc="Flooring, wall colour, door style and light — set per room, applied instantly."
-            tags={["Per room", "5 floor finishes"]}
+            title="Materials"
+            desc="60+ materials across walls, floors, doors and furniture, in one registry — swap a finish per room and see it update instantly."
+            tags={["60+ materials", "Per-room control", "Pro"]}
           >
             <SwatchIcon />
           </Sheet>
@@ -51,18 +51,18 @@ export default function Capabilities() {
           <Sheet
             code="A-301"
             title="Walkthrough"
-            desc="First-person navigation with collision, so a client experiences scale at eye level, not from above."
-            tags={["WASD", "Collision"]}
+            desc="First-person Walk Mode moves a client through the space at eye level, not from above — see it exactly as they would standing in the room."
+            tags={["Walk Mode", "Pro"]}
           >
             <WalkIcon />
           </Sheet>
 
-          {/* History */}
+          {/* Duplicate & undo */}
           <Sheet
             code="A-501"
-            title="Revisions"
-            desc="Every save is a new revision. Compare layouts side by side and restore any of them in one click."
-            tags={["Full history", "One-click restore"]}
+            title="Duplicate & undo"
+            desc="Duplicate or mirror any room or furniture group instead of redrawing it — and every edit is a step you can undo."
+            tags={["Duplicate & mirror", "Undo history"]}
           >
             <HistoryIcon />
           </Sheet>

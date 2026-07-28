@@ -1,6 +1,6 @@
 export const APP = {
-  name: "RenderAI",
-  description: "Floor plan to interior render",
+  name: "RoomSketch",
+  description: "Draw a floor plan. Walk the home before it's built.",
   projectsLabel: "PROJECTS",
   noProjects: "No projects",
   freePlan: "Free",
@@ -11,116 +11,128 @@ export const APP = {
 } as const;
 
 export const DASHBOARD = {
-  headline: "Generate photoreal 3D renders from floor plans",
-  subheadline: "Upload a floor plan, pick an output, then generate a render (and optional video).",
+  headline: "Sketch a floor plan. Walk it in 3D.",
+  subheadline:
+    "Draw rooms and walls in the editor — the 3D model updates the instant you draw.",
 } as const;
 
-export const UPLOAD = {
-  dropzoneIdle: "Upload a floor plan to start generating",
-  dropzoneDragging: "Drop to upload",
-  dropzoneHint: "PNG, JPG, or PDF. Max 10MB.",
-  browseFiles: "Browse Files",
-  orDivider: "or",
-  remove: "Remove",
-  ready: "Ready",
-} as const;
-
-export const GENERATE = {
-  buttonLabel: "Generate",
-  options: {
-    renderOnly: {
-      id: "render" as const,
-      icon: "\uD83D\uDDBC\uFE0F",
-      label: "Render only",
-      description: "Photoreal 3D interior still image",
-    },
-    renderVideo: {
-      id: "render_video" as const,
-      icon: "\uD83C\uDFA5",
-      label: "Render + video",
-      description: "Still render plus cinematic pan video",
-    },
+// The node-based floor plan editor: walls, doors, windows, stairs.
+export const EDITOR = {
+  toolbarLabel: "Draw",
+  tools: {
+    wall: { id: "wall" as const, label: "Wall" },
+    door: { id: "door" as const, label: "Door" },
+    window: { id: "window" as const, label: "Window" },
+    stairs: { id: "stairs" as const, label: "Stairs" },
   },
-  steps: [
-    "Queue",
-    "Generate render",
-    "Upload",
-    "Finalize",
-  ],
-  progressHeadline: "Generating your render",
-  progressSubtext: "This can take up to a minute. Keep this tab open.",
-  loadingMessages: [
-    "Analyzing your floor plan structure...",
+  wallTypes: {
+    solid: { id: "solid" as const, label: "Solid" },
+    railing: { id: "railing" as const, label: "Railing" },
+    open: { id: "open" as const, label: "Open" },
+  },
+  duplicate: "Duplicate",
+  mirror: "Mirror",
+  undo: "Undo",
+  redo: "Redo",
+  save: "Save",
+  saving: "Saving…",
+  saved: "Saved",
+} as const;
+
+// Materials registry — walls, floors, doors, furniture finishes.
+export const MATERIALS = {
+  sectionLabel: "Materials",
+  categories: {
+    wall: "Wall",
+    floor: "Floor",
+    door: "Door",
+    furniture: "Furniture",
+  },
+  applyToRoom: "Apply to room",
+  swatchCount: "60+ materials",
+} as const;
+
+// Live 3D pane and Walk Mode toolbar.
+export const WORKSPACE = {
+  splitViewLabel: "3D preview",
+  buttonLabel: "Walk Mode",
+  buttonLoadingLabel: "Building 3D scene…",
+  buttonTooltip: "Walk through your floor plan at eye level",
+  enteringWalkMode: "Entering Walk Mode…",
+
+  extractingLabel: "Reading floor plan…",
+  buildingLabel: "Building 3D model…",
+  readyLabel: "Scene ready",
+
+  errorNoWalls: "Draw at least one room before entering Walk Mode.",
+  errorSceneFailed: "Couldn't load the 3D scene. Please try again.",
+
+  loadingSteps: [
+    "Reading floor plan data...",
     "Detecting rooms and walls...",
-    "Applying photorealistic materials...",
-    "Calculating lighting and shadows...",
-    "Rendering interior details...",
-    "Almost there — finalizing your render...",
+    "Placing doors and windows...",
+    "Building 3D geometry...",
+    "Applying materials and lighting...",
+    "Finalizing scene...",
   ],
-  videoLoadingMessages: [
-    "Render complete. Starting video generation...",
-    "Setting up camera path...",
-    "Rendering cinematic pan...",
-    "Encoding video...",
-  ],
+
+  toolbar: {
+    orbit: "Orbit",
+    walk: "Walk",
+    topDown: "Top view",
+    reset: "Reset camera",
+    exit: "Exit",
+  },
+
+  cameraHelp: {
+    orbit: "Left click + drag to rotate · Scroll to zoom · Right click to pan",
+    walk: "WASD or arrow keys to move · Mouse to look",
+    topDown: "Scroll to zoom · Right click to pan",
+  },
+
+  roomLabels: {
+    fallback: "Room",
+  },
 } as const;
 
-export const VIEWER = {
-  downloadRender: "Download Render",
-  regenerate: "Regenerate",
-  downloadVideo: "Download Video",
-  cinematicVideo: "Cinematic Video",
-  carousel: {
-    floorplanLabel: "Original Floor Plan",
-    renderLabel: "3D Render",
-    videoLabel: "Cinematic Video",
-  },
-  assets: {
-    sectionLabel: "Project Assets",
-    floorplanLabel: "Original Floor Plan",
-    renderLabel: "3D Render",
-    videoLabel: "Cinematic Video",
-    downloadButton: "Download",
-    viewButton: "View",
-    downloadAll: "Download All Assets",
-  },
+export const SHARE = {
+  buttonLabel: "Share",
+  copyLink: "Copy link",
+  linkCopied: "Link copied",
+  makePublic: "List in community gallery",
+  makePrivate: "Keep private",
 } as const;
 
 export const MARQUEE = {
-  label: "GENERATED BY RENDERAI",
-  interiorRenderCard: "Interior Render",
-  cinematicVideoCard: "Cinematic Video",
+  label: "MADE WITH ROOMSKETCH",
+  floorPlanCard: "Floor Plan",
+  walkthroughCard: "3D Walkthrough",
 } as const;
 
 export const PRICING = {
-  limitReachedRender: "You have reached your monthly render limit.",
-  limitReachedVideo: "You have reached your monthly video limit.",
+  limitReachedProjects: "You've used your free project. Upgrade to add more.",
+  walkModeLocked: "Walk Mode is a Pro feature.",
+  sceneFinishesLocked: "Full scene finishes are a Pro feature.",
 } as const;
 
 export const ERRORS = {
   unauthorized: "You must be signed in.",
   supabaseMisconfigured: "Supabase environment variables are missing.",
   profileFailed: "Profile update failed.",
-  missingFile: "No file provided.",
-  invalidFileType: "Unsupported file type.",
-  fileTooLarge: "File exceeds 10MB.",
-  uploadFailed: "Upload failed.",
-  generateFailed: "Generation failed.",
+  saveFailed: "Couldn't save your project.",
+  loadFailed: "Couldn't load this project.",
   projectNotFound: "Project not found.",
   forbidden: "You do not have access to this project.",
-  providerMisconfigured: "Provider is misconfigured.",
-  imageGenFailed: "Image generation failed.",
-  videoGenFailed: "Video generation failed.",
+  projectLimitReached: "Free plan includes 1 project. Upgrade to add more.",
 } as const;
 
 export const WARNINGS = {
-  videoProviderFallback: "VIDEO_PROVIDER not implemented, falling back to ffmpeg",
+  autosaveFailed: "Autosave failed — your latest changes may not be saved.",
 } as const;
 
 export const A11Y = {
   openSidebar: "Open sidebar",
   closeSidebar: "Close sidebar",
-  uploadIcon: "Upload",
   download: "Download",
   refresh: "Refresh",
   previous: "Previous",
@@ -131,7 +143,7 @@ export const A11Y = {
 
 export const AUTH = {
   loginRequiredTitle: "Sign in required",
-  loginRequiredBody: "Please sign in to upload and generate renders.",
+  loginRequiredBody: "Please sign in to create and edit floor plans.",
   continueWithGoogle: "Continue with Google",
   orDivider: "or",
   emailLabel: "Email",
@@ -142,139 +154,7 @@ export const AUTH = {
   close: "Close",
 } as const;
 
-export const STYLE_CONTEXT = {
-  sectionLabel: 'Style & Context',
-  textareaLabel: 'Describe your style (optional)',
-  textareaHint: 'The more specific you are, the better the render matches your vision.',
-
-  placeholders: [
-    'Traditional Indian household with warm wooden furniture and brass accents...',
-    'Minimalist Scandinavian living room with white walls and natural light...',
-    'Urban loft style with exposed brick, concrete floors, and steel fixtures...',
-    'Suburban family home with cozy earth tones and comfortable furniture...',
-    'Luxury penthouse with floor-to-ceiling windows and marble surfaces...',
-    'Rustic farmhouse kitchen with reclaimed wood and vintage appliances...',
-    'Modern Japanese zen interior with tatami mats and bamboo elements...',
-    'Coastal beach house with light blues, whites, and natural textures...',
-    'Industrial warehouse conversion with raw materials and Edison bulbs...',
-    'Bohemian studio with layered textiles, plants, and eclectic decor...',
-  ],
-
-  presetLabel: 'Quick styles',
-  presets: [
-    { id: 'indian',       label: '🏡 Indian Home',      prompt: 'Traditional Indian household with warm wooden furniture, brass and copper accents, rich textile patterns, and earthy terracotta tones' },
-    { id: 'urban',        label: '🏙 Urban Loft',        prompt: 'Urban loft style with exposed brick walls, polished concrete floors, steel industrial fixtures, large windows, and modern furniture' },
-    { id: 'suburban',     label: '🌳 Suburban',          prompt: 'Comfortable suburban family home with neutral tones, warm lighting, practical furniture, and a welcoming lived-in feel' },
-    { id: 'rural',        label: '🌾 Rural / Farmhouse', prompt: 'Rustic rural farmhouse with reclaimed wood beams, stone walls, vintage fixtures, cozy textiles, and natural materials throughout' },
-    { id: 'scandinavian', label: '❄️ Scandinavian',      prompt: 'Minimalist Scandinavian interior with white walls, light wood floors, functional furniture, abundant natural light, and subtle greenery' },
-    { id: 'luxury',       label: '✨ Luxury',             prompt: 'High-end luxury interior with marble surfaces, bespoke furniture, dramatic lighting, rich fabrics, and a sophisticated color palette' },
-    { id: 'japanese',     label: '🎋 Japanese Zen',      prompt: 'Japanese zen interior with tatami mats, shoji screens, bamboo elements, minimalist furniture, and a calm neutral palette' },
-    { id: 'coastal',      label: '🌊 Coastal',           prompt: 'Coastal beach house style with light blues and whites, natural rattan furniture, linen fabrics, and airy open spaces' },
-    { id: 'industrial',   label: '⚙️ Industrial',        prompt: 'Industrial style with exposed pipes, raw concrete, steel furniture, Edison bulb lighting, and a dark moody palette' },
-    { id: 'bohemian',     label: '🌿 Bohemian',          prompt: 'Bohemian interior with layered colorful textiles, macrame wall art, indoor plants, rattan furniture, and warm ambient lighting' },
-  ],
-
-  customLabel: 'Or describe your own style',
-  clearButton: 'Clear',
-  selectedLabel: 'Style selected:',
-  charLimit: 500,
-  charLimitWarning: '500 character limit',
-}
-
-export const WORKSPACE = {
-  buttonLabel: 'Explore in 3D',
-  buttonLoadingLabel: 'Building 3D scene...',
-  buttonTooltip: 'Walk through your floor plan in an interactive 3D space',
-
-  extractingLabel: 'Analyzing floor plan...',
-  buildingLabel: 'Building 3D model...',
-  readyLabel: 'Scene ready',
-
-  errorExtraction: 'Could not read floor plan. Try a clearer image.',
-  errorBuilding: 'Failed to build 3D scene. Please try again.',
-  errorNoFloorplan: 'Upload a floor plan first to use the 3D workspace.',
-
-  toolbar: {
-    orbit: 'Orbit',
-    walk: 'Walk',
-    topDown: 'Top view',
-    reset: 'Reset camera',
-    exit: 'Exit workspace',
-  },
-
-  loadingSteps: [
-    'Reading floor plan structure...',
-    'Detecting rooms and walls...',
-    'Identifying doors and windows...',
-    'Calculating room dimensions...',
-    'Building 3D geometry...',
-    'Applying materials and lighting...',
-    'Finalizing scene...',
-  ],
-
-  roomLabels: {
-    fallback: 'Room',
-  },
-
-  cameraHelp: {
-    orbit: 'Left click + drag to rotate · Scroll to zoom · Right click to pan',
-    walk: 'WASD or arrow keys to move · Mouse to look · Scroll to change speed',
-    topDown: 'Scroll to zoom · Right click to pan',
-  },
-}
-
-export const SIDEBAR_GENERATE = {
-  sectionLabel: 'Output Type',
-  generateLabel: 'Generate',
-  generatingLabel: 'Generating...',
-  videoChoiceTitle: 'Generate video',
-  videoChoiceBody: 'Use the selected render or generate a new render + video.',
-  useSelectedRender: 'Use selected render',
-  generateRenderAndVideo: 'Generate render + video',
-  cancel: 'Cancel',
-} as const;
-
 export const EMPTY_STATE = {
-  title: 'Your renders will appear here',
-  hint: 'Upload a floor plan to get started.',
-} as const;
-
-export const UPLOAD_COMPACT = {
-  title: 'Upload a floor plan',
-  hint: 'PNG, JPG, or PDF · Max 10MB',
-} as const;
-
-export const SKETCHUP = {
-  sectionLabel: 'SketchUp Import',
-  buttonLabel: 'Import from SketchUp',
-  buttonLoadingLabel: 'Importing SketchUp file...',
-  buttonTooltip: 'Import a .skp file to use as your floor plan source',
-
-  uploadLabel: 'Upload SketchUp file',
-  uploadHint: 'Drag and drop your .skp file here, or click to browse',
-  uploadAccept: '.skp',
-  uploadMaxSize: '50MB',
-
-  processingSteps: [
-    'Reading SketchUp file structure...',
-    'Extracting floor plan geometry...',
-    'Converting units to meters...',
-    'Identifying rooms and spaces...',
-    'Building scene JSON...',
-    'Finalizing import...',
-  ],
-
-  errorInvalidFile: 'Invalid file type. Please upload a .skp file.',
-  errorFileTooLarge: 'File is too large. Maximum size is 50MB.',
-  errorParseFailed: 'Could not parse the SketchUp file. Try exporting as a simpler version.',
-  errorNoGeometry: 'No floor plan geometry found in this file.',
-
-  successLabel: 'SketchUp file imported successfully',
-  successHint: 'Your floor plan has been extracted and is ready to use.',
-
-  conversionNotes: {
-    units: 'All measurements converted to meters',
-    layers: 'SketchUp layers mapped to room types',
-    groups: 'SketchUp groups treated as individual rooms',
-  },
+  title: "Your projects will appear here",
+  hint: "Draw your first floor plan to get started.",
 } as const;

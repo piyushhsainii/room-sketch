@@ -68,10 +68,6 @@ export default function WorkspaceCanvas({
     })
   }, [sceneWalls, workspaceConfig.rooms])
 
-  const hintText = useMemo(() => {
-    if (mode === 'topdown') return WORKSPACE.cameraHelp.topDown
-    return WORKSPACE.cameraHelp[mode]
-  }, [mode])
 
   const resetHintTimer = useCallback(() => {
     if (hintTimer.current) window.clearTimeout(hintTimer.current)
@@ -198,20 +194,6 @@ export default function WorkspaceCanvas({
         onConfigChange={onConfigChange}
       />
 
-      {/* Camera hint */}
-      <div style={{
-        position: 'absolute', left: '50%', bottom: 16,
-        transform: 'translateX(-50%)', zIndex: 14,
-        padding: '8px 14px', borderRadius: 999,
-        background: 'rgba(15,15,15,0.75)',
-        color: 'rgba(226,232,240,0.92)', fontSize: 12,
-        fontFamily: 'system-ui, sans-serif',
-        border: '1px solid rgba(148,163,184,0.16)',
-        opacity: showHint ? 1 : 0, transition: 'opacity 200ms ease',
-        pointerEvents: 'none', whiteSpace: 'nowrap',
-      }}>
-        {hintText}
-      </div>
     </div>
   )
 }

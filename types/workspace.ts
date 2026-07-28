@@ -88,14 +88,14 @@ export type SceneJSON = {
   floorplan_url: string;
 };
 
-export type CameraMode = "orbit" | "walk" | "topdown";
-
 export type WorkspaceStatus =
   | "idle"
   | "extracting"
   | "building"
   | "ready"
   | "error";
+
+export type CameraMode = "orbit" | "walk" | "topdown";
 
 export interface RoomConfig {
   roomId: string;

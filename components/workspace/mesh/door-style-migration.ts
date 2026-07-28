@@ -1,4 +1,4 @@
-import { DoorStyle } from "./constants";
+import { DoorStyle } from "../lib/constants";
 
 const LEGACY_DOOR_STYLE_MAP: Record<string, DoorStyle> = {
   natural: "wood_oak",

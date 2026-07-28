@@ -180,8 +180,81 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const lineActiveNodeRef = useRef<string | null>(null)
     const [preview, setPreview] = useState<{ x: number; z: number } | null>(null)
     const pathDraftRef = useRef<string[] | null>(null)
+    const pencilPointsRef = useRef<{ x: number, z: number }[]>([])
 
-    // ─────────────────────────────────────────────────────────────────────────
+    function getWorldPos(e: React.PointerEvent | PointerEvent): { x: number; z: number } {
+        const canvas = canvasRef.current
+        if (!canvas) return { x: 0, z: 0 }
+        const rect = canvas.getBoundingClientRect()
+        const canvasX = e.clientX - rect.left
+        const canvasY = e.clientY - rect.top
+        return {
+            x: toWorld(canvasX, pan.x, zoom),
+            z: toWorld(canvasY, pan.y, zoom),
+        }
+    }
+
+    function computeRect(
+        start: { x: number; z: number },
+        current: { x: number; z: number }
+    ): { x: number; z: number; w: number; d: number } {
+        return {
+            x: start.x,
+            z: start.z,
+            w: current.x - start.x,
+            d: current.z - start.z,
+        }
+    }
+
+    function onPointerMoveRectTool(e: React.PointerEvent) {
+        if (!drawStartRef.current) return
+        const world = getWorldPos(e)
+        drawRectRef.current = computeRect(drawStartRef.current, world) // pure, no setState
+        scheduleRedraw()                                                // just kicks rAF, no re-render
+    }
+
+    function onPointerMovePencilTool(e: React.PointerEvent) {
+        pencilPointsRef.current = [...pencilPointsRef.current, getWorldPos(e)]
+        scheduleRedraw()
+    }
+
+    function commitRoom(rect: { x: number; z: number; w: number; d: number }) {
+        setFp(prev => ({
+            ...prev,
+            rooms: [
+                ...prev.rooms,
+                {
+                    id: uid(),
+                    label: `Room ${prev.rooms.length + 1}`,
+                    x: rect.x,
+                    z: rect.z,
+                    width: rect.w,
+                    depth: rect.d,
+                },
+            ],
+        }))
+    }
+
+    // on pointerup, only THEN sync to state if something downstream needs it
+    function onPointerUpRectTool() {
+        const r = drawRectRef.current
+        if (r && Math.abs(r.w) > 0.1 && Math.abs(r.d) > 0.1) {
+            // Normalize negative width/depth (dragged up-left instead of
+            // down-right) before committing, same convention draw2D already
+            // uses to render the live preview (see its Math.min(drawRect.x, ...)
+            // handling in the drawRect preview block).
+            const normalized = {
+                x: Math.min(r.x, r.x + r.w),
+                z: Math.min(r.z, r.z + r.d),
+                w: Math.abs(r.w),
+                d: Math.abs(r.d),
+            }
+            commitRoom(normalized)
+        }
+        drawRectRef.current = null
+        drawStartRef.current = null
+        scheduleRedraw()
+    } // ─────────────────────────────────────────────────────────────────────────
     // Furniture placement + collisions
     // ─────────────────────────────────────────────────────────────────────────
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
@@ -470,6 +543,28 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const shapesIndexRef = useRef(shapesIndex)
     useEffect(() => { shapesIndexRef.current = shapesIndex }, [shapesIndex])
 
+    const nodesById = useMemo(
+        () => new Map(fp.lineNodes.map(n => [n.id, n])),
+        [fp.lineNodes]
+    )
+    const nodesByIdRef = useRef(nodesById)
+    useEffect(() => { nodesByIdRef.current = nodesById }, [nodesById])
+
+    const roomsById = useMemo(
+        () => new Map(fp.rooms.map(r => [r.id, r])),
+        [fp.rooms]
+    )
+    const roomsByIdRef = useRef(roomsById)
+    useEffect(() => { roomsByIdRef.current = roomsById }, [roomsById])
+
+    // ── Live-gesture refs — NOT React state. Written directly during
+    // pointermove so a drag doesn't trigger a re-render (and therefore doesn't
+    // tear down/rebuild scheduleRedraw) on every mouse-move tick. ────────────
+    // const drawRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
+    // const pencilPointsRef = useRef<{ x: number; z: number }[]>([])
+    const previewRef = useRef<{ x: number; z: number } | null>(null)
+    // const marqueeRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
+
     const scheduleRedraw = useCallback(() => {
         cancelAnimationFrame(rafIdRef.current)
         rafIdRef.current = requestAnimationFrame(() => {
@@ -484,18 +579,18 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 canvas.height = ch
                 lastCanvasSizeRef.current = { w: cw, h: ch }
             }
-            const fp = fpRef.current
-            const closedPolygons = flat2DRef.current.closedPolygons
-            const { byRoom: openingsByRoom, bySegment: openingsBySegment } = openingsIndexRef.current
-            const shapesIndex = shapesIndexRef.current
 
             draw2D(
-                ctx, fp, tool, selectedId, selectedIds, hoveredIdRef.current, drawRect, pencilPoints,
-                zoom, pan, preview, lineActiveNodeRef.current, overlappingIds,
-                closedPolygons, openingsByRoom, openingsBySegment, shapesIndex, marqueeRectRef.current
+                ctx, fpRef.current, tool, selectedId, selectedIds, hoveredIdRef.current,
+                drawRectRef.current, pencilPointsRef.current,
+                zoom, pan, previewRef.current, lineActiveNodeRef.current, overlappingIds,
+                flat2DRef.current.closedPolygons,
+                openingsIndexRef.current.byRoom, openingsIndexRef.current.bySegment,
+                shapesIndexRef.current, marqueeRectRef.current,
+                nodesByIdRef.current, roomsByIdRef.current   // ← the two params that were missing
             )
         })
-    }, [tool, selectedId, selectedIds, drawRect, pencilPoints, zoom, pan, preview, marqueeRectRef, overlappingIds])
+    }, [tool, selectedId, selectedIds, zoom, pan, overlappingIds])
 
     useEffect(() => { scheduleRedraw() }, [scheduleRedraw, fp, pencilPoints, preview, hoveredId])
     useEffect(() => () => cancelAnimationFrame(rafIdRef.current), [])
@@ -2959,7 +3054,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                             <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#EFEFEC' }}>
                                 <ResilientCanvas
                                     shadows
-                                    gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', stencil: false, depth: true }}
+                                    gl={{ antialias: true, alpha: false, powerPreference: 'low-power', stencil: false, depth: true }}
                                     dpr={[1, 2]}
                                     camera={{
                                         position: [
@@ -2991,8 +3086,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                         overlappingIds={overlappingIds}
                                     />
                                 </ResilientCanvas>
-                                {/* FloatingMenu no longer renders here — see below, it's now
-                    fixed-positioned and mounted regardless of previewOpen. */}
                             </div>
                         </div>
                     </>

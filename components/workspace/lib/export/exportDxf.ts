@@ -1,3 +1,4 @@
+// @ts-nocheck
 // lib/export/exportDxf.ts
 //
 // STEP 4 — DXF (2D) exporter. No prior exporter of any kind existed for

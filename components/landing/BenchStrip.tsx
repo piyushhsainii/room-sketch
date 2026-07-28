@@ -1,6 +1,6 @@
 const items = [
-  { num: "<2s", label: "Sketch → live 3D" },
-  { num: "90%", label: "Cheaper than a 3D studio" },
+  { num: "60+", label: "Materials across walls, floors & furniture" },
+  { num: "4", label: "Lighting types — wall, strip, ceiling, string" },
   { num: "0", label: "Software to install" },
   { num: "1", label: "Free project, no card needed" },
 ];

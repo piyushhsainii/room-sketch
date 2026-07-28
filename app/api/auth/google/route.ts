@@ -40,7 +40,10 @@ async function fetchTokenInfo(idToken: string): Promise<TokenInfo> {
     const url = new URL("https://oauth2.googleapis.com/tokeninfo");
     url.searchParams.set("id_token", idToken);
 
-    const res = await fetch(url.toString(), { method: "GET", signal: controller.signal });
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      signal: controller.signal,
+    });
     if (!res.ok) throw new Error("tokeninfo_failed");
     return (await res.json()) as TokenInfo;
   } finally {
@@ -58,7 +61,10 @@ export async function POST(request: Request) {
 
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
-      return NextResponse.json({ error: ERRORS.providerMisconfigured }, { status: 500 });
+      return NextResponse.json(
+        { error: ERRORS.supabaseMisconfigured },
+        { status: 500 },
+      );
     }
 
     const info = await fetchTokenInfo(credential);
@@ -76,7 +82,10 @@ export async function POST(request: Request) {
     const admin = createSupabaseAdmin();
     const { error: upsertError } = await admin
       .from("users")
-      .upsert({ id: userId, email, google_sub: googleSub }, { onConflict: "id" });
+      .upsert(
+        { id: userId, email, google_sub: googleSub },
+        { onConflict: "id" },
+      );
 
     if (upsertError) {
       return NextResponse.json({ error: upsertError.message }, { status: 500 });
@@ -88,6 +97,9 @@ export async function POST(request: Request) {
     return res;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: message || ERRORS.unauthorized }, { status: 500 });
+    return NextResponse.json(
+      { error: message || ERRORS.unauthorized },
+      { status: 500 },
+    );
   }
 }

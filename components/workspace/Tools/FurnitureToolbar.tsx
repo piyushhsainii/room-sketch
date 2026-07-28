@@ -3,9 +3,9 @@ import * as Icons from 'lucide-react'
 import {
     getFurnitureByCategory,
     isFurnitureNew,
-    FurnitureType,
     FurnitureCategory,
 } from '../lib/constants'
+import { FurnitureType } from '../lib/furniture-constants'
 
 const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
     seating: 'Seating',

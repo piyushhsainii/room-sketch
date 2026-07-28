@@ -91,5 +91,7 @@ export const TOOL_CURSORS: Record<EditorTool, string> = {
     'light-spotlight': 'default',
     'light-string': 'crosshair',
     'light-outdoor-bollard': 'default',
-    led_tv: 'default', // FIX — was "defaultt" (typo, invalid CSS cursor value)
+    led_tv: 'default',
+    presets: 'default',           // NEW — opens a panel, doesn't draw on canvas
+    'template-place': 'copy',     // NEW — armed placement, mirrors 'furniture' behavior
 }

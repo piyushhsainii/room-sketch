@@ -1,5 +1,6 @@
 import BenchStrip from "@/components/landing/BenchStrip";
 import Capabilities from "@/components/landing/Capabilities";
+import ComparisonStrip from "@/components/landing/ComparisonStrip";
 import FinalCta from "@/components/landing/FinalCta";
 import Footer from "@/components/landing/Footer";
 import Hero from "@/components/landing/Hero";
@@ -17,6 +18,7 @@ export default function Home() {
       <BenchStrip />
       <HowItWorks />
       <Capabilities />
+      <ComparisonStrip />
       <Pricing />
       <FinalCta />
       <Footer />

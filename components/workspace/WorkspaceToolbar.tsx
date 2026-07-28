@@ -103,14 +103,7 @@ export default function WorkspaceToolbar({ mode, onModeChange, onReset, isFullsc
           type="button"
           onClick={onToggleFullscreen}
           title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          className={`
-            inline-flex items-center gap-1.5 h-8 px-3
-            rounded-lg text-xs font-medium
-            border border-white/10
-            bg-white/5 hover:bg-white/10
-            text-gray-300 hover:text-white
-            transition-all duration-150
-          `}
+          className="wsGhost"
         >
           {isFullscreen ? (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -121,7 +114,7 @@ export default function WorkspaceToolbar({ mode, onModeChange, onReset, isFullsc
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
             </svg>
           )}
-          <span className="hidden sm:inline">{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</span>
+          <span className="wsLbl hidden sm:inline">{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</span>
         </button>
         <button type="button" className="wsGhost wsExit" onClick={onExit} title={WORKSPACE.toolbar.exit}>
           <ExitIcon />
@@ -130,21 +123,22 @@ export default function WorkspaceToolbar({ mode, onModeChange, onReset, isFullsc
       </div>
 
       <style jsx>{`
-         .wsBar {
-           position: absolute;
-           top: 0;
-           left: 0;
-           right: 0;
-           height: 48px;
+        .wsBar {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 48px;
           padding: 8px 12px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 12px;
           z-index: 70;
-          background: rgba(15, 15, 15, 0.8);
+          background: rgba(18, 33, 62, 0.85);
           backdrop-filter: blur(12px);
-          border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+          border-bottom: 1px solid rgba(247, 246, 241, 0.1);
+          font-family: var(--font-body, inherit);
         }
         .wsLeft,
         .wsRight {
@@ -155,8 +149,10 @@ export default function WorkspaceToolbar({ mode, onModeChange, onReset, isFullsc
         .wsCenter {
           flex: 1;
           text-align: center;
+          font-family: "JetBrains Mono", monospace;
           font-size: 11px;
-          color: rgba(148, 163, 184, 0.82);
+          letter-spacing: 0.01em;
+          color: rgba(247, 246, 241, 0.55);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -168,18 +164,19 @@ export default function WorkspaceToolbar({ mode, onModeChange, onReset, isFullsc
           align-items: center;
           gap: 8px;
           border-radius: 999px;
-          border: 1px solid rgba(148, 163, 184, 0.16);
+          border: 1px solid rgba(247, 246, 241, 0.14);
           background: transparent;
-          color: rgba(226, 232, 240, 0.82);
+          color: rgba(247, 246, 241, 0.75);
           transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+          cursor: pointer;
         }
         .wsPill:hover {
-          background: rgba(30, 41, 59, 0.45);
-          border-color: rgba(148, 163, 184, 0.28);
+          background: rgba(247, 246, 241, 0.08);
+          border-color: rgba(247, 246, 241, 0.24);
         }
         .wsActive {
-          background: rgba(99, 102, 241, 0.92);
-          border-color: rgba(99, 102, 241, 0.92);
+          background: #5b7fd6;
+          border-color: #5b7fd6;
           color: white;
         }
         .wsGhost {
@@ -189,23 +186,25 @@ export default function WorkspaceToolbar({ mode, onModeChange, onReset, isFullsc
           align-items: center;
           gap: 8px;
           border-radius: 999px;
-          border: 1px solid rgba(148, 163, 184, 0.16);
+          border: 1px solid rgba(247, 246, 241, 0.14);
           background: transparent;
-          color: rgba(226, 232, 240, 0.82);
+          color: rgba(247, 246, 241, 0.75);
           transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+          cursor: pointer;
+          font-size: 13px;
         }
         .wsGhost:hover {
-          background: rgba(30, 41, 59, 0.45);
-          border-color: rgba(148, 163, 184, 0.28);
+          background: rgba(247, 246, 241, 0.08);
+          border-color: rgba(247, 246, 241, 0.24);
         }
         .wsExit:hover {
-          background: rgba(239, 68, 68, 0.15);
-          border-color: rgba(239, 68, 68, 0.35);
-          color: rgba(248, 113, 113, 0.95);
+          background: rgba(198, 91, 78, 0.16);
+          border-color: rgba(198, 91, 78, 0.4);
+          color: #e8897c;
         }
         .wsLbl {
           font-size: 13px;
-          font-weight: 600;
+          font-weight: 500;
         }
         @media (max-width: 768px) {
           .wsCenter {

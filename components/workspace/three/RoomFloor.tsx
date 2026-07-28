@@ -146,31 +146,45 @@ const TEXTURE_URLS = {
 const FLOOR_PBR_CONFIG: Record<SceneRoom['floor_material'], {
   roughness: number; metalness: number; repeat: number
 }> = {
-  hardwood: { roughness: 0.72, metalness: 0.0, repeat: 2.0 },
-  marble: { roughness: 0.18, metalness: 0.04, repeat: 1.0 },
-  tile: { roughness: 0.30, metalness: 0.04, repeat: 2.0 },
-  carpet: { roughness: 0.97, metalness: 0.0, repeat: 3.0 },
-  concrete: { roughness: 0.90, metalness: 0.0, repeat: 1.5 },
-}
+  // solid colors
+  'plain': { roughness: 0.85, metalness: 0.0, repeat: 1.0 },
+  'solid-white': { roughness: 0.80, metalness: 0.0, repeat: 1.0 },
+  'solid-gray': { roughness: 0.80, metalness: 0.0, repeat: 1.0 },
+  'solid-black': { roughness: 0.75, metalness: 0.0, repeat: 1.0 },
+  'solid-beige': { roughness: 0.80, metalness: 0.0, repeat: 1.0 },
 
-// ── KEY FIX: build shape in LOCAL space (origin at room minX, minZ) ───────────
-// ShapeGeometry generates UVs from the shape's coordinate range.
-// If the shape is in world space (e.g. x=9..14), UVs start at 9 not 0,
-// causing the texture to appear offset by 9 meters.
-// Solution: shift all shape points so the room starts at (0,0),
-// then position the mesh at (minX, 0, minZ) to restore world position.
+  // wood
+  'wood': { roughness: 0.72, metalness: 0.0, repeat: 2.0 },
+  'wood-oak': { roughness: 0.68, metalness: 0.0, repeat: 2.0 },
+  'wood-walnut': { roughness: 0.65, metalness: 0.0, repeat: 2.0 },
+  'wood-floor-herringbone': { roughness: 0.70, metalness: 0.0, repeat: 3.0 },
 
-function buildLocalShape(room: SceneRoom, bounds: ReturnType<typeof getRoomBounds>): THREE.Shape {
-  const s = new THREE.Shape()
-  const pts = room.shape
-  if (pts.length === 0) return s
-  // Subtract minX/minZ from every point → shape is in [0..width] x [0..depth]
-  s.moveTo(pts[0]!.x - bounds.minX, pts[0]!.z - bounds.minZ)
-  for (let i = 1; i < pts.length; i++) {
-    s.lineTo(pts[i]!.x - bounds.minX, pts[i]!.z - bounds.minZ)
-  }
-  s.closePath()
-  return s
+  // marble
+  'marble': { roughness: 0.18, metalness: 0.04, repeat: 1.0 },
+  'marble-white': { roughness: 0.15, metalness: 0.04, repeat: 1.0 },
+  'marble-black': { roughness: 0.20, metalness: 0.05, repeat: 1.0 },
+  'marble-onyx': { roughness: 0.22, metalness: 0.05, repeat: 1.0 },
+  'marble-travertine': { roughness: 0.35, metalness: 0.02, repeat: 1.5 },
+  'marble-white-veined': { roughness: 0.16, metalness: 0.04, repeat: 1.0 },
+
+  // concrete / tile
+  'concrete': { roughness: 0.90, metalness: 0.0, repeat: 1.5 },
+  'concrete-polished': { roughness: 0.40, metalness: 0.02, repeat: 1.5 },
+  'tiles': { roughness: 0.30, metalness: 0.04, repeat: 2.0 },
+  'tile-ceramic': { roughness: 0.25, metalness: 0.03, repeat: 2.0 },
+
+  // brick
+  'brick-red': { roughness: 0.80, metalness: 0.0, repeat: 3.0 },
+  'brick-white': { roughness: 0.78, metalness: 0.0, repeat: 3.0 },
+
+  // fabric / carpet
+  'fabric': { roughness: 0.95, metalness: 0.0, repeat: 2.5 },
+  'fabric-fine-weave': { roughness: 0.92, metalness: 0.0, repeat: 2.5 },
+  'carpet-plush': { roughness: 0.98, metalness: 0.0, repeat: 3.0 },
+  'carpet-woven': { roughness: 0.96, metalness: 0.0, repeat: 3.0 },
+
+  // plaster
+  'plaster': { roughness: 0.85, metalness: 0.0, repeat: 1.0 },
 }
 
 // ── PBR floor material ────────────────────────────────────────────────────────
@@ -181,6 +195,7 @@ function FloorMaterialPBR({ material, roughness, metalness, repeat }: {
   metalness: number
   repeat: number
 }) {
+  // @ts-ignore
   const urls = TEXTURE_URLS[material]
   const textures = useTexture({
     map: urls.map,
@@ -219,7 +234,7 @@ function FloorMaterialFallback({ material, roughness, metalness }: {
   const texture = useMemo(() => {
     if (typeof document === 'undefined') return null
     if (material === 'marble') return makeMarbleFallback()
-    if (material === 'tile') return makeTileFallback()
+    if (material === 'tiles') return makeTileFallback()
     return makeHardwoodFallback()
   }, [material])
 
@@ -238,7 +253,7 @@ function FloorMaterialFallback({ material, roughness, metalness }: {
 
 export default function RoomFloor({ room }: Props) {
   const bounds = useMemo(() => getRoomBounds(room), [room])
-  const config = FLOOR_PBR_CONFIG[room.floor_material] ?? FLOOR_PBR_CONFIG.hardwood
+  const config = FLOOR_PBR_CONFIG[room.floor_material] ?? FLOOR_PBR_CONFIG.wood
 
   const centerX = bounds.minX + bounds.width / 2
   const centerZ = bounds.minZ + bounds.depth / 2

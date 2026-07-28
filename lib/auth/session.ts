@@ -15,7 +15,7 @@ const ISSUER = "renderai";
 
 function getJwtSecret(): Uint8Array {
   const secret = process.env.AUTH_JWT_SECRET;
-  if (!secret) throw new Error(ERRORS.providerMisconfigured);
+  if (!secret) throw new Error(ERRORS.supabaseMisconfigured);
   return new TextEncoder().encode(secret);
 }
 
@@ -35,7 +35,7 @@ export function userIdFromGoogleSub(sub: string): string {
   const hex = toHex(bytes);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(
     16,
-    20
+    20,
   )}-${hex.slice(20)}`;
 }
 
@@ -43,7 +43,9 @@ export function getGuestUserId(): string {
   return "00000000-0000-4000-8000-000000000000";
 }
 
-export async function createSessionCookie(session: AppSession): Promise<string> {
+export async function createSessionCookie(
+  session: AppSession,
+): Promise<string> {
   const token = await new SignJWT({ email: session.email })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuer(ISSUER)
@@ -88,7 +90,9 @@ export async function readSessionFromCookies(): Promise<AppSession | null> {
   if (!raw) return null;
 
   try {
-    const { payload } = await jwtVerify(raw, getJwtSecret(), { issuer: ISSUER });
+    const { payload } = await jwtVerify(raw, getJwtSecret(), {
+      issuer: ISSUER,
+    });
     const sub = payload.sub;
     const email = typeof payload.email === "string" ? payload.email : "";
     if (!sub) return null;

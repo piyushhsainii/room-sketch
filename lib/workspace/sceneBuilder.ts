@@ -202,19 +202,28 @@ export function getMaterialColor(
     wood: "#C4A882",
     "wood-oak": "#C8A878",
     "wood-walnut": "#4A3220",
+    "wood-floor-herringbone": "#B8945F",
     marble: "#F0EDE8",
     "marble-white": "#F5F2EE",
     "marble-black": "#3A3A3A",
+    "marble-onyx": "#2E2A28",
+    "marble-travertine": "#E4D9C4",
+    "marble-white-veined": "#F2EFEA",
     concrete: "#9E9E9E",
+    "concrete-polished": "#B0AFAC",
     tiles: "#D4D0CC",
     "tile-ceramic": "#E0DCD4",
     "brick-red": "#A85C42",
     "brick-white": "#D8C8B8",
     fabric: "#B8A9C9",
+    "fabric-fine-weave": "#C2B4CF",
+    "carpet-plush": "#A89BB0",
+    "carpet-woven": "#9C8FA6",
     plaster: "#E8E4DC",
   };
   return colors[material] ?? "#C4A882";
 }
+
 export function detectRoomType(name: string): string {
   const n = name.toLowerCase();
   if (n.includes("living") || n.includes("lounge") || n.includes("family"))

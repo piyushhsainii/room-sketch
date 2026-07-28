@@ -27,10 +27,9 @@ export default function Pricing() {
               ["1 project included", true],
               ["Floor plan editor", true],
               ["Live 3D preview", true],
-              ["Orbit + top-down view", true],
               ["Walk mode", false],
               ["Scene finishes", false],
-              ["Revision history", false],
+              ["Undo history", true],
             ]}
           />
           <PriceCard
@@ -47,7 +46,7 @@ export default function Pricing() {
               ["Everything in Free", true],
               ["Walk mode", true],
               ["Full scene finishes", true],
-              ["Revision history", true],
+              ["Undo history", true],
               ["Client share link", true],
               ["Priority support", true],
             ]}
@@ -63,11 +62,10 @@ export default function Pricing() {
             feats={[
               ["Everything in Pro", true],
               ["Team workspace", true],
-              ["White-label exports", true],
-              ["API access", true],
-              ["Custom branding", true],
+              ["Shared project library", true],
+              ["Multiple seats", true],
               ["Dedicated support", true],
-              ["SSO", true],
+              ["Volume pricing", true],
             ]}
           />
         </div>

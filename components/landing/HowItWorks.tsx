@@ -2,7 +2,7 @@ const steps = [
   {
     n: "01",
     title: "Sketch the plan",
-    desc: "Place rooms, walls, doors, windows, stairs and lifts in the browser editor — or upload an existing floor plan to trace over.",
+    desc: "Place rooms, walls, doors, windows and stairs in the browser editor — every wall is set to solid, railing or open.",
   },
   {
     n: "02",
@@ -17,7 +17,7 @@ const steps = [
   {
     n: "04",
     title: "Send the link",
-    desc: "Clients open it on any device. They orbit it, walk through it at eye level, or look at it from above. No plugin.",
+    desc: "Clients open it on any device and walk through it at eye level with Walk Mode. No plugin.",
   },
 ];
 

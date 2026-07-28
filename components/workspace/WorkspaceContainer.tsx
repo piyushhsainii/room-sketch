@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { VIEWER, WORKSPACE } from '@/constants/content'
+import { WORKSPACE } from '@/constants/content'
 import type { SceneJSON, WorkspaceConfig, WorkspaceStatus } from '@/types/workspace'
 import { DEFAULT_WORKSPACE_CONFIG } from '@/types/workspace'
 
@@ -40,7 +40,7 @@ export default function WorkspaceContainer({ projectId, floorplanUrl, onExit }: 
   const startExtraction = useCallback(async () => {
     if (!floorplanUrl) {
       setStatus('error')
-      setError(WORKSPACE.errorNoFloorplan)
+      setError(WORKSPACE.errorSceneFailed)
       return
     }
 
@@ -64,7 +64,7 @@ export default function WorkspaceContainer({ projectId, floorplanUrl, onExit }: 
 
       const body = (await res.json()) as Partial<ExtractResponse> & { error?: string }
       if (!res.ok || !body.scene_json) {
-        throw new Error(body.error ?? WORKSPACE.errorExtraction)
+        throw new Error(body.error ?? WORKSPACE.errorSceneFailed)
       }
 
       if (cancelledRef.current) return
@@ -100,7 +100,7 @@ export default function WorkspaceContainer({ projectId, floorplanUrl, onExit }: 
     } catch (e) {
       clearStepTimer()
       setStatus('error')
-      setError(e instanceof Error ? e.message : WORKSPACE.errorBuilding)
+      setError(e instanceof Error ? e.message : WORKSPACE.errorNoWalls)
     }
   }, [clearStepTimer, floorplanUrl, projectId])
 
@@ -143,14 +143,11 @@ export default function WorkspaceContainer({ projectId, floorplanUrl, onExit }: 
               background: 'rgba(2,6,23,0.35)', padding: 16,
               color: 'rgba(226,232,240,0.92)',
             }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{WORKSPACE.errorBuilding}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{WORKSPACE.errorSceneFailed}</div>
               <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.85)', marginBottom: 12 }}>
-                {error ?? WORKSPACE.errorBuilding}
+                {error ?? WORKSPACE.errorSceneFailed}
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" className="ra-button ra-buttonPrimary" onClick={() => void startExtraction()}>
-                  {VIEWER.regenerate}
-                </button>
                 <button type="button" className="ra-button ra-buttonGhost" onClick={onExit}>
                   {WORKSPACE.toolbar.exit}
                 </button>

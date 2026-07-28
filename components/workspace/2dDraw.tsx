@@ -4,6 +4,26 @@ import { LIGHT_FIXTURE_LABELS, LIGHT_PLACEMENT_KIND } from "./lights-constant";
 import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./lib/outdoor-constants";
 import { FURNITURE_FOOTPRINTS } from "./lib/furniture-constants";
 
+// ── Label width cache ────────────────────────────────────────────────────
+// ctx.measureText is surprisingly expensive when called for every label,
+// every frame, during a live drag/zoom gesture. Labels are drawn from a
+// small, mostly-fixed vocabulary (room dims, fixture names, lengths) so we
+// cache measured widths keyed by (font, text). Cache is module-level and
+// intentionally never evicted — worst case it holds a few hundred short
+// strings across the lifetime of the tab, which is negligible.
+const labelWidthCache = new Map<string, number>()
+
+function measureCached(ctx: CanvasRenderingContext2D, text: string, font: string): number {
+    const key = font + '|' + text
+    let w = labelWidthCache.get(key)
+    if (w === undefined) {
+        ctx.font = font
+        w = ctx.measureText(text).width
+        labelWidthCache.set(key, w)
+    }
+    return w
+}
+
 export function draw2D(
     ctx: CanvasRenderingContext2D,
     fp: FloorPlanState,
@@ -23,7 +43,9 @@ export function draw2D(
     openingsByRoom: Map<string, FloorPlanState['openings']>,
     openingsBySegment: Map<string, FloorPlanState['openings']>,
     shapesIndex: Map<string, NonNullable<FloorPlanState['closedShapes']>[number]>,
-    marqueeRect: { x: number; z: number; w: number; d: number } | null
+    marqueeRect: { x: number; z: number; w: number; d: number } | null,
+    nodesById: Map<string, LineNode>,
+    roomsById: Map<string, FloorPlanState['rooms'][number]>,
 ) {
     const W = ctx.canvas.width
     const H = ctx.canvas.height
@@ -233,15 +255,17 @@ export function draw2D(
     for (const d of fp.wallDecor ?? []) {
         let dx: number, dz: number, angle: number
         if (d.segmentNodeIds) {
-            const a = fp.lineNodes.find(n => n.id === d.segmentNodeIds![0])
-            const b = fp.lineNodes.find(n => n.id === d.segmentNodeIds![1])
+            const a = nodesById.get(d.segmentNodeIds![0])
+            const b = nodesById.get(d.segmentNodeIds![1])
             if (!a || !b) continue
             const t = d.segmentT ?? 0
             dx = a.x + (b.x - a.x) * t
             dz = a.z + (b.z - a.z) * t
             angle = Math.atan2(b.z - a.z, b.x - a.x)
         } else {
-            const room = fp.rooms.find(r => r.id === d.roomId)
+            // was: fp.rooms.find(r => r.id === d.roomId) — O(rooms) scan per
+            // decor item per frame. Swapped for the precomputed roomsById map.
+            const room = roomsById.get(d.roomId!)
             if (!room || !d.wall) continue
             if (d.wall === 'north') { dx = room.x + d.position; dz = room.z; angle = 0 }
             else if (d.wall === 'south') { dx = room.x + d.position; dz = room.z + room.depth; angle = 0 }
@@ -286,8 +310,9 @@ export function draw2D(
         const labelOffset = 14
         const label = WALL_DECOR_LABELS[d.type]
         ctx.save()
-        ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-        const tw = ctx.measureText(label).width
+        const decorFont = `600 ${Math.max(8, 8 * zoom)}px system-ui`
+        ctx.font = decorFont
+        const tw = measureCached(ctx, label, decorFont)
         const lx = cx(dx) + normalX * labelOffset
         const ly = cy(dz) + normalZ * labelOffset
         ctx.fillStyle = isSel ? '#000000' : 'rgba(255,255,255,0.9)'
@@ -312,7 +337,8 @@ export function draw2D(
 
         // ── path (string_lights) — dashed polyline through pathNodeIds ──
         if (kind === 'path') {
-            const nodes = (l.pathNodeIds ?? []).map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean) as LineNode[]
+            const nodes = (l.pathNodeIds ?? []).map(id => nodesById.get(id)).filter(Boolean) as LineNode[]
+
             if (nodes.length < 2) continue
             ctx.save()
             ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.9)' : isHov ? 'rgba(234,179,8,0.8)' : 'rgba(234,179,8,0.6)'
@@ -337,15 +363,16 @@ export function draw2D(
         if (kind === 'wall-point' || kind === 'wall-strip') {
             let dx: number, dz: number, angle: number
             if (l.segmentNodeIds) {
-                const a = fp.lineNodes.find(n => n.id === l.segmentNodeIds![0])
-                const b = fp.lineNodes.find(n => n.id === l.segmentNodeIds![1])
+                const a = nodesById.get(l.segmentNodeIds![0])
+                const b = nodesById.get(l.segmentNodeIds![1])
                 if (!a || !b) continue
                 const t = l.segmentT ?? 0.5
                 dx = a.x + (b.x - a.x) * t
                 dz = a.z + (b.z - a.z) * t
                 angle = Math.atan2(b.z - a.z, b.x - a.x)
             } else if (l.roomId && l.wall) {
-                const room = fp.rooms.find(r => r.id === l.roomId)
+                // was: fp.rooms.find(r => r.id === l.roomId) — same fix as decor above
+                const room = roomsById.get(l.roomId)
                 if (!room) continue
                 if (l.wall === 'north') { dx = room.x + (l.position ?? 0); dz = room.z; angle = 0 }
                 else if (l.wall === 'south') { dx = room.x + (l.position ?? 0); dz = room.z + room.depth; angle = 0 }
@@ -388,8 +415,9 @@ export function draw2D(
 
             const lx = px, ly = pz + (kind === 'wall-strip' ? 14 : 16)
             ctx.save()
-            ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-            const tw = ctx.measureText(label).width
+            const lightFont = `600 ${Math.max(8, 8 * zoom)}px system-ui`
+            ctx.font = lightFont
+            const tw = measureCached(ctx, label, lightFont)
             ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
             ctx.beginPath()
             ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
@@ -428,8 +456,9 @@ export function draw2D(
         ctx.restore()
 
         ctx.save()
-        ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-        const tw = ctx.measureText(label).width
+        const freeFont = `600 ${Math.max(8, 8 * zoom)}px system-ui`
+        ctx.font = freeFont
+        const tw = measureCached(ctx, label, freeFont)
         const lx = px, ly = pz + 16
         ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
         ctx.beginPath()
@@ -499,7 +528,8 @@ export function draw2D(
     }
     // ── Line segments ──────────────────────────────────────────────────────────
     for (const seg of fp.lineSegments ?? []) {
-        const nodes = seg.nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
+        const nodes = seg.nodeIds.map(nid => nodesById.get(nid)).filter(Boolean) as LineNode[]
+
         if (nodes.length < 2) continue
 
         const isSel = selectedIds.includes(seg.id)
@@ -618,9 +648,10 @@ export function draw2D(
                 const a = nodes[i]!, b = nodes[i + 1]!
                 const midX = cx((a.x + b.x) / 2), midZ = cy((a.z + b.z) / 2)
                 ctx.save()
-                ctx.font = `600 ${Math.max(8, 9 * zoom)}px system-ui`
+                const heightFont = `600 ${Math.max(8, 9 * zoom)}px system-ui`
+                ctx.font = heightFont
                 const label = `H: ${seg.height.toFixed(2)}m`
-                const tw = ctx.measureText(label).width
+                const tw = measureCached(ctx, label, heightFont)
                 ctx.fillStyle = 'rgba(234,179,8,0.9)'
                 ctx.beginPath()
                 ctx.roundRect(midX - tw / 2 - 4, midZ + 8, tw + 8, 14, 3)
@@ -635,7 +666,8 @@ export function draw2D(
     }
     // ── Closed shapes ──────────────────────────────────────────────────────────
     for (const nodeIds of closedPolygons) {
-        const nodes = nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
+        const nodes = nodeIds.map(nid => nodesById.get(nid)).filter(Boolean) as LineNode[]
+
         if (nodes.length < 3) continue
         // was: fp.closedShapes?.find(s => s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIds.includes(id)))
         // now: O(1) map lookup via sorted-id key instead of an O(shapes) scan per polygon
@@ -812,8 +844,9 @@ export function draw2D(
         const ax = cx(ann.x), az = cy(ann.z)
         const fontSize = Math.max(10, (ann.fontSize ?? 13) * zoom)
         ctx.save()
-        ctx.font = `600 ${fontSize}px system-ui`
-        const tw = ctx.measureText(ann.text).width
+        const annFont = `600 ${fontSize}px system-ui`
+        ctx.font = annFont
+        const tw = measureCached(ctx, ann.text, annFont)
         // Background pill
         ctx.fillStyle = 'rgba(99,102,241,0.18)'
         ctx.beginPath()
@@ -872,7 +905,7 @@ export function draw2D(
 
     // ── Live measurement rubber band ──────────────────────────────────────────
     if ((tool === 'line' || tool === 'bend') && activeLineNodeId && preview) {
-        const fromNode = fp.lineNodes.find(n => n.id === activeLineNodeId)
+        const fromNode = nodesById.get(activeLineNodeId)
         if (fromNode) {
             const fx = cx(fromNode.x), fz = cy(fromNode.z)
             const tx = cx(preview.x), tz = cy(preview.z)
@@ -890,8 +923,9 @@ export function draw2D(
                 const angle = Math.atan2(tz - fz, tx - fx)
                 const display = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle
                 const label = `${lenM.toFixed(2)}m`
-                ctx.font = `bold ${Math.max(10, 11 * zoom)}px system-ui`
-                const tw = ctx.measureText(label).width
+                const rubberFont = `bold ${Math.max(10, 11 * zoom)}px system-ui`
+                ctx.font = rubberFont
+                const tw = measureCached(ctx, label, rubberFont)
                 ctx.translate(midX, midZ)
                 ctx.rotate(display)
                 ctx.fillStyle = 'rgba(99,102,241,0.85)'

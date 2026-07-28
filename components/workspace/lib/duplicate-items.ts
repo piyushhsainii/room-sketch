@@ -10,11 +10,11 @@
 
 import {
   EditorOpening,
-  PlacedFurniture,
   PlacedWallDecor,
   PlacedStairs,
   FloorPlanState,
 } from "./constants";
+import { PlacedFurniture } from "./furniture-constants";
 import { PlacedOutdoorObject } from "./outdoor-constants";
 
 function uid() {

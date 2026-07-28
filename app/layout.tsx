@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 // @ts-ignore
 import "./globals.css"
 import { APP } from "@/constants/content";
+import { Analytics } from "@vercel/analytics/next";
 
 // Set NEXT_PUBLIC_SITE_URL in .env(.local) / your host's env settings,
 // e.g. https://roomsketch.com — used to build absolute URLs for OG/Twitter
@@ -102,6 +103,7 @@ export default function RootLayout({
         />
         {children}
       </body>
+      <Analytics />
     </html>
   );
 }

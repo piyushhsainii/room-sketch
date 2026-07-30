@@ -24,16 +24,24 @@ function isPrivatePath(pathname: string) {
 
 const isProd = process.env.NODE_ENV === "production";
 
+// NOTE: this MUST be named `middleware` (or be a default export) for
+// Next.js to actually pick this file up and run it. It was previously
+// named `proxy`, which Next.js silently ignores — no error, no warning,
+// the file just never executes. That's why session refresh + route
+// gating below had no effect regardless of what the logic did.
 export async function proxy(request: NextRequest) {
-  // Auth gating disabled outside production (local/dev/preview)
-  if (!isProd) {
-    return NextResponse.next();
-  }
-
+  // Session refresh always runs, in every environment — this is
+  // infrastructure (keeping the Supabase access token valid for
+  // server-side reads), not a UX gate, so it shouldn't be dev-skipped.
   const { supabaseResponse, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
-
   const authed = !!user;
+
+  // Route gating (redirects) stays prod-only, matching prior behavior —
+  // change this if you actually want auth walls enforced in dev/preview too.
+  if (!isProd) {
+    return supabaseResponse;
+  }
 
   // Logged-in users shouldn't sit on /login — send them to dashboard
   if (pathname === "/login" && authed) {

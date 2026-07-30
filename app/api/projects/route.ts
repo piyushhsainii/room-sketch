@@ -1,21 +1,30 @@
 // app/api/projects/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { readSessionFromCookies } from "@/lib/auth/session";
 import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-// GET — unchanged
+// GET — unchanged in shape, now authed via Supabase Auth instead of the
+// custom renderai_session JWT. RLS (auth.uid() = user_id) does the
+// filtering now; the explicit .eq("user_id", ...) is kept as a belt-and-
+// braces filter, not the sole line of defense.
 export async function GET() {
-  const session = await readSessionFromCookies();
-  if (!session || !session.userId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    console.log(authError);
+
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { data, error } = await supabase
     .from("projects")
     .select("*")
-    .eq("user_id", session.userId)
+    .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
   if (error)
@@ -28,8 +37,13 @@ export async function GET() {
 // Quick Start draft flow, where the project is created WITH content on
 // first save rather than blank-then-filled.
 export async function POST(req: NextRequest) {
-  const session = await readSessionFromCookies();
-  if (!session || !session?.userId)
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
@@ -39,8 +53,11 @@ export async function POST(req: NextRequest) {
     | undefined;
   const thumbnailUrl = body.thumbnail_url as string | undefined;
 
+  // user_id intentionally omitted — the `user_id` column now defaults to
+  // auth.uid() at the DB level (see migration SQL), so the client/server
+  // never needs to state it, and RLS's `with check (user_id = auth.uid())`
+  // can't be defeated by a route that forgets to set it.
   const insertPayload: Record<string, unknown> = {
-    user_id: session.userId,
     name,
     status: "uploaded",
     floorplan_url: "",
@@ -62,7 +79,6 @@ export async function POST(req: NextRequest) {
     insertPayload.thumbnail_url = thumbnailUrl;
   }
 
-  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("projects")
     .insert(insertPayload)

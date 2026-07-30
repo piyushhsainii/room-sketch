@@ -1,8 +1,24 @@
+"use client";
+
+import { useState } from "react";
+
+type BillingCycle = "monthly" | "yearly";
+
+const YEARLY_DISCOUNT = 0.2; // 20% off when billed yearly
+
+function priceFor(basePrice: number, cycle: BillingCycle) {
+  if (basePrice === 0) return 0;
+  const monthlyEquivalent = cycle === "yearly" ? basePrice * (1 - YEARLY_DISCOUNT) : basePrice;
+  return Math.round(monthlyEquivalent);
+}
+
 export default function Pricing() {
+  const [cycle, setCycle] = useState<BillingCycle>("monthly");
+
   return (
     <section id="pricing" className="py-24 px-6 md:px-10 bg-paper">
       <div className="max-w-[1100px] mx-auto">
-        <div className="reveal mb-14">
+        <div className="reveal mb-10">
           <span className="font-mono text-[10px] font-medium text-blue uppercase tracking-[0.1em] block mb-3">
             Pricing
           </span>
@@ -15,10 +31,46 @@ export default function Pricing() {
           </p>
         </div>
 
+        {/* Billing toggle */}
+        <div className="reveal flex items-center gap-3 mb-10">
+          <div className="relative grid grid-cols-2 items-center p-1 rounded-full border border-line-strong bg-[#F2F0EA]">
+            <div
+              className="absolute top-1 bottom-1 left-1 rounded-full bg-ink transition-transform duration-200 ease-out"
+              style={{
+                width: "calc(50% - 4px)",
+                transform: cycle === "yearly" ? "translateX(100%)" : "translateX(0%)",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setCycle("monthly")}
+              className={`relative z-10 px-4 py-2 rounded-full text-[12.5px] font-medium tracking-[-0.005em] whitespace-nowrap transition-colors ${cycle === "monthly" ? "text-white bg-black" : "text-graphite hover:text-ink"
+                }`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              onClick={() => setCycle("yearly")}
+              className={`relative z-10 flex items-center justify-center gap-2 px-4 py-2 rounded-full text-[12.5px] font-medium tracking-[-0.005em] whitespace-nowrap transition-colors ${cycle === "yearly" ? "bg-black text-white" : "text-graphite hover:text-ink"
+                }`}
+            >
+              Yearly
+              <span
+                className={`font-mono text-[9.5px] px-1.5 py-[2px] rounded-[4px] transition-colors ${cycle === "yearly" ? "bg-white/15 text-paper" : "bg-[#3D9A5C]/12 text-[#3D9A5C]"
+                  }`}
+              >
+                Save 20%
+              </span>
+            </button>
+          </div>
+        </div>
+
         <div className="grid md:grid-cols-3 gap-4">
           <PriceCard
             plan="Free"
-            price="$0"
+            basePrice={0}
+            cycle={cycle}
             tag="Free forever"
             tagline="See your first floor plan in 3D"
             btn="Start for free"
@@ -34,8 +86,8 @@ export default function Pricing() {
           />
           <PriceCard
             plan="Pro"
-            price="$19"
-            suffix="/mo"
+            basePrice={19}
+            cycle={cycle}
             tag="Most popular"
             tagline="For architects & designers"
             btn="Start Pro →"
@@ -53,8 +105,8 @@ export default function Pricing() {
           />
           <PriceCard
             plan="Studio"
-            price="$59"
-            suffix="/mo"
+            basePrice={59}
+            cycle={cycle}
             tag="For teams"
             tagline="Agencies & real estate teams"
             btn="Start Studio →"
@@ -76,8 +128,8 @@ export default function Pricing() {
 
 function PriceCard({
   plan,
-  price,
-  suffix,
+  basePrice,
+  cycle,
   tag,
   tagline,
   btn,
@@ -86,8 +138,8 @@ function PriceCard({
   featured = false,
 }: {
   plan: string;
-  price: string;
-  suffix?: string;
+  basePrice: number;
+  cycle: BillingCycle;
   tag: string;
   tagline: string;
   btn: string;
@@ -95,6 +147,10 @@ function PriceCard({
   feats: [string, boolean][];
   featured?: boolean;
 }) {
+  const displayPrice = priceFor(basePrice, cycle);
+  const isFree = basePrice === 0;
+  const showStrike = cycle === "yearly" && !isFree;
+
   return (
     <div
       className={`reveal rounded-[10px] p-7 border ${featured ? "bg-ink border-ink shadow-sheetLg" : "bg-[#F2F0EA] border-line hover:border-line-strong transition-colors"
@@ -103,10 +159,26 @@ function PriceCard({
       <div className={`font-mono text-[10px] font-medium uppercase tracking-[0.1em] mb-3 ${featured ? "text-blue-dim" : "text-blue"}`}>
         {plan}
       </div>
-      <div className={`font-display text-[2.7rem] tracking-[-0.03em] leading-none mb-1 ${featured ? "text-black" : "text-ink"}`}>
-        {price}
-        {suffix && <span className="text-[1rem] font-body font-light text-muted">{suffix}</span>}
+
+      <div className="flex items-baseline gap-2 mb-1">
+        <div className={`font-display text-[2.7rem] tracking-[-0.03em] leading-none ${featured ? "text-black" : "text-ink"}`}>
+          {isFree ? "$0" : `$${displayPrice}`}
+          {!isFree && <span className="text-[1rem] font-body font-light text-muted">/mo</span>}
+        </div>
+        {showStrike && (
+          <span className={`font-mono text-[12px] line-through ${featured ? "text-white/35" : "text-muted"}`}>
+            ${basePrice}
+          </span>
+        )}
       </div>
+
+      {!isFree && (
+        <div className={`font-mono text-[10px] mb-4 ${featured ? "text-white/40" : "text-muted"}`}>
+          {cycle === "yearly" ? `Billed $${Math.round(displayPrice * 12)}/yr` : "Billed monthly"}
+        </div>
+      )}
+      {isFree && <div className="mb-4" />}
+
       <span
         className={`inline-block mb-5 font-mono text-[10px] px-2 py-[3px] rounded-[4px] ${featured ? "bg-blue/15 text-blue-dim border border-blue/25" : "bg-white  border border-line"
           }`}

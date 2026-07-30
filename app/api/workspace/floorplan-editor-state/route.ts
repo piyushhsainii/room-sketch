@@ -27,7 +27,7 @@ export async function GET(request: Request) {
         { status: 400 },
       );
 
-    const admin = createSupabaseAdmin();
+    const admin = createServerSupabaseClient();
     const { data, error } = await admin
       .from("projects")
       .select("floorplan_editor_state")
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    const admin = createSupabaseAdmin();
+    const admin = createServerSupabaseClient();
 
     const { data: project } = await admin
       .from("projects")

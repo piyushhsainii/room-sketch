@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { ERRORS } from "@/constants/content";
 import { createSessionCookie, userIdFromGoogleSub } from "@/lib/auth/session";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     const userId = userIdFromGoogleSub(info.sub);
     const googleSub = info.sub;
 
-    const admin = createSupabaseAdmin();
+    const admin = await createServerSupabaseClient();
     const { error: upsertError } = await admin
       .from("users")
       .upsert(

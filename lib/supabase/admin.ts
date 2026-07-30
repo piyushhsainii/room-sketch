@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { ERRORS } from "@/constants/content";
 
-export function createSupabaseAdmin() {
+export function createServerSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_KEY;
 

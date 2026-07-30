@@ -10,8 +10,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import type { SceneJSON } from "@/types/workspace";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -38,7 +38,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const admin = createSupabaseAdmin();
+    const admin = await createServerSupabaseClient();
 
     // Fetch existing scene_json so we can merge rather than overwrite —
     // this endpoint must never clobber rooms/openings/etc written by

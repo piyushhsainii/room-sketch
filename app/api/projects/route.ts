@@ -1,9 +1,9 @@
 // app/api/projects/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { readSessionFromCookies } from "@/lib/auth/session";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 // GET — unchanged
 export async function GET() {
@@ -11,7 +11,7 @@ export async function GET() {
   if (!session || !session.userId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const supabase = createSupabaseAdmin();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("projects")
     .select("*")
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     insertPayload.thumbnail_url = thumbnailUrl;
   }
 
-  const supabase = createSupabaseAdmin();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("projects")
     .insert(insertPayload)

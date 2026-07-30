@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSessionFromCookies } from "@/lib/auth/session";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(
   req: NextRequest,
@@ -19,7 +19,7 @@ export async function GET(
     );
   }
 
-  const supabase = createSupabaseAdmin();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("projects")
     .select("*")
@@ -54,7 +54,7 @@ export async function PATCH(
   if (!name?.trim())
     return NextResponse.json({ error: "Name required" }, { status: 400 });
 
-  const supabase = createSupabaseAdmin();
+  const supabase = await createServerSupabaseClient();
   const { error } = await supabase
     .from("projects")
     .update({ name: name.trim() })

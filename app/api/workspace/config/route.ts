@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { readSessionFromCookies } from "@/lib/auth/session";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import type { WorkspaceConfig } from "@/types/workspace";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
         { status: 400 },
       );
 
-    const admin = createSupabaseAdmin();
+    const admin = await createServerSupabaseClient();
     const { data, error } = await admin
       .from("projects")
       .select("workspace_config")
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    const admin = createSupabaseAdmin();
+    const admin = await createServerSupabaseClient();
 
     // Verify ownership
     const { data: project } = await admin

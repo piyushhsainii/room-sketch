@@ -7,8 +7,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import type { SceneJSON } from "@/types/workspace";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const admin = createSupabaseAdmin();
+    const admin = await createServerSupabaseClient();
 
     // Verify project exists
     const { data: project, error: fetchError } = await admin

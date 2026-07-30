@@ -1,6 +1,6 @@
 // app/api/workspace/share/[token]/route.ts
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -10,7 +10,7 @@ export async function GET(
 ) {
   const { token } = await params;
 
-  const admin = createSupabaseAdmin();
+  const admin = await createServerSupabaseClient();
 
   const { data: project, error } = await admin
     .from("projects")

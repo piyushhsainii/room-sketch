@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   const normalizedEmail = email.trim().toLowerCase();
 
   try {
-    const supabase = createSupabaseAdmin();
+    const supabase = createServerSupabaseClient();
 
     // Requires a `waitlist` table, e.g.:
     //   id uuid primary key default gen_random_uuid(),

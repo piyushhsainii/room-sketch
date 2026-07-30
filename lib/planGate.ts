@@ -24,7 +24,7 @@ function isResetNeeded(usageResetAt: string | null): boolean {
 }
 
 async function ensureProfile(userId: string): Promise<Profile> {
-  const admin = createSupabaseAdmin();
+  const admin = createServerSupabaseClient();
 
   {
     const { error: userUpsertError } = await admin
@@ -86,7 +86,7 @@ async function resetIfNeeded(
 ): Promise<Profile> {
   if (!isResetNeeded(profile.usage_reset_at)) return profile;
 
-  const admin = createSupabaseAdmin();
+  const admin = createServerSupabaseClient();
   const now = new Date().toISOString();
 
   const { data, error } = await admin
@@ -141,7 +141,7 @@ export async function incrementUsage(
 ): Promise<void> {
   if (process.env.NODE_ENV !== "production") return;
 
-  const admin = createSupabaseAdmin();
+  const admin = createServerSupabaseClient();
   const profile = await resetIfNeeded(userId, await ensureProfile(userId));
 
   const update =

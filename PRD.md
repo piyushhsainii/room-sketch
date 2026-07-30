@@ -96,8 +96,8 @@ lib/
 auth/
 session.ts — readSessionFromCookies(), createSessionCookie(), AppSession type
 supabase/
-admin.ts — createSupabaseAdmin() using service role key
-server.ts — createServerSupabaseClient() for Supabase Auth (not used for main auth)
+admin.ts — createServerSupabaseClient() using service role key
+server.ts — createServerSupabaseClient()() for Supabase Auth (not used for main auth)
 workspace/
 sceneBuilder.ts — getWallSegments, getSceneBounds, getSceneWallSegments (deduplication), getWalkStartPosition, detectRoomType, getRoomBounds
 floorPlanConverter.ts — converts FloorPlanEditor state (nodes+walls+openings) → SceneJSON
@@ -171,7 +171,7 @@ GEMINI_EXTRACTION_MODEL=gemini-2.0-flash
 
 Critical Architecture Decisions
 Auth pattern: Every API route uses readSessionFromCookies() not supabase.auth.getUser(). The app has its own JWT session system. Using Supabase Auth methods returns null and causes "Unauthorized" errors. The only exception is workspace/extract/route.ts and workspace/save-manual/route.ts which save by project_id alone using the admin client — no auth check needed for those.
-Database writes: Always use createSupabaseAdmin() for writes, never the server Supabase client. The admin client bypasses RLS. Save by project_id directly — do not gate saves on userId matching.
+Database writes: Always use createServerSupabaseClient() for writes, never the server Supabase client. The admin client bypasses RLS. Save by project_id directly — do not gate saves on userId matching.
 SceneJSON format: All coordinates in meters. (0,0) = top-left corner of floor plan. x increases left→right (West→East). z increases top→bottom (North→South). Room shapes are axis-aligned rectangles only (4 points, clockwise from top-left). Door position = distance in meters from the left/top corner of the named wall to door center. All rooms must have adjacent walls sharing exact coordinates (no gaps).
 Wall deduplication: getSceneWallSegments() in sceneBuilder.ts deduplicates shared walls between adjacent rooms. Walls are rendered at scene level in WorkspaceCanvas, not per-room. WallSegment objects have a roomId field used by WorkspaceConfigPanel to apply per-room wall color.
 Floor rendering: Uses PlaneGeometry (not ShapeGeometry) positioned at room center (bounds.minX + width/2, bounds.minZ + depth/2). ShapeGeometry had UV offset issues causing floors to appear outside the building. DoubleSide material prevents face-normal issues.
@@ -240,7 +240,7 @@ Do's and Don'ts
 DO:
 
 Always use readSessionFromCookies() for auth in API routes — never supabase.auth.getUser()
-Always use createSupabaseAdmin() for DB writes
+Always use createServerSupabaseClient() for DB writes
 Save scene_json by project_id only — no auth gating on the save
 Return scene_json from extract route even if DB save fails (non-fatal)
 Use PlaneGeometry for floors, never ShapeGeometry
@@ -271,7 +271,7 @@ Known Bugs Fixed (don't reintroduce)
 Floor offset + 4.59 — someone manually patched a Z offset into RoomFloor position that shifted all floors. Always use bounds.minZ directly.
 ShapeGeometry UV — rooms at x=9..14 produced textures starting at UV (9,0) instead of (0,0). Fixed by switching to PlaneGeometry.
 Ideogram returning 2D floor plan — caused by image_weight: 75+ and RENDER_3D style type (doesn't exist). Fixed by image_weight: 40 and REALISTIC.
-Unauthorized on workspace config save — caused by using createServerSupabaseClient() which relies on Supabase Auth. Fixed by using readSessionFromCookies() matching other routes.
+Unauthorized on workspace config save — caused by using createServerSupabaseClient()() which relies on Supabase Auth. Fixed by using readSessionFromCookies() matching other routes.
 scene_json not saving after extraction — caused by gating DB write on userId && p.user_id === userId. Since the app uses custom JWT auth, supabase.auth.getUser() returns null so userId was always null. Fixed by saving by project_id only.
 Door leaf pointing wrong direction — trigonometry-based open angle introduced rotation bugs. Fixed by simple 90° rotation: rotY + Math.PI/2 with leaf center at doorWorldLeft + door.width/2 inward.
 Gemini JSON truncation — maxOutputTokens too low and no responseMimeType. Fixed by setting maxOutputTokens: 8192 and responseMimeType: 'application/json'.

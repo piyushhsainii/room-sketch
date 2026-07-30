@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { readSessionFromCookies } from "@/lib/auth/session";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,7 @@ export async function GET() {
     return NextResponse.json(body);
   }
 
-  const admin = createSupabaseAdmin();
+  const admin = await createServerSupabaseClient();
   const { data: profile } = await admin
     .from("profiles")
     .select("plan")

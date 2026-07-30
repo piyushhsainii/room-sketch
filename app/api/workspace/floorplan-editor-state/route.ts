@@ -27,7 +27,7 @@ export async function GET(request: Request) {
         { status: 400 },
       );
 
-    const admin = createServerSupabaseClient();
+    const admin = await createServerSupabaseClient();
     const { data, error } = await admin
       .from("projects")
       .select("floorplan_editor_state")

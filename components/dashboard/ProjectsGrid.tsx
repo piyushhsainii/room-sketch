@@ -1,9 +1,6 @@
-// @ts-nocheck
-
 "use client";
 
 import { useMemo, useState, useRef, useEffect } from "react";
-import type { Project } from "@/lib/models";
 import { ShareDialog } from "../ui/ExportShareable";
 
 type SortMode = "newest" | "oldest" | "name";
@@ -13,13 +10,6 @@ function getStatusColor(status: string) {
     if (status === "rendering") return "#f59e0b";
     if (status === "failed") return "var(--fp-danger)";
     return "rgba(26,26,26,0.25)";
-}
-
-function formatDate(dateStr?: string) {
-    if (!dateStr) return "—";
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function FloorplanIcon() {
@@ -89,18 +79,143 @@ function ActionButton({
     );
 }
 
-function ProjectCard({
+function CardMenu({
+    onRename,
+    onArchive,
+    onDelete,
+    onClose,
+}: {
+    onRename: () => void;
+    onArchive: () => void;
+    onDelete: () => void;
+    onClose: () => void;
+}) {
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [onClose]);
+
+    return (
+        <div
+            ref={ref}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+                position: "absolute",
+                top: 44,
+                right: 8,
+                background: "#ffffff",
+                borderRadius: 10,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.18), 0 2px 8px rgba(15,23,42,0.08)",
+                overflow: "hidden",
+                minWidth: 130,
+                zIndex: 20,
+            }}
+        >
+            <MenuItem onClick={onRename}>Rename</MenuItem>
+            <MenuItem onClick={onArchive}>Archive</MenuItem>
+            <MenuItem onClick={onDelete} danger>Delete</MenuItem>
+        </div>
+    );
+}
+
+function MenuItem({
+    children,
+    onClick,
+    danger,
+}: {
+    children: React.ReactNode;
+    onClick: () => void;
+    danger?: boolean;
+}) {
+    const [hovered, setHovered] = useState(false);
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 14px",
+                fontSize: 13,
+                fontWeight: 500,
+                color: danger ? "#dc2626" : "#0f172a",
+                background: hovered ? "rgba(15,23,42,0.05)" : "transparent",
+                border: "none",
+                cursor: "pointer",
+            }}
+        >
+            {children}
+        </button>
+    );
+}
+
+function PillButton({ label, onClick, primary }: { label: string; onClick?: (e: React.MouseEvent) => void; primary?: boolean }) {
+    return (
+        <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
+            style={{
+                fontSize: 11,
+                fontWeight: 500,
+                padding: "5px 10px",
+                borderRadius: 999,
+                border: primary ? "none" : "1px solid rgba(255,255,255,0.4)",
+                background: primary ? "#22c55e" : "rgba(15,23,42,0.4)",
+                color: "#ffffff",
+                backdropFilter: "blur(4px)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+            }}
+        >
+            {label}
+        </button>
+    );
+}
+function MoreIcon() {
+    return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="12" cy="19" r="1.8" />
+        </svg>
+    );
+}
+
+
+function formatDate(dateStr?: string) {
+    if (!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
+}
+
+export function ProjectCard({
     project,
     onOpen,
     onRename,
+    onArchive,
+    onDelete,
 }: {
-    project: Project;
+    project: any;
     onOpen: () => void;
     onRename: (newName: string) => void;
+    onArchive?: () => void;
+    onDelete?: () => void;
+    onEditLayout?: () => void;
+    onViewRenders?: () => void;
+    onApproveSelection?: () => void;
+    onAddTask?: () => void;
 }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(project.name || "Untitled");
     const [shareOpen, setShareOpen] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
     const [hovered, setHovered] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -122,7 +237,7 @@ function ProjectCard({
         setIsEditing(false);
     }
 
-    const thumbnail = project.render_url || project.floorplan_url;
+    const thumbnail = project.thumbnail_url || project.render_url || project.floorplan_url;
 
     return (
         <div
@@ -130,45 +245,70 @@ function ProjectCard({
             onMouseLeave={() => setHovered(false)}
             onClick={() => { if (!isEditing) onOpen(); }}
             style={{
-                border: `1px solid ${hovered ? "rgba(15,15,15,0.18)" : "rgba(15,15,15,0.1)"}`,
-                borderRadius: 8,
+                border: `1px solid ${hovered ? "rgba(15,23,42,0.10)" : "rgba(15,23,42,0.06)"}`,
+                borderRadius: 18,
                 overflow: "hidden",
-                background: "var(--fp-bg)",
+                background: "#ffffff",
                 cursor: isEditing ? "default" : "pointer",
-                transition: "box-shadow 180ms ease, border-color 180ms ease",
                 boxShadow: hovered
-                    ? "0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)"
-                    : "none",
+                    ? "0 20px 40px -12px rgba(15,23,42,0.14), 0 4px 12px -4px rgba(15,23,42,0.06)"
+                    : "0 1px 3px rgba(15,23,42,0.04), 0 1px 2px rgba(15,23,42,0.03)",
+                transform: hovered ? "translateY(-2px)" : "translateY(0)",
+                transition: "box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease",
                 display: "flex",
                 flexDirection: "column",
             }}
         >
             {/* Thumbnail */}
-            <div style={{
-                aspectRatio: "4/3",
-                background: "#f7f7f5",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                flexShrink: 0,
-            }}>
+            <div style={{ position: "relative", aspectRatio: "16/10", background: "#f4f5f7", overflow: "hidden", flexShrink: 0 }}>
                 {thumbnail ? (
                     <img
                         src={thumbnail}
                         alt=""
-                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                        style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            display: "block",
+                            transform: hovered ? "scale(1.03)" : "scale(1)",
+                            transition: "transform 400ms cubic-bezier(0.22, 1, 0.36, 1)",
+                        }}
                     />
                 ) : (
-                    <FloorplanIcon />
+                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <FloorplanIcon />
+                    </div>
+                )}
+
+                {/* Top-right action buttons */}
+                <div style={{
+                    position: "absolute", top: 10, right: 10,
+                    display: "flex", gap: 6,
+                    opacity: hovered || menuOpen ? 1 : 0,
+                    transform: hovered || menuOpen ? "translateY(0)" : "translateY(-4px)",
+                    transition: "opacity 180ms ease, transform 180ms ease",
+                    pointerEvents: hovered || menuOpen ? "auto" : "none",
+                }}>
+                    <OverlayIconButton title="Export / Share" onClick={e => { e.stopPropagation(); setShareOpen(true); }}>
+                        <ShareIcon />
+                    </OverlayIconButton>
+                    <OverlayIconButton title="More" onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}>
+                        <MoreIcon />
+                    </OverlayIconButton>
+                </div>
+
+                {menuOpen && (
+                    <CardMenu
+                        onRename={() => { setMenuOpen(false); setIsEditing(true); }}
+                        onArchive={() => { setMenuOpen(false); onArchive?.(); }}
+                        onDelete={() => { setMenuOpen(false); onDelete?.(); }}
+                        onClose={() => setMenuOpen(false)}
+                    />
                 )}
             </div>
 
-            {/* Divider */}
-            <div style={{ height: 1, background: "rgba(15,15,15,0.07)", flexShrink: 0 }} />
-
             {/* Info */}
-            <div style={{ padding: "11px 12px 13px", display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ padding: "16px 18px 18px", display: "flex", flexDirection: "column", gap: 6 }}>
                 {isEditing ? (
                     <input
                         ref={inputRef}
@@ -180,78 +320,35 @@ function ProjectCard({
                             if (e.key === "Enter") commit();
                             if (e.key === "Escape") { setEditValue(project.name || "Untitled"); setIsEditing(false); }
                         }}
+                        className="font-light tracking-tighter"
                         style={{
-                            fontSize: 13,
-                            fontWeight: 500,
-                            color: "rgba(26,26,26,1)",
+                            fontSize: 16,
+                            color: "#0f172a",
                             border: "none",
-                            borderBottom: "1px solid rgba(99,102,241,0.5)",
+                            borderBottom: "1px solid rgba(59,130,246,0.5)",
                             background: "transparent",
                             outline: "none",
-                            padding: "0 0 2px",
+                            padding: "0 0 3px",
                             width: "100%",
-                            letterSpacing: "-0.01em",
                         }}
                     />
                 ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, minHeight: 24 }}>
-                        <span style={{
-                            fontSize: 13,
-                            fontWeight: 500,
-                            color: "rgba(26,26,26,0.9)",
+                    <span
+                        className="font-light tracking-tighter"
+                        style={{
+                            fontSize: 16,
+                            color: "#0f172a",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
-                            flex: 1,
-                            letterSpacing: "-0.01em",
-                        }}>
-                            {project.name || "Untitled"}
-                        </span>
-
-                        {/* Actions — fade in on card hover */}
-                        <div style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 2,
-                            opacity: hovered ? 1 : 0,
-                            transition: "opacity 150ms ease",
-                            flexShrink: 0,
-                        }}>
-                            <ActionButton
-                                title="Export / Share"
-                                onClick={e => { e.stopPropagation(); setShareOpen(true); }}
-                            >
-                                <ShareIcon />
-                            </ActionButton>
-                            <ActionButton
-                                title="Rename"
-                                onClick={e => { e.stopPropagation(); setIsEditing(true); }}
-                            >
-                                <RenameIcon />
-                            </ActionButton>
-                        </div>
-                    </div>
+                        }}
+                    >
+                        {project.name || "Untitled"}
+                    </span>
                 )}
 
-                {/* Meta */}
-                <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                    fontSize: 11,
-                    color: "rgba(26,26,26,0.45)",
-                    fontWeight: 300,
-                }}>
-                    <span style={{
-                        display: "inline-block",
-                        width: 5,
-                        height: 5,
-                        borderRadius: "50%",
-                        background: getStatusColor(project.status),
-                        flexShrink: 0,
-                    }} />
-                    <span style={{ textTransform: "capitalize" }}>{project.status}</span>
-                    <span style={{ color: "rgba(26,26,26,0.18)" }}>·</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#94a3b8" }} className="font-light tracking-tight">
+                    <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: getStatusColor(project.status), flexShrink: 0 }} />
                     <span>{formatDate((project as any).created_at)}</span>
                 </div>
             </div>
@@ -265,7 +362,28 @@ function ProjectCard({
     );
 }
 
-function ProjectCardSkeleton() {
+function OverlayIconButton({ title, onClick, children }: { title: string; onClick: (e: React.MouseEvent) => void; children: React.ReactNode }) {
+    const [hovered, setHovered] = useState(false);
+    return (
+        <button
+            title={title}
+            onClick={onClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 26, height: 26, borderRadius: "50%", border: "none",
+                background: hovered ? "#ffffff" : "rgba(255,255,255,0.92)",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+                color: "rgba(26,26,26,0.75)", cursor: "pointer", flexShrink: 0, padding: 0,
+            }}
+        >
+            {children}
+        </button>
+    );
+}
+
+export function ProjectCardSkeleton() {
     return (
         <div style={{
             border: "1px solid rgba(15,15,15,0.1)",
@@ -333,7 +451,7 @@ export default function ProjectsGrid({
     onRenameProject,
     onNewProject,
 }: {
-    projects: Project[];
+    projects: any[];
     loading: boolean;
     error: string | null;
     onRetry: () => void;
@@ -435,6 +553,20 @@ export default function ProjectsGrid({
                     <NewProjectButton onClick={onNewProject} />
                 </div>
             </div>
+
+            {/* "Recent Activity" section label — sits above the grid, doesn't touch
+                the header/sort/count above or the card/skeleton/empty-state logic below. */}
+            {!error && (
+                <h3 style={{
+                    margin: "0 0 14px",
+                    fontSize: 15,
+                    fontWeight: 500,
+                    color: "rgba(26,26,26,0.88)",
+                    letterSpacing: "-0.01em",
+                }}>
+                    Recent Activity
+                </h3>
+            )}
 
             {/* Error */}
             {error && !loading && (

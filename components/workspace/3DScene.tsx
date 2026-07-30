@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react"
+import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from "react"
 import { OrbitControls } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./lib/constants"
 import { Room3D } from "./3dRoom"
@@ -11,10 +11,14 @@ import { LightFixtureMesh } from "./mesh/lights-mesh"
 import { OutdoorObjectMesh } from "./mesh/outdoor-object-mesh"
 import { CameraView } from "./lib/camera"
 import { StringLightsMesh } from "./mesh/string-lights-mesh"
+import { useThree } from "@react-three/fiber"
+import { computeTopDownView } from "@/lib/helpers"
+import * as THREE from "three"
 
 export type Scene3DHandle = {
     flyTo: (view: CameraView) => void
     getCurrentView: () => { position: [number, number, number]; target: [number, number, number] } | null
+    captureSnapshot: () => Promise<Blob | null>
 }
 
 type Scene3DProps = {
@@ -35,6 +39,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
 ) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
     const controlsRef = useRef<any>(null)
+    const { gl, scene, camera } = useThree()
 
     useImperativeHandle(ref, () => ({
         flyTo: (view: CameraView) => {
@@ -57,8 +62,62 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 position: controls.object.position.toArray() as [number, number, number],
                 target: controls.target.toArray() as [number, number, number],
             }
-        }
-    }), [])
+        },
+        captureSnapshot: async (): Promise<Blob | null> => {
+            const canvasEl = gl.domElement
+            const aspect = canvasEl.width / canvasEl.height
+            const fovDegrees = (camera as THREE.PerspectiveCamera).fov ?? 45
+
+            // Bounding box over ALL entity types, not just rooms — see fix in
+            // computeTopDownView below.
+            const topView = computeTopDownView(fp, aspect, fovDegrees)
+
+            // Clone the camera rather than moving the live one — the on-screen
+            // camera/canvas is never touched, so R3F's own render loop can't
+            // race it and there's nothing to restore afterward.
+            const snapCamera = camera.clone() as THREE.PerspectiveCamera
+            snapCamera.position.set(...topView.position)
+            snapCamera.lookAt(new THREE.Vector3(...topView.target))
+            snapCamera.updateProjectionMatrix()
+
+            const width = canvasEl.width
+            const height = canvasEl.height
+            const renderTarget = new THREE.WebGLRenderTarget(width, height, {
+                format: THREE.RGBAFormat,
+                type: THREE.UnsignedByteType,
+            })
+
+            const prevTarget = gl.getRenderTarget()
+            gl.setRenderTarget(renderTarget)
+            gl.render(scene, snapCamera)
+
+            // Read pixels off the render target and draw to an offscreen 2D
+            // canvas so we can still get a JPEG blob via toBlob (WebGLRenderTarget
+            // has no toBlob of its own).
+            const pixels = new Uint8Array(width * height * 4)
+            gl.readRenderTargetPixels(renderTarget, 0, 0, width, height, pixels)
+            gl.setRenderTarget(prevTarget)
+            renderTarget.dispose()
+
+            const offscreen = document.createElement('canvas')
+            offscreen.width = width
+            offscreen.height = height
+            const ctx = offscreen.getContext('2d')!
+            const imageData = ctx.createImageData(width, height)
+
+            // WebGL render targets are bottom-up; flip to top-down for canvas 2D.
+            const rowBytes = width * 4
+            for (let y = 0; y < height; y++) {
+                const srcStart = (height - y - 1) * rowBytes
+                imageData.data.set(pixels.subarray(srcStart, srcStart + rowBytes), y * rowBytes)
+            }
+            ctx.putImageData(imageData, 0, 0)
+
+            return new Promise<Blob | null>((resolve) => {
+                offscreen.toBlob((b) => resolve(b), 'image/jpeg', 0.82)
+            })
+        },
+    }), [gl])
 
     useEffect(() => {
         if (walkMode) return
@@ -266,4 +325,4 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     )
 })
 
-export default Scene3D
+export default memo(Scene3D)

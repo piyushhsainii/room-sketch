@@ -1,8 +1,10 @@
 "use client";
 
 import { APP } from "@/constants/content";
+import { PlanId } from "@/lib/pricing";
+import React from "react";
 
-export type ActiveFeature = "3d_viewer" | "generate_render" | "sketchup_render";
+export type ActiveFeature = "3d_viewer" | "collections" | "settings";
 
 const FEATURE_TABS: { id: ActiveFeature; label: string; icon: React.ReactNode }[] = [
   {
@@ -10,30 +12,29 @@ const FEATURE_TABS: { id: ActiveFeature; label: string; icon: React.ReactNode }[
     label: "Projects",
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-        <line x1="12" y1="22.08" x2="12" y2="12" />
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
       </svg>
     ),
   },
   {
-    id: "generate_render",
-    label: "Generate Render",
+    id: "collections",
+    label: "Collections",
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z" strokeLinejoin="round" strokeLinecap="round" />
+        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" strokeLinejoin="round" />
       </svg>
     ),
   },
   {
-    id: "sketchup_render",
-    label: "SketchUp → Render",
+    id: "settings",
+    label: "Settings",
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeLinejoin="round" />
-        <polyline points="14 2 14 8 20 8" strokeLinejoin="round" />
-        <path d="M12 12v6" strokeLinecap="round" />
-        <path d="M9 15l3-3 3 3" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" strokeLinejoin="round" strokeLinecap="round" />
       </svg>
     ),
   },
@@ -42,7 +43,7 @@ const FEATURE_TABS: { id: ActiveFeature; label: string; icon: React.ReactNode }[
 type Props = {
   open: boolean;
   userEmail: string;
-  plan: "free" | "pro";
+  plan: PlanId;
   authed: boolean;
   activeFeature: ActiveFeature;
   onFeatureChange: (feature: ActiveFeature) => void;
@@ -51,14 +52,7 @@ type Props = {
 };
 
 export function Sidebar({
-  open,
-  userEmail,
-  plan,
-  authed,
-  activeFeature,
-  onFeatureChange,
-  onSignOut,
-  onSignIn,
+  open, userEmail, plan, authed, activeFeature, onFeatureChange, onSignOut, onSignIn,
 }: Props) {
   return (
     <aside
@@ -66,8 +60,8 @@ export function Sidebar({
       data-open={open ? "true" : "false"}
       style={{
         width: 220,
-        background: "var(--fp-bg)",
-        borderRight: "1px solid var(--fp-border)",
+        background: "#ffffff",
+        borderRight: "1px solid rgba(15,15,15,0.08)",
         display: "flex",
         flexDirection: "column",
         height: "100%",
@@ -76,118 +70,83 @@ export function Sidebar({
       }}
     >
       {/* Logo */}
-      <div style={{
-        padding: "20px 18px 18px",
-        borderBottom: "1px solid var(--fp-border)",
-        display: "flex",
-        alignItems: "center",
-        gap: 9,
-        flexShrink: 0,
-      }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2.6 20.6 7.6v8.8L12 21.4 3.4 16.4V7.6L12 2.6Z" fill="var(--fp-accent)" />
-        </svg>
-        <span style={{
-          fontSize: 14,
-          fontWeight: 500,
-          color: "var(--fp-text)",
-          letterSpacing: "-0.02em",
-        }}>
-          {APP.name}
+      <div style={{ padding: "20px 18px 18px" }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(15,15,15,0.92)", letterSpacing: "-0.01em" }}>
+          <img src="/room-sketch-logo-removebg-preview.png" alt="" className="w-12 rounded-full select-none" />
+          <img src="/room-sketch-text.jpg" alt="" className="w-16 rounded-full select-none" />
         </span>
       </div>
 
       {/* Section label */}
-      <div style={{ padding: "18px 18px 8px" }}>
-        <span style={{
-          fontSize: 9.5,
-          fontWeight: 500,
-          color: "var(--fp-text-faint)",
-          textTransform: "uppercase",
-          letterSpacing: "0.1em",
-        }}>
+      <div style={{ padding: "6px 18px 8px" }}>
+        <span style={{ fontSize: 9.5, fontWeight: 600, color: "rgba(15,15,15,0.35)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
           Menu
         </span>
       </div>
 
       {/* Nav items */}
-      <nav style={{ padding: "0 10px", display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>
-        {FEATURE_TABS.map(tab => {
-          const isActive = activeFeature === tab.id;
-          return (
-            <SidebarNavItem
-              key={tab.id}
-              label={tab.label}
-              icon={tab.icon}
-              isActive={isActive}
-              onClick={() => onFeatureChange(tab.id)}
-            />
-          );
-        })}
+      <nav style={{ padding: "0 10px", display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+        {FEATURE_TABS.map(tab => (
+          <SidebarNavItem
+            key={tab.id}
+            label={tab.label}
+            icon={tab.icon}
+            isActive={activeFeature === tab.id}
+            onClick={() => onFeatureChange(tab.id)}
+          />
+        ))}
       </nav>
 
       <div style={{ flex: 1 }} />
 
       {/* Footer */}
-      <div style={{
-        borderTop: "1px solid var(--fp-border)",
-        padding: "12px 14px 14px",
-        flexShrink: 0,
-      }}>
+      <div style={{ padding: "12px 14px 16px", flexShrink: 0 }}>
         {authed ? (
           <>
-            {/* User info */}
-            <div style={{ marginBottom: 10 }}>
+            {plan === "free" && (
               <div style={{
-                fontSize: 11,
-                fontWeight: 300,
-                color: "var(--fp-text-muted)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                marginBottom: 4,
+                background: "rgba(15,15,15,0.04)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                marginBottom: 12,
               }}>
-                {userEmail}
+                <span style={{
+                  display: "inline-block",
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  background: "#111111",
+                  color: "#ffffff",
+                  letterSpacing: "0.04em",
+                  marginBottom: 6,
+                }}>
+                  FREE PLAN
+                </span>
+                <div style={{ fontSize: 11, fontWeight: 400, lineHeight: 1.4, color: "rgba(15,15,15,0.6)", marginBottom: 4 }}>
+                  Unlock HD exports and unlimited projects.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { /* wire to upgrade flow */ }}
+                  style={{ fontSize: 11, fontWeight: 600, color: "rgba(15,15,15,0.85)", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Upgrade Now
+                </button>
               </div>
-              <span style={{
-                display: "inline-block",
-                fontSize: 9.5,
-                fontWeight: 500,
-                padding: "2px 8px",
-                borderRadius: 999,
-                border: "1px solid var(--fp-border-strong)",
-                color: plan === "pro" ? "var(--fp-accent)" : "var(--fp-text-faint)",
-                background: plan === "pro" ? "var(--fp-accent-bg)" : "transparent",
-                letterSpacing: "0.05em",
-                textTransform: "uppercase",
-              }}>
-                {plan === "pro" ? APP.proPlan : APP.freePlan}
-              </span>
-            </div>
-
-            <SidebarFooterButton onClick={onSignOut} label={APP.signOut} />
+            )}
+            <SidebarSignOutButton onClick={onSignOut} label={APP.signOut} />
           </>
         ) : (
-          <SidebarFooterButton onClick={onSignIn} label={APP.signIn} />
+          <SidebarSignOutButton onClick={onSignIn} label={APP.signIn} />
         )}
       </div>
     </aside>
   );
 }
 
-function SidebarNavItem({
-  label,
-  icon,
-  isActive,
-  onClick,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  isActive: boolean;
-  onClick: () => void;
-}) {
+function SidebarNavItem({ label, icon, isActive, onClick }: { label: string; icon: React.ReactNode; isActive: boolean; onClick: () => void }) {
   const [hovered, setHovered] = React.useState(false);
-
   return (
     <button
       type="button"
@@ -195,83 +154,37 @@ function SidebarNavItem({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 9,
-        width: "100%",
-        height: 36,
-        padding: "0 10px",
-        borderRadius: 6,
-        border: "none",
-        background: isActive
-          ? "var(--fp-accent-bg-strong)"
-          : hovered
-            ? "var(--fp-bg-hover)"
-            : "transparent",
-        color: isActive ? "var(--fp-accent)" : hovered ? "var(--fp-text)" : "var(--fp-text-muted)",
-        fontSize: 12.5,
-        fontWeight: isActive ? 500 : 300,
-        cursor: "pointer",
-        transition: "background 140ms ease, color 140ms ease",
-        textAlign: "left",
-        letterSpacing: "-0.01em",
+        display: "flex", alignItems: "center", gap: 9, width: "100%", height: 34,
+        padding: "0 10px", borderRadius: 7, border: "none",
+        background: isActive ? "rgba(15,15,15,0.06)" : hovered ? "rgba(15,15,15,0.03)" : "transparent",
+        color: isActive ? "rgba(15,15,15,0.95)" : "rgba(15,15,15,0.55)",
+        fontSize: 13, fontWeight: isActive ? 600 : 400, cursor: "pointer",
+        transition: "background 140ms ease, color 140ms ease", textAlign: "left",
       }}
     >
-      <span style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 15,
-        height: 15,
-        flexShrink: 0,
-        color: isActive ? "var(--fp-accent)" : hovered ? "var(--fp-text)" : "var(--fp-text-faint)",
-        transition: "color 140ms ease",
-      }}>
-        {icon}
-      </span>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {label}
-      </span>
-      {isActive && (
-        <span style={{
-          marginLeft: "auto",
-          width: 4,
-          height: 4,
-          borderRadius: "50%",
-          background: "var(--fp-accent)",
-          flexShrink: 0,
-        }} />
-      )}
+      <span style={{ display: "inline-flex", width: 15, height: 15, flexShrink: 0 }}>{icon}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
     </button>
   );
 }
 
-function SidebarFooterButton({ onClick, label }: { onClick: () => void; label: string }) {
-  const [hovered, setHovered] = React.useState(false);
+function SidebarSignOutButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{
-        width: "100%",
-        height: 30,
-        borderRadius: 6,
-        border: "1px solid var(--fp-border)",
-        background: hovered ? "var(--fp-bg-hover)" : "transparent",
-        color: hovered ? "var(--fp-text)" : "var(--fp-text-muted)",
-        fontSize: 11.5,
-        fontWeight: 300,
-        cursor: "pointer",
-        transition: "background 140ms ease, color 140ms ease",
-        letterSpacing: "-0.01em",
+        display: "flex", alignItems: "center", gap: 7, width: "100%", height: 28,
+        border: "none", background: "transparent", color: "rgba(15,15,15,0.5)",
+        fontSize: 12.5, fontWeight: 400, cursor: "pointer", padding: 0,
       }}
     >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" strokeLinecap="round" strokeLinejoin="round" />
+        <polyline points="16 17 21 12 16 7" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="21" y1="12" x2="9" y2="12" strokeLinecap="round" />
+      </svg>
       {label}
     </button>
   );
 }
-
-// Need React for useState in sub-components
-import React from "react";

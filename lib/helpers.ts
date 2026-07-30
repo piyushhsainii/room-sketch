@@ -1,3 +1,4 @@
+import { CameraView } from "@/components/workspace/lib/camera";
 import {
   ClosedShape,
   EditorOpening,
@@ -853,4 +854,57 @@ export function bboxFullyInside(
   return (
     b.minX >= rminX && b.maxX <= rmaxX && b.minZ >= rminZ && b.maxZ <= rmaxZ
   );
+}
+
+export function computeTopDownView(
+  fp: FloorPlanState,
+  aspect: number,
+  fovDegrees: number,
+): CameraView {
+  const xs: number[] = [];
+  const zs: number[] = [];
+
+  fp.rooms.forEach((r) => {
+    xs.push(r.x, r.x + r.width);
+    zs.push(r.z, r.z + r.depth);
+  });
+  fp.lineNodes.forEach((n) => {
+    xs.push(n.x);
+    zs.push(n.z);
+  });
+
+  if (xs.length === 0 || zs.length === 0) {
+    return {
+      id: "snapshot-top-down",
+      label: "Snapshot Top View",
+      position: [0, 20, 0],
+      target: [0, 0, 0],
+      isPreset: false,
+    };
+  }
+
+  const minX = Math.min(...xs),
+    maxX = Math.max(...xs);
+  const minZ = Math.min(...zs),
+    maxZ = Math.max(...zs);
+  const centerX = (minX + maxX) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  const spanX = Math.max(maxX - minX, 2);
+  const spanZ = Math.max(maxZ - minZ, 2);
+
+  // Camera looking straight down: visible half-height at distance d is d * tan(fov/2).
+  // Visible half-width is half-height * aspect (aspect = viewport width/height).
+  // Solve for the half-height needed to fit BOTH spans, then back out distance.
+  const fovRad = (fovDegrees * Math.PI) / 180;
+  const halfHeightNeeded = Math.max(spanZ / 2, spanX / (2 * aspect));
+  const PADDING = 1.15; // 15% margin so walls aren't flush against the frame edge
+  const height = (halfHeightNeeded / Math.tan(fovRad / 2)) * PADDING;
+
+  return {
+    id: "snapshot-top-down",
+    label: "Snapshot Top View",
+    position: [centerX, height, centerZ + 0.001],
+    target: [centerX, 0, centerZ],
+    isPreset: false,
+  };
 }

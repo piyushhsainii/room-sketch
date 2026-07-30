@@ -489,6 +489,15 @@ function LineWalls3DImpl({
             {(fp.lineNodes ?? []).map(node => {
                 const owningSeg = (fp.lineSegments ?? []).find(seg => seg.nodeIds.includes(node.id))
                 const nodeMat = owningSeg ? (segWallMaterial.get(owningSeg.id) ?? wallMaterial) : wallMaterial
+                // Color was previously hardcoded to the global `wallColor`
+                // prop here, ignoring any per-segment override captured in
+                // segWallColor (the same map the flat wall panels above
+                // already use). That's why a segment with its own
+                // material/color — like a dark wood override — rendered its
+                // panels correctly but the corner pole stayed the default
+                // color: the pole and its own wall never agreed on which
+                // color source to read from.
+                const nodeColor = owningSeg ? (segWallColor.get(owningSeg.id) ?? wallColor) : wallColor
                 const nodeT = owningSeg?.thickness ?? 0.15
                 // Node cylinders are drawn at each shared corner. When two
                 // segments of different heights meet at a node, this uses
@@ -499,7 +508,7 @@ function LineWalls3DImpl({
                 return (
                     <mesh key={node.id} position={[node.x, nodeH / 2, node.z]} castShadow receiveShadow>
                         <cylinderGeometry args={[nodeT / 2, nodeT / 2, nodeH, 8]} />
-                        <WallMat mat={nodeMat} color={wallColor} roughness={wallRoughness} width={nodeT} height={nodeH} depth={nodeT} />
+                        <WallMat mat={nodeMat} color={nodeColor} roughness={wallRoughness} width={nodeT} height={nodeH} depth={nodeT} />
                     </mesh>
                 )
             })}

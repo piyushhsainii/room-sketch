@@ -58,6 +58,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       project_id: string;
       state: FloorplanEditorState;
+      thumbnail_url?: string;
     };
 
     if (
@@ -80,9 +81,6 @@ export async function POST(request: Request) {
     if (!project)
       return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    // Single source of truth: derive scene_json AND workspace_config from
-    // the same floorPlanState/sceneConfig in the same request. There is
-    // now exactly one writer for all three fields — they cannot diverge.
     const sceneJSON = floorPlanStateToSceneJSON(
       body.state.floorPlanState,
       body.state.sceneConfig,
@@ -91,15 +89,20 @@ export async function POST(request: Request) {
       body.state.sceneConfig,
     );
 
+    const updatePayload: Record<string, unknown> = {
+      floorplan_editor_state: body.state,
+      scene_json: sceneJSON,
+      workspace_config: workspaceConfig,
+      workspace_enabled: true,
+      updated_at: new Date().toISOString(),
+    };
+    if (body.thumbnail_url) {
+      updatePayload.thumbnail_url = body.thumbnail_url;
+    }
+
     const { error } = await admin
       .from("projects")
-      .update({
-        floorplan_editor_state: body.state,
-        scene_json: sceneJSON,
-        workspace_config: workspaceConfig,
-        workspace_enabled: true,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", body.project_id)
       .eq("user_id", session.userId);
 

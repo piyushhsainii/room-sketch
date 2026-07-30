@@ -4,13 +4,6 @@ import { LIGHT_FIXTURE_LABELS, LIGHT_PLACEMENT_KIND } from "./lights-constant";
 import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./lib/outdoor-constants";
 import { FURNITURE_FOOTPRINTS } from "./lib/furniture-constants";
 
-// ── Label width cache ────────────────────────────────────────────────────
-// ctx.measureText is surprisingly expensive when called for every label,
-// every frame, during a live drag/zoom gesture. Labels are drawn from a
-// small, mostly-fixed vocabulary (room dims, fixture names, lengths) so we
-// cache measured widths keyed by (font, text). Cache is module-level and
-// intentionally never evicted — worst case it holds a few hundred short
-// strings across the lifetime of the tab, which is negligible.
 const labelWidthCache = new Map<string, number>()
 
 function measureCached(ctx: CanvasRenderingContext2D, text: string, font: string): number {

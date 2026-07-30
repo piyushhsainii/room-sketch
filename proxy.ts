@@ -22,7 +22,14 @@ function isPrivatePath(pathname: string) {
   );
 }
 
+const isProd = process.env.NODE_ENV === "production";
+
 export async function proxy(request: NextRequest) {
+  // Auth gating disabled outside production (local/dev/preview)
+  if (!isProd) {
+    return NextResponse.next();
+  }
+
   const { supabaseResponse, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
 

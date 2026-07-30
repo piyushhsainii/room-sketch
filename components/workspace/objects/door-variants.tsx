@@ -58,6 +58,75 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                     <cylinderGeometry args={[0.009, 0.009, 0.12, 12]} />
                     <meshStandardMaterial color="#B9B9B4" metalness={0.65} roughness={0.28} />
                 </mesh>
+                {/* Small return-cap at the far end of the lever so it doesn't
+                    read as a bare-ended rod from the free-edge side. */}
+                <mesh position={[-0.115, 0, leverZ]} castShadow>
+                    <sphereGeometry args={[0.009, 10, 10]} />
+                    <meshStandardMaterial color="#B9B9B4" metalness={0.65} roughness={0.28} />
+                </mesh>
+            </group>
+        )
+    }
+
+    // ── Butt hinges — three stacked leaf-and-knuckle hinges along the
+    // hinge-side edge of a panel, mounted flush on the hinge face (the side
+    // that meets the frame). Purely cosmetic; position is derived the same
+    // way DoorKnob's is, mirrored to the hinge edge instead of the free edge.
+    function DoorHinges({ height, hingeSign }: { height: number; hingeSign: 1 | -1 }) {
+        const hingeX = hingeSign * (0.045 / 2) // sits right at the panel's edge face
+        const knuckleR = 0.009
+        const positions = [0.85, 0.5, 0.15].map(f => (f - 0.5) * height * 0.9)
+        return (
+            <group>
+                {positions.map((y, i) => (
+                    <group key={i} position={[hingeX, y, 0]}>
+                        <mesh castShadow>
+                            <boxGeometry args={[0.01, 0.14, 0.07]} />
+                            <meshStandardMaterial color="#B9B9B4" metalness={0.6} roughness={0.35} />
+                        </mesh>
+                        <mesh rotation={[Math.PI / 2, 0, 0]} position={[hingeSign * 0.008, 0, 0]} castShadow>
+                            <cylinderGeometry args={[knuckleR, knuckleR, 0.15, 10]} />
+                            <meshStandardMaterial color="#A8A8A2" metalness={0.7} roughness={0.25} />
+                        </mesh>
+                    </group>
+                ))}
+            </group>
+        )
+    }
+
+    // ── Raised-panel molding — thin inset rectangular frame lines pressed
+    // slightly into the face on both sides, giving the flat slab a
+    // traditional stile-and-rail look instead of reading as a plain board.
+    // Skipped automatically for narrow leaves (folding/garage slats) via the
+    // minInset guard below.
+    function PanelMolding({ width, height, zSide }: { width: number; height: number; zSide: 1 | -1 }) {
+        const margin = Math.min(0.09, width * 0.14, height * 0.06)
+        if (width - margin * 2 < 0.15 || height - margin * 2 < 0.3) return null
+        const mw = width - margin * 2
+        const mh = height - margin * 2
+        const midY = height * 0.42 // split into upper (long) and lower (short) panel, classic 2-panel door
+        const upperH = mh - midY
+        const lowerH = midY - 0.06
+        const frameZ = zSide * (T / 2 + 0.0015)
+        const bar = 0.02
+        function rect(w: number, h: number, cy: number, key: string) {
+            return (
+                <group key={key} position={[0, cy, frameZ]}>
+                    <mesh position={[0, h / 2 - bar / 2, 0]}><boxGeometry args={[w, bar, 0.003]} /><meshStandardMaterial color="#00000022" transparent opacity={0.35} roughness={0.9} /></mesh>
+                    <mesh position={[0, -h / 2 + bar / 2, 0]}><boxGeometry args={[w, bar, 0.003]} /><meshStandardMaterial color="#00000022" transparent opacity={0.35} roughness={0.9} /></mesh>
+                    <mesh position={[-w / 2 + bar / 2, 0, 0]}><boxGeometry args={[bar, h, 0.003]} /><meshStandardMaterial color="#00000022" transparent opacity={0.35} roughness={0.9} /></mesh>
+                    <mesh position={[w / 2 - bar / 2, 0, 0]}><boxGeometry args={[bar, h, 0.003]} /><meshStandardMaterial color="#00000022" transparent opacity={0.35} roughness={0.9} /></mesh>
+                </group>
+            )
+        }
+        // Both rects are laid out bottom-up from y=0 (panel's own local
+        // origin is centered), so shift by -height/2 to get into local space.
+        const lowerCenterY = margin + lowerH / 2 - height / 2
+        const upperCenterY = margin + lowerH + 0.06 + upperH / 2 - height / 2
+        return (
+            <group>
+                {rect(mw, upperH, upperCenterY, 'upper')}
+                {rect(mw, lowerH, lowerCenterY, 'lower')}
             </group>
         )
     }
@@ -77,10 +146,57 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                     <boxGeometry args={[width, height, T]} />
                     <DoorMat style={resolvedStyle} />
                 </mesh>
+                <PanelMolding width={width} height={height} zSide={1} />
+                <PanelMolding width={width} height={height} zSide={-1} />
                 <group position={[knobX, 0, 0]}>
                     <DoorKnob zSide={1} />
                     <DoorKnob zSide={-1} />
                 </group>
+                <DoorHinges height={height} hingeSign={hingeSign} />
+                {/* thin kickplate along the bottom, both faces */}
+                <mesh position={[0, -height / 2 + 0.09, T / 2 + 0.0015]}>
+                    <boxGeometry args={[width - inset, 0.16, 0.002]} />
+                    <meshStandardMaterial color="#8f8f88" metalness={0.5} roughness={0.4} />
+                </mesh>
+                <mesh position={[0, -height / 2 + 0.09, -T / 2 - 0.0015]}>
+                    <boxGeometry args={[width - inset, 0.16, 0.002]} />
+                    <meshStandardMaterial color="#8f8f88" metalness={0.5} roughness={0.4} />
+                </mesh>
+            </group>
+        )
+    }
+
+    // ── Door frame / jamb — simple three-sided casing around the opening,
+    // sitting flush with the wall face on both sides of the swinging
+    // leaves. Purely cosmetic trim so the door doesn't look like it's just
+    // floating inside a hole in the wall.
+    function DoorFrame({ width, height }: { width: number; height: number }) {
+        const jambW = 0.05
+        const jambD = T + 0.02
+        // basePos[1] is the door's *vertical center* (op.height / 2), not
+        // floor level — every other user of basePos in this file (DoorFace,
+        // SwingHinge) relies on that offset being baked in already, since
+        // their own geometry is centered on 0 locally. DoorFrame's jamb
+        // meshes below are authored in floor-relative coordinates (0 = floor,
+        // height = door top), so we deliberately zero out basePos[1] here and
+        // work in absolute floor-relative Y instead of stacking another
+        // offset on top of the existing one — that double-offset was what
+        // sent the frame floating up near the ceiling.
+        const floorPos: [number, number, number] = [basePos[0], 0, basePos[2]]
+        return (
+            <group position={floorPos} rotation={[0, -angle, 0]}>
+                <mesh position={[-width / 2 - jambW / 2, height / 2, 0]} castShadow>
+                    <boxGeometry args={[jambW, height + jambW, jambD]} />
+                    <meshStandardMaterial color="#e8e5df" roughness={0.6} />
+                </mesh>
+                <mesh position={[width / 2 + jambW / 2, height / 2, 0]} castShadow>
+                    <boxGeometry args={[jambW, height + jambW, jambD]} />
+                    <meshStandardMaterial color="#e8e5df" roughness={0.6} />
+                </mesh>
+                <mesh position={[0, height + jambW / 2, 0]} castShadow>
+                    <boxGeometry args={[width + jambW * 2, jambW, jambD]} />
+                    <meshStandardMaterial color="#e8e5df" roughness={0.6} />
+                </mesh>
             </group>
         )
     }
@@ -130,6 +246,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
             // correction rather than re-derived from scratch.
             return (
                 <group>
+                    <DoorFrame width={op.width} height={op.height} />
                     {swingingPanel(1, half, -half / 2, 'doorL', restAngle, openAngle)}
                     {swingingPanel(-1, half, half / 2, 'doorR', -restAngle, -openAngle)}
                 </group>
@@ -147,11 +264,31 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                 basePos[2] + dirZ * offset,
             ]
             return (
-                <group position={pos} rotation={[0, -angle, 0]}>
-                    <mesh castShadow>
-                        <boxGeometry args={[visibleWidth, op.height, T]} />
-                        <DoorMat style={resolvedStyle} />
-                    </mesh>
+                <group>
+                    {/* Top track rail the panel appears to hang from */}
+                    <group position={basePos} rotation={[0, -angle, 0]}>
+                        <mesh position={[0, op.height + 0.03, 0]}>
+                            <boxGeometry args={[op.width + 0.1, 0.04, 0.08]} />
+                            <meshStandardMaterial color="#9a9a94" metalness={0.55} roughness={0.4} />
+                        </mesh>
+                    </group>
+                    <group position={pos} rotation={[0, -angle, 0]}>
+                        <mesh castShadow>
+                            <boxGeometry args={[visibleWidth, op.height, T]} />
+                            <DoorMat style={resolvedStyle} />
+                        </mesh>
+                        <PanelMolding width={visibleWidth} height={op.height} zSide={1} />
+                        <PanelMolding width={visibleWidth} height={op.height} zSide={-1} />
+                        {/* recessed pull instead of a knob, appropriate for sliding/pocket doors */}
+                        <mesh position={[visibleWidth / 2 - 0.08, 0, T / 2 + 0.006]}>
+                            <boxGeometry args={[0.02, 0.16, 0.012]} />
+                            <meshStandardMaterial color="#B9B9B4" metalness={0.6} roughness={0.3} />
+                        </mesh>
+                        <mesh position={[visibleWidth / 2 - 0.08, 0, -T / 2 - 0.006]}>
+                            <boxGeometry args={[0.02, 0.16, 0.012]} />
+                            <meshStandardMaterial color="#B9B9B4" metalness={0.6} roughness={0.3} />
+                        </mesh>
+                    </group>
                 </group>
             )
         }
@@ -176,6 +313,13 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                             <boxGeometry args={[panelW * 0.96, op.height, T]} />
                             <DoorMat style={resolvedStyle} />
                         </mesh>
+                        {/* thin vertical reveal line at each fold seam to
+                            read as separate louvered leaves rather than one
+                            continuous slab bent into a zig-zag */}
+                        <mesh position={[panelW * 0.96 / 2 - 0.006, 0, T / 2 + 0.001]}>
+                            <boxGeometry args={[0.008, op.height * 0.92, 0.002]} />
+                            <meshStandardMaterial color="#00000030" transparent opacity={0.4} />
+                        </mesh>
                     </group>
                 )
             }
@@ -195,17 +339,42 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                             <boxGeometry args={[op.width * 0.98, slatH * 0.85, T]} />
                             <DoorMat style={resolvedStyle} />
                         </mesh>
+                        {/* recessed shadow line under each slat for a
+                            corrugated-panel look instead of flat stacked bars */}
+                        <mesh position={[0, -slatH * 0.85 / 2 - 0.004, T / 2 + 0.001]}>
+                            <boxGeometry args={[op.width * 0.98, 0.006, 0.002]} />
+                            <meshStandardMaterial color="#00000040" transparent opacity={0.45} />
+                        </mesh>
                     </group>
                 )
             }
-            return <group>{panels}</group>
+            // side tracks for a bit of realism
+            const trackPositions: [number, number][] = [[-op.width / 2 - 0.02, 1], [op.width / 2 + 0.02, 1]]
+            return (
+                <group>
+                    {panels}
+                    {trackPositions.map(([x], i) => (
+                        <group key={`track${i}`} position={[basePos[0] + dirX * x, 0, basePos[2] + dirZ * x]} rotation={[0, -angle, 0]}>
+                            <mesh position={[0, op.height / 2, 0]}>
+                                <boxGeometry args={[0.03, op.height, 0.05]} />
+                                <meshStandardMaterial color="#9a9a94" metalness={0.5} roughness={0.4} />
+                            </mesh>
+                        </group>
+                    ))}
+                </group>
+            )
         }
 
         case 'door-swing-single':
         default: {
             const restAngle = (Math.PI / 40) * swingSign
             const openAngle = (Math.PI / 2) * 0.85 * swingSign
-            return swingingPanel(-1, op.width, 0, 'doorSingle', restAngle, openAngle)
+            return (
+                <group>
+                    <DoorFrame width={op.width} height={op.height} />
+                    {swingingPanel(-1, op.width, 0, 'doorSingle', restAngle, openAngle)}
+                </group>
+            )
         }
     }
 }

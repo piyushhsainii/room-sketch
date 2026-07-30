@@ -11,13 +11,10 @@ type Props = {
 function Spinner() {
   return (
     <span
+      className="inline-block w-3 h-3 rounded-full border-2"
       style={{
-        width: 12,
-        height: 12,
-        borderRadius: 999,
-        border: '2px solid rgba(99,102,241,0.25)',
-        borderTopColor: 'rgba(99,102,241,1)',
-        display: 'inline-block',
+        borderColor: 'rgba(91,127,214,0.25)',
+        borderTopColor: '#5B7FD6',
         animation: 'wsSpin 900ms linear infinite',
       }}
       aria-hidden="true"
@@ -28,17 +25,8 @@ function Spinner() {
 function Check() {
   return (
     <span
-      style={{
-        width: 12,
-        height: 12,
-        borderRadius: 999,
-        background: 'rgba(34,197,94,0.9)',
-        display: 'inline-grid',
-        placeItems: 'center',
-        color: 'white',
-        fontSize: 10,
-        lineHeight: 1,
-      }}
+      className="inline-grid place-items-center w-3 h-3 rounded-full text-white"
+      style={{ background: '#3D9A5C', fontSize: 9, lineHeight: 1 }}
       aria-hidden="true"
     >
       ✓
@@ -49,13 +37,8 @@ function Check() {
 function Dot() {
   return (
     <span
-      style={{
-        width: 10,
-        height: 10,
-        borderRadius: 999,
-        background: 'rgba(148,163,184,0.35)',
-        display: 'inline-block',
-      }}
+      className="inline-block w-[9px] h-[9px] rounded-full"
+      style={{ background: 'rgba(247,246,241,0.25)' }}
       aria-hidden="true"
     />
   )
@@ -66,24 +49,14 @@ export default function WorkspaceLoader({ status, currentStep }: Props) {
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 60,
-        background: 'rgba(15,15,15,0.95)',
-        display: 'grid',
-        placeItems: 'center',
-        padding: 24,
-      }}
+      className="fixed inset-0 z-[60] grid place-items-center p-6"
+      style={{ background: 'rgba(18,33,62,0.97)' }}
     >
       <div
-        style={{
-          width: 'min(720px, 92vw)',
-          transform: 'translateY(0)',
-          animation: 'wsFadeUp 200ms ease both',
-        }}
+        className="w-[min(560px,92vw)]"
+        style={{ animation: 'wsFadeUp 200ms ease both' }}
       >
-        <div style={{ display: 'grid', placeItems: 'center', marginBottom: 18 }}>
+        <div className="grid place-items-center mb-5">
           <div className="wsCube" aria-hidden="true">
             <div className="wsFace wsFront" />
             <div className="wsFace wsBack" />
@@ -94,25 +67,15 @@ export default function WorkspaceLoader({ status, currentStep }: Props) {
           </div>
         </div>
 
-        <div
-          style={{
-            color: 'rgba(226,232,240,0.92)',
-            fontSize: 12,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            fontWeight: 700,
-            marginBottom: 10,
-          }}
-        >
+        <div className="font-mono text-[11px] font-medium tracking-[0.14em] uppercase text-center mb-4 text-blue-dim">
           {WORKSPACE.buttonLoadingLabel}
         </div>
 
         <div
+          className="rounded-[10px] p-3.5"
           style={{
-            border: '1px solid rgba(148,163,184,0.16)',
-            borderRadius: 16,
-            padding: 14,
-            background: 'rgba(2,6,23,0.25)',
+            border: '1px solid rgba(247,246,241,0.12)',
+            background: 'rgba(9,16,32,0.4)',
           }}
         >
           {WORKSPACE.loadingSteps.map((step, idx) => {
@@ -121,35 +84,25 @@ export default function WorkspaceLoader({ status, currentStep }: Props) {
             return (
               <div
                 key={step}
+                className="flex items-center gap-2.5 py-2 px-1.5 text-[13px]"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '8px 6px',
-                  color: isCurrent ? 'rgba(226,232,240,0.95)' : 'rgba(148,163,184,0.8)',
-                  fontSize: 13,
-                  fontWeight: isCurrent ? 700 : 500,
+                  color: isCurrent ? 'rgba(247,246,241,0.95)' : 'rgba(247,246,241,0.5)',
+                  fontWeight: isCurrent ? 600 : 400,
                 }}
               >
                 {isDone ? <Check /> : isCurrent ? <Spinner /> : <Dot />}
-                <div style={{ flex: 1 }}>{step}</div>
+                <div className="flex-1 font-light tracking-[-0.005em]">{step}</div>
               </div>
             )
           })}
         </div>
 
         <div
-          style={{
-            marginTop: 14,
-            color: 'rgba(226,232,240,0.86)',
-            fontSize: 13,
-            fontWeight: 600,
-            animation: 'wsPulse 1200ms ease-in-out infinite',
-          }}
+          className="mt-3.5 text-center font-mono text-[12px] text-paper/80"
+          style={{ animation: 'wsPulse 1200ms ease-in-out infinite' }}
         >
           {message}
         </div>
-        <div style={{ marginTop: 6, color: 'rgba(148,163,184,0.75)', fontSize: 12 }} />
       </div>
 
       <style jsx>{`
@@ -174,12 +127,12 @@ export default function WorkspaceLoader({ status, currentStep }: Props) {
             opacity: 1;
           }
           50% {
-            opacity: 0.6;
+            opacity: 0.55;
           }
         }
         .wsCube {
-          width: 64px;
-          height: 64px;
+          width: 56px;
+          height: 56px;
           position: relative;
           transform-style: preserve-3d;
           transform: rotateX(-20deg) rotateY(35deg);
@@ -196,27 +149,27 @@ export default function WorkspaceLoader({ status, currentStep }: Props) {
         .wsFace {
           position: absolute;
           inset: 0;
-          background: rgba(2, 6, 23, 0.35);
-          border: 2px solid rgba(99, 102, 241, 0.9);
-          box-shadow: 0 0 30px rgba(99, 102, 241, 0.12);
+          background: rgba(91, 127, 214, 0.08);
+          border: 1.5px solid rgba(91, 127, 214, 0.85);
+          box-shadow: 0 0 24px rgba(91, 127, 214, 0.15);
         }
         .wsFront {
-          transform: translateZ(32px);
+          transform: translateZ(28px);
         }
         .wsBack {
-          transform: rotateY(180deg) translateZ(32px);
+          transform: rotateY(180deg) translateZ(28px);
         }
         .wsRight {
-          transform: rotateY(90deg) translateZ(32px);
+          transform: rotateY(90deg) translateZ(28px);
         }
         .wsLeft {
-          transform: rotateY(-90deg) translateZ(32px);
+          transform: rotateY(-90deg) translateZ(28px);
         }
         .wsTop {
-          transform: rotateX(90deg) translateZ(32px);
+          transform: rotateX(90deg) translateZ(28px);
         }
         .wsBottom {
-          transform: rotateX(-90deg) translateZ(32px);
+          transform: rotateX(-90deg) translateZ(28px);
         }
       `}</style>
     </div>

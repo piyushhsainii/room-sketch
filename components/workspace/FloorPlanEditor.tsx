@@ -33,6 +33,7 @@ import { DragKindEntry, DragOrigin, pastThreshold, runActiveDrag } from '@/lib/d
 import { FloatingMenu } from '../ui/FloatingMenu'
 import { CameraViewPickerV2 } from '../ui/CameraViewPicker'
 import { deriveFlatPlan2D } from './lib/export/flatten2d'
+import { createClient } from '@/lib/supabase/client'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -74,8 +75,8 @@ export const THEME = {
 }
 
 type Props = {
-    projectId: string,
-    onSave?: (fp: FloorPlanState, sceneConfig: SceneConfig) => void
+    projectId?: string,
+    onSave?: (fp: FloorPlanState, sceneConfig: SceneConfig, thumbnailUrl?: string) => Promise<{ projectId: string } | void>
     onClose?: () => void
     initialState?: FloorPlanState
     initialSceneConfig?: SceneConfig
@@ -181,42 +182,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const [preview, setPreview] = useState<{ x: number; z: number } | null>(null)
     const pathDraftRef = useRef<string[] | null>(null)
     const pencilPointsRef = useRef<{ x: number, z: number }[]>([])
+    const supabase = createClient()
 
-    function getWorldPos(e: React.PointerEvent | PointerEvent): { x: number; z: number } {
-        const canvas = canvasRef.current
-        if (!canvas) return { x: 0, z: 0 }
-        const rect = canvas.getBoundingClientRect()
-        const canvasX = e.clientX - rect.left
-        const canvasY = e.clientY - rect.top
-        return {
-            x: toWorld(canvasX, pan.x, zoom),
-            z: toWorld(canvasY, pan.y, zoom),
-        }
-    }
-
-    function computeRect(
-        start: { x: number; z: number },
-        current: { x: number; z: number }
-    ): { x: number; z: number; w: number; d: number } {
-        return {
-            x: start.x,
-            z: start.z,
-            w: current.x - start.x,
-            d: current.z - start.z,
-        }
-    }
-
-    function onPointerMoveRectTool(e: React.PointerEvent) {
-        if (!drawStartRef.current) return
-        const world = getWorldPos(e)
-        drawRectRef.current = computeRect(drawStartRef.current, world) // pure, no setState
-        scheduleRedraw()                                                // just kicks rAF, no re-render
-    }
-
-    function onPointerMovePencilTool(e: React.PointerEvent) {
-        pencilPointsRef.current = [...pencilPointsRef.current, getWorldPos(e)]
-        scheduleRedraw()
-    }
 
     function commitRoom(rect: { x: number; z: number; w: number; d: number }) {
         setFp(prev => ({
@@ -410,11 +377,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         setFp(cloned.fp)
         setSceneConfig(cloned.sceneConfig)
     }, [])
-    // ── Optimized Redraw with rAF ────────────────────────────────────────────
-    const closedPolygonsCacheRef = useRef<{ segs: FloorPlanState['lineSegments']; result: string[][] } | null>(null)
     const rafIdRef = useRef(0)
     const lastCanvasSizeRef = useRef({ w: 0, h: 0 })
-    const chevronRef = useRef<HTMLButtonElement | null>(null)
     const groupAnchorsRef = useRef<Record<string, HTMLDivElement | null>>({})
     const [furnitureAnchorRect, setFurnitureAnchorRect] = useState<DOMRect | null>(null)
     const [presetsAnchorRect, setPresetsAnchorRect] = useState<DOMRect | null>(null)
@@ -453,18 +417,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         }
         raf = requestAnimationFrame(tryFly)
         return () => cancelAnimationFrame(raf)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
-
-    const handleSaveCurrentView = () => {
-        const current = scene3DRef.current?.getCurrentView()
-        if (!current) return
-        const name = prompt('Name this view:')
-        if (!name) return
-        const newView: CameraView = { id: uid(), label: name, ...current }
-        pushHistory()
-        setFp(prev => ({ ...prev, savedViews: [...(prev.savedViews ?? []), newView] }))
-    }
 
     // Re-measure whenever the furniture tool becomes active (mirrors the
     // pattern GroupButton already uses for its own flyouts).
@@ -494,15 +447,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         shapes: FloorPlanState['closedShapes']
         map: Map<string, NonNullable<FloorPlanState['closedShapes']>[number]>
     } | null>(null)
-
-    // ── Cache helpers (module-level or inside the component, either works) ─────
-    function getClosedPolygons(fp: FloorPlanState): string[][] {
-        const cache = closedPolygonsCacheRef.current
-        if (cache && cache.segs === fp.lineSegments) return cache.result
-        const result = deriveClosedPolygons(fp.lineNodes, fp.lineSegments)
-        closedPolygonsCacheRef.current = { segs: fp.lineSegments, result }
-        return result
-    }
 
     function getOpeningsIndex(fp: FloorPlanState) {
         const cache = openingsIndexCacheRef.current
@@ -563,7 +507,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     // const drawRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
     // const pencilPointsRef = useRef<{ x: number; z: number }[]>([])
     const previewRef = useRef<{ x: number; z: number } | null>(null)
-    // const marqueeRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
 
     const scheduleRedraw = useCallback(() => {
         cancelAnimationFrame(rafIdRef.current)
@@ -678,6 +621,14 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
 
     useEffect(() => { panRef.current = pan }, [pan])
     useEffect(() => { zoomRef.current = zoom }, [zoom])
+
+    const [fp3D, setFp3D] = useState(fp)
+    const raf3DRef = useRef<number>(0)
+    useEffect(() => {
+        cancelAnimationFrame(raf3DRef.current)
+        raf3DRef.current = requestAnimationFrame(() => setFp3D(fp))
+        return () => cancelAnimationFrame(raf3DRef.current)
+    }, [fp])
 
     const evWorld = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const rect = canvasRef.current!.getBoundingClientRect()
@@ -2737,6 +2688,37 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         setSplitRatio(next)
     }, [])
 
+    const handleSaveWithThumbnail = useCallback(async (fp: FloorPlanState, sceneConfig: SceneConfig) => {
+        const saveResult = await onSave?.(fp, sceneConfig, undefined)
+        const effectiveProjectId = projectId ?? saveResult?.projectId
+
+        if (!effectiveProjectId) {
+            console.warn('[FloorPlanEditor] no projectId after save, skipping thumbnail')
+            return
+        }
+
+        try {
+            const blob = await scene3DRef.current?.captureSnapshot()
+            if (blob) {
+                const formData = new FormData()
+                formData.append('project_id', effectiveProjectId)
+                formData.append('thumbnail', blob, 'thumbnail.jpg')
+
+                const res = await fetch('/api/workspace/thumbnail', { method: 'POST', body: formData })
+                if (res.ok) {
+                    const body = await res.json() as { thumbnail_url?: string }
+                    if (body.thumbnail_url) {
+                        await onSave?.(fp, sceneConfig, body.thumbnail_url)
+                    }
+                } else {
+                    console.warn('[FloorPlanEditor] thumbnail upload failed:', await res.text())
+                }
+            }
+        } catch (err) {
+            console.warn('[FloorPlanEditor] thumbnail capture failed, continuing:', err)
+        }
+    }, [onSave, projectId])
+
     const handleDividerMouseUp = useCallback(() => {
         dragStateRef.current = null
         window.removeEventListener('mousemove', handleDividerMouseMove)
@@ -2778,7 +2760,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     isSaving={isSaving}
                     key={1}
                     onClose={onClose}
-                    onSave={onSave}
+                    onSave={handleSaveWithThumbnail}
                     projectId={projectId}
                 />
             </div>
@@ -3054,7 +3036,14 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                             <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#EFEFEC' }}>
                                 <ResilientCanvas
                                     shadows
-                                    gl={{ antialias: true, alpha: false, powerPreference: 'low-power', stencil: false, depth: true }}
+                                    gl={{
+                                        antialias: true,
+                                        alpha: false,
+                                        powerPreference: 'low-power',
+                                        stencil: true,
+                                        depth: true,
+                                        preserveDrawingBuffer: true
+                                    }}
                                     dpr={[1, 2]}
                                     camera={{
                                         position: [
@@ -3071,7 +3060,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                     <Scene3D
                                         ref={scene3DRef}
                                         exportRootRef={exportRootRef}
-                                        fp={fp}
+                                        fp={fp3D}
                                         sceneConfig={sceneConfig}
                                         walkMode={walkMode}
                                         interactiveMode={interactiveMode}

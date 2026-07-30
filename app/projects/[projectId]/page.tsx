@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import type { FloorPlanState } from "@/components/workspace/lib/constants";
 
 const WorkspaceContainer = dynamic(
     () => import("@/components/workspace/WorkspaceContainer"),
@@ -23,13 +24,11 @@ export default function ProjectViewerPage() {
 
     useEffect(() => {
         let cancelled = false;
-        console.log("[ProjectViewer] effect fired, params.id =", params.projectId);
         async function load() {
             setLoading(true);
             setError(null);
             try {
                 const res = await fetch(`/api/projects/${params.projectId}`, { cache: "no-store" });
-                console.log("[ProjectViewer] fetch resolved, status =", res.status, "cancelled =", cancelled);
                 if (cancelled) return;
                 if (res.status === 401) {
                     setLoading(false);
@@ -42,7 +41,6 @@ export default function ProjectViewerPage() {
                     return;
                 }
                 const body = await res.json();
-                console.log("[ProjectViewer] setting project", body);
                 setProject(body.project ?? body);
             } catch (err) {
                 console.error("Failed to load project:", err);
@@ -54,7 +52,6 @@ export default function ProjectViewerPage() {
         if (params.projectId) void load();
         else setLoading(false);
         return () => {
-            console.log("[ProjectViewer] cleanup, cancelled = true");
             cancelled = true;
         };
     }, [params.projectId, router]);
@@ -80,64 +77,57 @@ export default function ProjectViewerPage() {
             </div>
         );
     }
+
+    // Single, shared save implementation — both the "no editor state yet"
+    // branch and the "has editor state" branch used to carry byte-for-byte
+    // copies of this closure. Keeping one copy means they can't silently
+    // drift apart if this endpoint's contract changes later.
+    // Returns { projectId } per FloorPlanEditor's onSave contract, even
+    // though projectId is already known here — keeps the return shape
+    // consistent with the draft (/projects/new) save path.
+    async function saveProject(fp: FloorPlanState, cfg: any, thumbnailUrl?: string) {
+        try {
+            const res = await fetch("/api/workspace/floorplan-editor-state", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    project_id: project.id,
+                    state: { floorPlanState: fp, sceneConfig: cfg },
+                    thumbnail_url: thumbnailUrl,
+                }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error ?? "Save failed");
+            }
+            return { projectId: project.id as string };
+        } catch (err) {
+            console.error("[ProjectViewer] save failed:", err);
+        }
+    }
+
     if (!project.floorplan_editor_state && !project.floorplan_url) {
         return (
             <FloorPlanEditor
                 projectId={project.id}
-                onSave={async (fp, cfg) => {
-                    try {
-                        const res = await fetch("/api/workspace/floorplan-editor-state", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                project_id: project.id,
-                                state: { floorPlanState: fp, sceneConfig: cfg },
-                            }),
-                        });
-                        if (!res.ok) {
-                            const body = await res.json().catch(() => ({}));
-                            throw new Error(body.error ?? "Save failed");
-                        }
-                    } catch (err) {
-                        console.error("[ProjectViewer] save failed:", err);
-                    }
-                }}
+                onSave={saveProject}
                 onClose={() => router.push("/")}
             />
         );
     }
 
     if (project.floorplan_editor_state) {
-
         const { floorPlanState, sceneConfig } = project.floorplan_editor_state as {
             floorPlanState: any;
             sceneConfig: any;
         };
 
         return (
-
             <FloorPlanEditor
                 projectId={project.id}
                 initialState={floorPlanState}
                 initialSceneConfig={sceneConfig}
-                onSave={async (fp, cfg) => {
-                    try {
-                        const res = await fetch("/api/workspace/floorplan-editor-state", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                project_id: project.id,
-                                state: { floorPlanState: fp, sceneConfig: cfg },
-                            }),
-                        });
-                        if (!res.ok) {
-                            const body = await res.json().catch(() => ({}));
-                            throw new Error(body.error ?? "Save failed");
-                        }
-                    } catch (err) {
-                        console.error("[ProjectViewer] save failed:", err);
-                    }
-                }}
+                onSave={saveProject}
                 onClose={() => router.push("/dashboard")}
             />
         );

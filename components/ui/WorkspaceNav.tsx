@@ -148,6 +148,7 @@ const WorkspaceNav = ({
     }, [exportMenuOpen])
 
     const runSave = async () => {
+
         await Promise.resolve(onSave?.(fp, sceneConfig))
     }
 

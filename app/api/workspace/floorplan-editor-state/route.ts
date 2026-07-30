@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { readSessionFromCookies } from "@/lib/auth/session";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
 import type { SceneConfig } from "@/components/workspace/FloorPlanEditor";
 import type { FloorPlanState } from "@/components/workspace/lib/constants";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    const admin = createServerSupabaseClient();
+    const admin = await createServerSupabaseClient();
 
     const { data: project } = await admin
       .from("projects")

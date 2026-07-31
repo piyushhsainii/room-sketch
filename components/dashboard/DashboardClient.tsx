@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sidebar, type ActiveFeature } from "@/components/sidebar/Sidebar";
 import AuthDialog from "@/components/ui/AuthDialog";
-import ProjectsGrid from "./ProjectsGrid";
 import QuickStart from "@/components/dashboard/QuickStart";
 
 import { useRouter } from "next/navigation";
@@ -16,14 +15,27 @@ import SettingsPanel from "./SettingsPanel";
 import CollectionsPanel from "./CollectionsPanel";
 import type { PlanId } from "@/lib/pricing";
 
-export default function DashboardClient() {
+type InitialUser = { email: string };
+
+interface DashboardClientProps {
+  initialUser: InitialUser;
+  initialPlan: PlanId;
+}
+
+export default function DashboardClient({ initialUser, initialPlan }: DashboardClientProps) {
   const [projects, setProjects] = useState<any>([]);
   const [activeProjectId, setActiveProjectId] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [userEmail, setUserEmail] = useState<string>("");
-  const [plan, setPlan] = useState<PlanId>("free");
+
+  // Auth state now comes from the server component — it's already
+  // resolved by the time this renders, so no loading state needed and
+  // no client fetch to re-derive it. `authed` is implicitly true: this
+  // component only renders for signed-in users (page.tsx redirects
+  // otherwise), so there's no unauthenticated branch to model here.
+  const [userEmail, setUserEmail] = useState<string>(initialUser.email);
+  const [plan, setPlan] = useState<PlanId>(initialPlan);
+
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
-  const [authed, setAuthed] = useState(false);
   const [activeFeature, setActiveFeature] = useState<ActiveFeature>("3d_viewer");
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectsError, setProjectsError] = useState<string | null>(null);
@@ -36,12 +48,25 @@ export default function DashboardClient() {
     setProjectsError(null);
     try {
       const res = await fetch("/api/projects", { method: "GET" });
-      if (res.status === 401) { setProjects([]); setActiveProjectId(null); return; }
-      if (!res.ok) { setProjectsError("Failed to load projects."); return; }
+      if (res.status === 401) {
+        // Session expired mid-session (token revoked, user deleted, etc).
+        // Middleware will catch this on next navigation; here we just
+        // reflect it locally rather than silently failing.
+        setProjects([]);
+        setActiveProjectId(null);
+        return;
+      }
+      if (!res.ok) {
+        setProjectsError("Failed to load projects.");
+        return;
+      }
       const body = await res.json();
       setProjects(body.projects);
-      setCache({ projects: body.projects, me: { authed, email: userEmail, plan } });
-      if (selectProjectId) { setActiveProjectId(selectProjectId); return; }
+      setCache({ projects: body.projects, me: { authed: true, email: userEmail, plan } });
+      if (selectProjectId) {
+        setActiveProjectId(selectProjectId);
+        return;
+      }
     } catch {
       setProjectsError("Failed to load projects.");
     } finally {
@@ -50,49 +75,38 @@ export default function DashboardClient() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      // Hydrate synchronously from cache if fresh — no spinner, no fetch.
-      const cached = getCache();
-      if (cached && !isStale()) {
-        setAuthed(cached.me.authed);
-        setUserEmail(cached.me.email);
-        setPlan(cached.me.plan);
-        setProjects(cached.projects);
-        setProjectsLoading(false);
-        return;
-      }
-
-      try {
-        const res = await fetch("/api/me", { method: "GET" });
-        if (!res.ok) return;
-        const body = (await res.json()) as { authed: boolean; email: string; plan: PlanId };
-        if (cancelled) return;
-        setAuthed(body.authed); setUserEmail(body.email); setPlan(body.plan);
-        if (body.authed) {
-          await refreshProjects();
-        } else {
-          setProjects([]);
-          setActiveProjectId(null);
-          setProjectsLoading(false);
-        }
-      } catch { /* ignore */ }
+    // Projects are still fetched client-side (they change more often than
+    // auth state and benefit from the existing cache), but we no longer
+    // need to resolve *who* the user is first — that's already known.
+    const cached = getCache();
+    if (cached && !isStale() && cached.me.email === userEmail) {
+      setProjects(cached.projects);
+      setProjectsLoading(false);
+      return;
     }
-    void load();
-    return () => { cancelled = true; };
+    void refreshProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function refreshMe() {
+    // Used after auth dialog actions (sign in / sign up) where the
+    // session changes without a full page navigation. A lightweight
+    // client-side refresh is appropriate here since it's event-driven,
+    // not a per-load poll.
     try {
-      const res = await fetch("/api/me", { method: "GET" });
-      if (!res.ok) return;
-      const body = (await res.json()) as { authed: boolean; email: string; plan: PlanId };
-      setAuthed(body.authed); setUserEmail(body.email); setPlan(body.plan);
-      if (body.authed) { await refreshProjects(); }
-      else { setProjects([]); setActiveProjectId(null); }
-    } catch { /* ignore */ }
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        window.location.reload();
+        return;
+      }
+      setUserEmail(user.email ?? "");
+      await refreshProjects();
+    } catch {
+      /* ignore */
+    }
   }
 
   async function handleSignOut() {
@@ -101,8 +115,6 @@ export default function DashboardClient() {
       await supabase.auth.signOut();
     } finally {
       invalidateCache();
-      setAuthed(false); setUserEmail(""); setPlan("free");
-      setProjects([]); setActiveProjectId(null);
       window.location.reload();
     }
   }
@@ -110,49 +122,44 @@ export default function DashboardClient() {
   async function handleRenameProject(projectId: string, newName: string) {
     try {
       const res = await fetch(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName }),
       });
       if (res.ok) {
         setProjects((prev: any) => {
-          const next = prev.map((p: any) => p.id === projectId ? { ...p, name: newName } : p);
-          setCache({ projects: next, me: { authed, email: userEmail, plan } });
+          const next = prev.map((p: any) => (p.id === projectId ? { ...p, name: newName } : p));
+          setCache({ projects: next, me: { authed: true, email: userEmail, plan } });
           return next;
         });
       }
     } catch (err) {
-      console.error('Failed to rename project', err);
+      console.error("Failed to rename project", err);
     }
   }
 
   async function handleNewProject() {
     try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'New Project' }),
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "New Project" }),
       });
       if (res.ok) {
         const data = await res.json();
-        // Cache is now stale relative to the server (new project exists there
-        // but not yet reflected here) — next dashboard visit will refetch.
         invalidateCache();
         router.push(`/projects/${data.project?.id ?? data.id}`);
       }
     } catch (err) {
-      console.error('Failed to create project', err);
+      console.error("Failed to create project", err);
     }
   }
 
-  // Requires POST /api/projects to accept an optional `initialState` param —
-  // see Part 1 Step 3 in the spec. Verify that route change is in before
-  // wiring this up, or template clicks will silently behave like Blank Canvas.
   async function handleCreateFromTemplate(template: WorkspaceTemplate) {
     try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: template.label, initialState: template.config }),
       });
       if (res.ok) {
@@ -161,7 +168,7 @@ export default function DashboardClient() {
         router.push(`/projects/${data.project?.id ?? data.id}`);
       }
     } catch (err) {
-      console.error('Failed to create project from template', err);
+      console.error("Failed to create project from template", err);
     }
   }
 
@@ -204,31 +211,29 @@ export default function DashboardClient() {
       );
     }
     if (activeFeature === "settings") {
-      return (
-        <SettingsPanel
-          userEmail={userEmail}
-          plan={plan}
-          onNavigate={setActiveFeature}
-        />
-      );
+      return <SettingsPanel userEmail={userEmail} plan={plan} onNavigate={setActiveFeature} />;
     }
     return null;
   }
 
   return (
-    <div className="ra-app" style={{
-      display: "flex",
-      minHeight: "100vh",
-      background: "#F8FAFC",
-    }}>
-
+    <div
+      className="ra-app"
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        background: "#F8FAFC",
+      }}
+    >
       <Sidebar
         open={sidebarOpen}
         userEmail={userEmail}
         plan={plan}
-        authed={authed}
+        authed={true}
         activeFeature={activeFeature}
-        onFeatureChange={(f: any) => { setActiveFeature(f); }}
+        onFeatureChange={(f: any) => {
+          setActiveFeature(f);
+        }}
         onSignOut={handleSignOut}
         onSignIn={() => setAuthDialogOpen(true)}
       />
@@ -245,29 +250,36 @@ export default function DashboardClient() {
         />
       )}
 
-      {/* Main Content */}
-      <div style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        marginLeft: 220,
-        minWidth: 0,
-        transition: "margin-left 200ms ease",
-      }}>
-
-        {/* Content area */}
-        <div style={{
+      <div
+        style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          minHeight: 0,
-          overflowY: "auto",
-        }}>
+          marginLeft: 220,
+          minWidth: 0,
+          transition: "margin-left 200ms ease",
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            overflowY: "auto",
+          }}
+        >
           {renderContent()}
         </div>
       </div>
 
-      <AuthDialog open={authDialogOpen} onClose={() => { setAuthDialogOpen(false); void refreshMe(); }} />
+      <AuthDialog
+        open={authDialogOpen}
+        onClose={() => {
+          setAuthDialogOpen(false);
+          void refreshMe();
+        }}
+      />
     </div>
   );
 }

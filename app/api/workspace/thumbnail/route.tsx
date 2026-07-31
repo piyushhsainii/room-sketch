@@ -1,68 +1,117 @@
 import { NextResponse } from "next/server";
-import { readSessionFromCookies } from "@/lib/auth/session";
+import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
+import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
+import type { SceneConfig } from "@/components/workspace/FloorPlanEditor";
+import type { FloorPlanState } from "@/components/workspace/lib/constants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
+type FloorplanEditorState = {
+    floorPlanState: FloorPlanState;
+    sceneConfig: SceneConfig;
+};
+
+export async function GET(request: Request) {
     try {
-        const session = await readSessionFromCookies();
-        if (!session)
+        const supabase = await createServerSupabaseClient();
+        const {
+            data: { user },
+            error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user)
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const formData = await request.formData();
-        const projectId = formData.get("project_id");
-        const file = formData.get("thumbnail");
+        const { searchParams } = new URL(request.url);
+        const projectId = searchParams.get("project_id");
+        if (!projectId)
+            return NextResponse.json(
+                { error: "Missing project_id" },
+                { status: 400 },
+            );
 
-        if (typeof projectId !== "string" || !(file instanceof File)) {
-            return NextResponse.json({ error: "Missing fields" }, { status: 400 });
-        }
-
-        const admin = await createServerSupabaseClient();
-
-        // Ownership check — same pattern as floorplan-editor-state route
-        const { data: project } = await admin
+        const { data, error } = await supabase
             .from("projects")
-            .select("id")
+            .select("floorplan_editor_state")
             .eq("id", projectId)
-            .eq("user_id", session.userId)
+            .eq("user_id", user.id)
             .single();
 
-        if (!project)
+        if (error || !data)
             return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const path = `${projectId}/thumbnail.jpg`;
+        return NextResponse.json({
+            floorplan_editor_state: data.floorplan_editor_state ?? null,
+        });
+    } catch {
+        return NextResponse.json(
+            { error: "Failed to load floorplan editor state" },
+            { status: 500 },
+        );
+    }
+}
 
-        const { error: uploadError } = await admin.storage
-            .from("project-thumbnails")
-            .upload(path, bytes, { contentType: "image/jpeg", upsert: true });
+export async function POST(request: Request) {
+    try {
+        const supabase = await createServerSupabaseClient();
+        const {
+            data: { user },
+            error: authError,
+        } = await supabase.auth.getUser();
 
-        if (uploadError) {
-            console.error("[thumbnail upload]", uploadError);
-            return NextResponse.json({ error: "Upload failed" }, { status: 500 });
-        }
+        if (authError || !user)
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const { data: urlData } = admin.storage
-            .from("project-thumbnails")
-            .getPublicUrl(path);
+        const body = await request.json().catch(() => ({}));
+        const projectId = body.project_id as string | undefined;
+        const state = body.state as FloorplanEditorState | undefined;
+        const thumbnailUrl = body.thumbnail_url as string | undefined;
 
-        const thumbnailUrl = `${urlData.publicUrl}?v=${Date.now()}`;
+        if (!projectId)
+            return NextResponse.json(
+                { error: "Missing project_id" },
+                { status: 400 },
+            );
+        if (!state?.floorPlanState || !state?.sceneConfig)
+            return NextResponse.json(
+                { error: "Missing floorPlanState or sceneConfig" },
+                { status: 400 },
+            );
 
-        const { error: updateError } = await admin
+        const sceneJSON = floorPlanStateToSceneJSON(
+            state.floorPlanState,
+            state.sceneConfig,
+        );
+        const workspaceConfig = sceneConfigToWorkspaceConfig(state.sceneConfig);
+
+        const updatePayload: Record<string, unknown> = {
+            floorplan_editor_state: state,
+            scene_json: sceneJSON,
+            workspace_config: workspaceConfig,
+            workspace_enabled: true,
+        };
+        if (thumbnailUrl) updatePayload.thumbnail_url = thumbnailUrl;
+
+        const { data, error } = await supabase
             .from("projects")
-            .update({ thumbnail_url: thumbnailUrl })
+            .update(updatePayload)
             .eq("id", projectId)
-            .eq("user_id", session.userId);
+            .eq("user_id", user.id)
+            .select()
+            .single();
 
-        if (updateError) {
-            console.error("[thumbnail db update]", updateError);
-            return NextResponse.json({ error: "Failed to save thumbnail URL" }, { status: 500 });
-        }
+        if (error || !data)
+            return NextResponse.json(
+                { error: error?.message ?? "Not found" },
+                { status: error ? 500 : 404 },
+            );
 
-        return NextResponse.json({ ok: true, thumbnail_url: thumbnailUrl });
-    } catch (error) {
-        console.error("[thumbnail route]", error);
-        return NextResponse.json({ error: "Failed to upload thumbnail" }, { status: 500 });
+        return NextResponse.json({ project: data });
+    } catch {
+        return NextResponse.json(
+            { error: "Failed to save floorplan editor state" },
+            { status: 500 },
+        );
     }
 }

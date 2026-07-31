@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { readSessionFromCookies } from "@/lib/auth/session";
 import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
 import type { SceneConfig } from "@/components/workspace/FloorPlanEditor";
@@ -15,8 +14,12 @@ type FloorplanEditorState = {
 
 export async function GET(request: Request) {
   try {
-    const session = await readSessionFromCookies();
-    if (!session)
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(request.url);
@@ -27,12 +30,11 @@ export async function GET(request: Request) {
         { status: 400 },
       );
 
-    const admin = await createServerSupabaseClient();
-    const { data, error } = await admin
+    const { data, error } = await supabase
       .from("projects")
       .select("floorplan_editor_state")
       .eq("id", projectId)
-      .eq("user_id", session.userId)
+      .eq("user_id", user.id)
       .single();
 
     if (error || !data)
@@ -51,8 +53,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const session = await readSessionFromCookies();
-    if (!session)
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = (await request.json()) as {
@@ -69,13 +75,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    const admin = await createServerSupabaseClient();
-
-    const { data: project } = await admin
+    const { data: project } = await supabase
       .from("projects")
       .select("id")
       .eq("id", body.project_id)
-      .eq("user_id", session.userId)
+      .eq("user_id", user.id)
       .single();
 
     if (!project)
@@ -100,11 +104,11 @@ export async function POST(request: Request) {
       updatePayload.thumbnail_url = body.thumbnail_url;
     }
 
-    const { error } = await admin
+    const { error } = await supabase
       .from("projects")
       .update(updatePayload)
       .eq("id", body.project_id)
-      .eq("user_id", session.userId);
+      .eq("user_id", user.id);
 
     if (error) throw new Error(error.message);
 

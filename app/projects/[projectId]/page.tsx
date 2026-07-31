@@ -78,13 +78,6 @@ export default function ProjectViewerPage() {
         );
     }
 
-    // Single, shared save implementation — both the "no editor state yet"
-    // branch and the "has editor state" branch used to carry byte-for-byte
-    // copies of this closure. Keeping one copy means they can't silently
-    // drift apart if this endpoint's contract changes later.
-    // Returns { projectId } per FloorPlanEditor's onSave contract, even
-    // though projectId is already known here — keeps the return shape
-    // consistent with the draft (/projects/new) save path.
     async function saveProject(fp: FloorPlanState, cfg: any, thumbnailUrl?: string) {
         try {
             const res = await fetch("/api/workspace/floorplan-editor-state", {

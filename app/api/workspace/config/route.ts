@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { readSessionFromCookies } from "@/lib/auth/session";
 import type { WorkspaceConfig } from "@/types/workspace";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -8,8 +7,12 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const session = await readSessionFromCookies();
-    if (!session)
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(request.url);
@@ -20,12 +23,11 @@ export async function GET(request: Request) {
         { status: 400 },
       );
 
-    const admin = await createServerSupabaseClient();
-    const { data, error } = await admin
+    const { data, error } = await supabase
       .from("projects")
       .select("workspace_config")
       .eq("id", projectId)
-      .eq("user_id", session.userId)
+      .eq("user_id", user.id)
       .single();
 
     if (error || !data)
@@ -44,8 +46,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const session = await readSessionFromCookies();
-    if (!session)
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = (await request.json()) as {
@@ -57,27 +63,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    const admin = await createServerSupabaseClient();
-
     // Verify ownership
-    const { data: project } = await admin
+    const { data: project } = await supabase
       .from("projects")
       .select("id")
       .eq("id", body.project_id)
-      .eq("user_id", session.userId)
+      .eq("user_id", user.id)
       .single();
 
     if (!project)
       return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const { error } = await admin
+    const { error } = await supabase
       .from("projects")
       .update({
         workspace_config: body.config,
         updated_at: new Date().toISOString(),
       })
       .eq("id", body.project_id)
-      .eq("user_id", session.userId);
+      .eq("user_id", user.id);
 
     if (error) throw new Error(error.message);
 

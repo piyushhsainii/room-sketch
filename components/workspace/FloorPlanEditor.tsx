@@ -1984,12 +1984,18 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             })
             return
         }
-        if (tool === 'line' || tool === 'bend') setPreview({ x: snapM(wx), z: snapM(wz) })
+        if (tool === 'line' || tool === 'bend') {
+            const p = { x: snapM(wx), z: snapM(wz) }
+            previewRef.current = p
+            setPreview(p)
+            scheduleRedraw()
+        }
         if (isDrawingRef.current && drawStartRef.current) {
             const ds = drawStartRef.current
             const newRect = { x: ds.x, z: ds.z, w: snapM(wx) - ds.x, d: snapM(wz) - ds.z }
             drawRectRef.current = newRect
             setDrawRect(newRect)
+            scheduleRedraw()
             return
         }
 

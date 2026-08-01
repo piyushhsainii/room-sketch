@@ -5,6 +5,10 @@ import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } 
 import { FURNITURE_FOOTPRINTS } from "./lib/furniture-constants";
 
 const labelWidthCache = new Map<string, number>()
+// Hard cap so a long drawing/dragging session can't leak memory — every
+// unique "7.52m" / "7.53m" / ... string minted while dragging would
+// otherwise sit in this map forever.
+const LABEL_CACHE_MAX = 500
 
 function measureCached(ctx: CanvasRenderingContext2D, text: string, font: string): number {
     const key = font + '|' + text
@@ -12,9 +16,32 @@ function measureCached(ctx: CanvasRenderingContext2D, text: string, font: string
     if (w === undefined) {
         ctx.font = font
         w = ctx.measureText(text).width
+        // Once we hit the cap, evict the oldest (least-recently-used) entry.
+        // Map preserves insertion order, and re-inserting on hit (below)
+        // keeps hot entries fresh, so `.keys().next()` is a true LRU victim.
+        if (labelWidthCache.size >= LABEL_CACHE_MAX) {
+            const oldestKey = labelWidthCache.keys().next().value
+            if (oldestKey !== undefined) labelWidthCache.delete(oldestKey)
+        }
+        labelWidthCache.set(key, w)
+    } else {
+        // Refresh recency so frequently-hit labels survive eviction.
+        labelWidthCache.delete(key)
         labelWidthCache.set(key, w)
     }
     return w
+}
+
+// Quantizes a live-dragged length to 1cm precision before it's turned into
+// a label string. This is what keeps the rubber-band / room-draw preview
+// smooth: nearby cursor positions during a drag collapse onto the same
+// cache key instead of minting a brand-new string (and cache entry) on
+// every single mousemove frame. It does NOT delay or throttle the redraw
+// itself — the line still tracks the cursor every frame — it just avoids
+// re-measuring text and growing the cache for sub-cm jitter the eye can't
+// perceive anyway.
+function quantizeMeters(m: number, precision = 100): number {
+    return Math.round(m * precision) / precision
 }
 
 export function draw2D(
@@ -483,7 +510,11 @@ export function draw2D(
         ctx.fillStyle = 'rgba(165,168,255,0.9)'
         ctx.font = `${11 * zoom}px system-ui`
         ctx.textAlign = 'center'
-        ctx.fillText(`${Math.abs(drawRect.w).toFixed(1)}m × ${Math.abs(drawRect.d).toFixed(1)}m`, rx + rw / 2, rz + rd / 2)
+        // Quantized to 0.1m so the live label (and its measureCached entry)
+        // don't churn on every sub-mm cursor jitter while dragging out a room.
+        const wLabel = quantizeMeters(Math.abs(drawRect.w), 10).toFixed(1)
+        const dLabel = quantizeMeters(Math.abs(drawRect.d), 10).toFixed(1)
+        ctx.fillText(`${wLabel}m × ${dLabel}m`, rx + rw / 2, rz + rd / 2)
         ctx.restore()
     }
     // ── Pencil stroke preview ─────────────────────────────────────────────────
@@ -515,7 +546,9 @@ export function draw2D(
             ctx.font = `${Math.max(9, 11 * zoom)}px system-ui`
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
-            ctx.fillText(`${bw.toFixed(1)}m × ${bd.toFixed(1)}m`, brx + brw / 2, brz + brd / 2)
+            const bwLabel = quantizeMeters(bw, 10).toFixed(1)
+            const bdLabel = quantizeMeters(bd, 10).toFixed(1)
+            ctx.fillText(`${bwLabel}m × ${bdLabel}m`, brx + brw / 2, brz + brd / 2)
         }
         ctx.restore()
     }
@@ -556,7 +589,7 @@ export function draw2D(
         // Segment length labels
         for (let i = 0; i < nodes.length - 1; i++) {
             const a = nodes[i]!, b = nodes[i + 1]!
-            const lenM = Math.hypot(b.x - a.x, b.z - a.z).toFixed(2)
+            const lenM = quantizeMeters(Math.hypot(b.x - a.x, b.z - a.z)).toFixed(2)
             const midX = cx((a.x + b.x) / 2), midZ = cy((a.z + b.z) / 2)
             const angle = Math.atan2(cy(b.z) - cy(a.z), cx(b.x) - cx(a.x))
             ctx.save()
@@ -925,7 +958,10 @@ export function draw2D(
                 const midX = (fx + tx) / 2, midZ = (fz + tz) / 2
                 const angle = Math.atan2(tz - fz, tx - fx)
                 const display = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle
-                const label = `${lenM.toFixed(2)}m`
+                // Quantized to 1cm — stabilizes the measureCached key so
+                // rapid mousemove during drag doesn't mint (and permanently
+                // cache) a fresh string on every single frame.
+                const label = `${quantizeMeters(lenM).toFixed(2)}m`
                 const rubberFont = `bold ${Math.max(10, 11 * zoom)}px system-ui`
                 ctx.font = rubberFont
                 const tw = measureCached(ctx, label, rubberFont)
@@ -942,17 +978,75 @@ export function draw2D(
             }
             ctx.restore()
 
-            // Snap indicator
+            // Snap indicator — iterate the precomputed nodesById map instead
+            // of re-scanning fp.lineNodes with .find() every frame, use a
+            // squared-distance compare (skip sqrt) and bail out on first hit.
             ctx.save()
-            const nearNode = fp.lineNodes.find(n =>
-                n.id !== activeLineNodeId && Math.hypot(preview.x - n.x, preview.z - n.z) < 0.4 / zoom
-            )
+            let nearNode: LineNode | undefined
+            const snapDistSq = (0.4 / zoom) ** 2
+            for (const n of nodesById.values()) {
+                if (n.id === activeLineNodeId) continue
+                const ddx = preview.x - n.x, ddz = preview.z - n.z
+                if (ddx * ddx + ddz * ddz < snapDistSq) { nearNode = n; break }
+            }
             ctx.beginPath()
             ctx.arc(tx, tz, nearNode ? 9 : 5, 0, Math.PI * 2)
             ctx.fillStyle = nearNode ? 'rgba(34,197,94,0.9)' : 'rgba(99,102,241,0.8)'
             ctx.fill()
             if (nearNode) { ctx.strokeStyle = 'rgba(34,197,94,0.4)'; ctx.lineWidth = 3; ctx.stroke() }
             ctx.restore()
+
+            // ── Cursor-anchored live tag ──────────────────────────────────
+            // Unlike the mid-line label above (which rotates with the line
+            // and sits on the segment itself), this tag always stays
+            // upright and tracks the cursor tip directly — a small icon
+            // chip + live length readout, offset down-right of the cursor
+            // so the pointer itself never covers it.
+            if (lenM > 0.02) {
+                ctx.save()
+                const tagOffsetX = 18, tagOffsetY = 18
+                const anchorX = tx + tagOffsetX, anchorY = tz + tagOffsetY
+
+                const tagLabel = `${quantizeMeters(lenM).toFixed(2)}m`
+                const tagFont = `600 ${Math.max(10, 11 * zoom)}px system-ui`
+                ctx.font = tagFont
+                const tagTw = measureCached(ctx, tagLabel, tagFont)
+
+                const iconR = 9          // icon chip radius
+                const gap = 6            // gap between icon and text pill
+                const padX = 8
+                const pillH = 22
+                const pillW = tagTw + padX * 2
+                const totalW = iconR * 2 + gap + pillW
+
+                // Icon chip (dark rounded square, echoes the tool cursor icon)
+                ctx.fillStyle = 'rgba(30,27,24,0.92)'
+                ctx.beginPath()
+                ctx.roundRect(anchorX, anchorY - iconR, iconR * 2, iconR * 2, 5)
+                ctx.fill()
+                // simple ruler/line glyph inside the chip so it reads as a
+                // "measuring" icon rather than a generic dot
+                ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+                ctx.lineWidth = 1.4
+                ctx.beginPath()
+                ctx.moveTo(anchorX + 4, anchorY + 3)
+                ctx.lineTo(anchorX + iconR * 2 - 4, anchorY - 3)
+                ctx.stroke()
+
+                // Text pill
+                const pillX = anchorX + iconR * 2 + gap
+                ctx.fillStyle = 'rgba(30,27,24,0.92)'
+                ctx.beginPath()
+                ctx.roundRect(pillX, anchorY - pillH / 2, pillW, pillH, 6)
+                ctx.fill()
+                ctx.fillStyle = '#FFFFFF'
+                ctx.textAlign = 'left'
+                ctx.textBaseline = 'middle'
+                ctx.fillText(tagLabel, pillX + padX, anchorY)
+
+                void totalW // reserved for future width-aware repositioning (e.g. flip left near canvas edge)
+                ctx.restore()
+            }
         }
     }
 }

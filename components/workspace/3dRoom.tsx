@@ -66,8 +66,6 @@ function Room3D({
         return axis === 'x' ? [W, H, T] : [T, H, D]
     }
 
-    const handleWallClick = (e: any) => { e.stopPropagation(); onSelectRoom?.(room.id) }
-
     return (
         <group>
             {/* Floor */}
@@ -151,7 +149,15 @@ function Room3D({
                             if (isArchway) {
                                 panels.push(
                                     <group key={`h${i}`} position={basePos}>
-                                        <ArchHeader3D width={op.width} headerH={headerH} thickness={T} wallAxis={wall.axis} color={wallColor} roughness={wallRoughness} />
+                                        <ArchHeader3D
+                                            width={op.width}
+                                            headerH={headerH}
+                                            thickness={T}
+                                            angle={wall.axis === 'x' ? 0 : Math.PI / 2}
+                                            mat={resolvedWallMaterial}
+                                            color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
+                                            roughness={wallRoughness}
+                                        />
                                     </group>
                                 )
                             } else {

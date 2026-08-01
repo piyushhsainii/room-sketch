@@ -813,7 +813,17 @@ export function draw2D(
             ctx.beginPath(); ctx.moveTo(-sw / 2, 0); ctx.lineTo(sw / 2, 0); ctx.stroke()
             ctx.beginPath(); ctx.moveTo(0, -sd / 2); ctx.lineTo(0, sd / 2); ctx.stroke()
         } else if (s.type === 'stairs-spiral') {
-            ctx.beginPath(); ctx.arc(0, 0, Math.min(sw, sd) / 2 - 3, 0, Math.PI * 1.7); ctx.stroke()
+            const r = Math.min(sw, sd) / 2 - 3
+            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke()
+            // radial step lines, matching the reference's clean spoke pattern
+            const spokeCount = 12
+            for (let i = 0; i < spokeCount; i++) {
+                const a = (i / spokeCount) * Math.PI * 2
+                ctx.beginPath()
+                ctx.moveTo(0, 0)
+                ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r)
+                ctx.stroke()
+            }
         } else {
             // Tread lines across the run
             const steps = 8

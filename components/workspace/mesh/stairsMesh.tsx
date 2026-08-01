@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react'
 import * as THREE from 'three'
-import { PlacedStairs } from '../lib/constants'
+import { PlacedStairs } from '../lib/stairs-constants'
+import { TextureLoadStatus, useTextureMaterialProps } from '../texture/textureLoader'
+import { MATERIAL_REGISTRY } from '../lib/constants'
 
 const STAIR_COLOR = '#C8B898'
 const STAIR_SIDE_COLOR = '#A09078'
@@ -9,61 +11,194 @@ const ELEVATOR_COLOR = '#888888'
 const ELEVATOR_DOOR_COLOR = '#A0A0A0'
 const LANDING_COLOR = '#B8A888'
 
+type TreadMaterialDef = {
+    color: string
+    roughness?: number
+    metalness?: number
+    textureUrl?: string
+    normalMapUrl?: string
+    roughnessMapUrl?: string
+}
+
+// Resolved shape passed down from StairsMeshImpl to every tread-rendering
+// component — carries both the material def AND the already-loaded
+// textures/status. Loaded ONCE per stair instance (in StairsMeshImpl),
+// not once per tread.
+type ResolvedTreadMaterial = {
+    color?: string
+    roughness?: number
+    metalness?: number
+    textureUrl?: string
+    normalMapUrl?: string
+    roughnessMapUrl?: string
+    textures?: Record<string, THREE.Texture | undefined>
+    status?: TextureLoadStatus
+}
+
+function resolveTreadMaterialDef(materialId?: string): TreadMaterialDef | undefined {
+    if (!materialId) return undefined
+    const def = MATERIAL_REGISTRY[materialId]
+    if (!def) return undefined
+    return {
+        color: def.color,
+        roughness: def.roughness,
+        metalness: def.metalness,
+        textureUrl: def.textureUrl,
+        normalMapUrl: def.normalMapUrl,
+        roughnessMapUrl: def.roughnessMapUrl,
+    }
+}
+
+function TreadMaterial({ def }: { def?: ResolvedTreadMaterial }) {
+    const useTextured = !!def?.textures?.map && def.status === 'loaded'
+
+    if (useTextured) {
+        return (
+            <meshStandardMaterial
+                key={def!.textureUrl}
+                map={def!.textures!.map}
+                normalMap={def!.textures!.normalMap}
+                roughnessMap={def!.textures!.roughnessMap}
+                color="#FFFFFF"
+                roughness={def?.roughness ?? 0.7}
+                metalness={def?.metalness ?? 0}
+            />
+        )
+    }
+    return (
+        <meshStandardMaterial
+            key="solid"
+            color={def?.color ?? STAIR_COLOR}
+            roughness={def?.roughness ?? 0.7}
+            metalness={def?.metalness ?? 0}
+        />
+    )
+}
 function StairsMeshImpl({ s, roomHeight }: { s: PlacedStairs; roomHeight: number }) {
     const cx = s.x + s.width / 2
     const cz = s.z + s.depth / 2
-    const H = roomHeight
+    const H = s.rise ?? roomHeight
+    const railingEnabled = s.railingEnabled ?? true
+    const railingColor = s.railingColor ?? RAILING_COLOR
+    const railingHeight = s.railingHeight ?? 0.9
+    // NEW — closed/solid spiral style (filled panels between treads),
+    // matching the reference image. Defaults to false (open style,
+    // existing behavior) unless the entity opts in.
+    const filledRisers = s.filledRisers ?? false
+
+    // treadMaterialDef is derived fresh each render from s.materialId, but
+    // its CONTENTS are stable as long as materialId doesn't change (it's a
+    // plain lookup into MATERIAL_REGISTRY). We memoize on the primitive
+    // fields we actually pass down to the texture loader, so `urls` below
+    // gets a stable object reference across re-renders that don't actually
+    // change which material is selected.
+    const treadMaterialDef = resolveTreadMaterialDef(s.materialId)
+
+    // FIX (root cause): previously `urls` was a brand-new object literal
+    // on every render, even when the underlying texture/normal/roughness
+    // URLs hadn't changed. useTextureMaterialProps almost certainly keys
+    // its loading effect off this object by reference (`[urls]` as a
+    // dependency), so a fresh identity every render meant the loader
+    // effect kept re-triggering (or its result kept getting treated as
+    // stale) and `status` never stably settled on 'loaded' before the next
+    // render reset it — which is why NO stair type ever showed a texture,
+    // not just the ones missing the prop entirely. Memoizing on the actual
+    // URL strings fixes this for every stair type at once.
+    const urls = useMemo(() => {
+        if (!treadMaterialDef?.textureUrl) return null
+        return {
+            map: treadMaterialDef.textureUrl,
+            ...(treadMaterialDef.normalMapUrl ? { normalMap: treadMaterialDef.normalMapUrl } : {}),
+            ...(treadMaterialDef.roughnessMapUrl ? { roughnessMap: treadMaterialDef.roughnessMapUrl } : {}),
+        }
+    }, [treadMaterialDef?.textureUrl, treadMaterialDef?.normalMapUrl, treadMaterialDef?.roughnessMapUrl])
+
+    const { textures, status } = useTextureMaterialProps(urls, 2, 2)
+    const resolvedTreadMaterial: ResolvedTreadMaterial = useMemo(
+        () => ({ ...treadMaterialDef, textures, status }),
+        [treadMaterialDef, textures, status]
+    )
 
     return (
-        <group position={[cx, 0, cz]} rotation={[0, s.rotation, 0]}>
-            {s.type === 'stairs-straight' && <StraightStairs w={s.width} d={s.depth} h={H} />}
-            {s.type === 'stairs-l' && <LStairs w={s.width} d={s.depth} h={H} />}
-            {s.type === 'stairs-u' && <UStairs w={s.width} d={s.depth} h={H} />}
-            {s.type === 'stairs-spiral' && <SpiralStairs w={s.width} d={s.depth} h={H} />}
-            {s.type === 'stairs-ramp' && <RampStairs w={s.width} d={s.depth} h={H} />}
-            {s.type === 'elevator' && <ElevatorMesh w={s.width} d={s.depth} h={H} />}
+        <group key={`${s.id}-${s.type}`} position={[cx, 0, cz]} rotation={[0, s.rotation, 0]}>
+            {s.type === 'stairs-straight' && (
+                <StraightStairs
+                    w={s.width} d={s.depth} h={H} steps={s.steps}
+                    railingEnabled={railingEnabled} railingColor={railingColor} railingHeight={railingHeight}
+                    treadMaterial={resolvedTreadMaterial}
+                />
+            )}
+            {s.type === 'stairs-l' && (
+                <LStairs w={s.width} d={s.depth} h={H} treadMaterial={resolvedTreadMaterial} />
+            )}
+            {s.type === 'stairs-u' && (
+                <UStairs w={s.width} d={s.depth} h={H} treadMaterial={resolvedTreadMaterial} />
+            )}
+            {s.type === 'stairs-spiral' && (
+                <SpiralStairs
+                    w={s.width} d={s.depth} h={H} steps={s.steps}
+                    railingEnabled={railingEnabled} railingColor={railingColor} railingHeight={railingHeight}
+                    treadMaterial={resolvedTreadMaterial}
+                    filledRisers={filledRisers}
+                />
+            )}
+            {s.type === 'stairs-ramp' && (
+                <RampStairs w={s.width} d={s.depth} h={H} treadMaterial={resolvedTreadMaterial} />
+            )}
+            {s.type === 'elevator' && (
+                <ElevatorMesh w={s.width} d={s.depth} h={H} />
+            )}
         </group>
     )
 }
 
 // Memoized export — StairsMesh does real geometry work (spiral stairs build
 // custom ExtrudeGeometry, elevators render ~15+ meshes) that has zero reason
-// to re-run on every 2D-editor-only state change (hover, pan, tooltip). See
-// the same fix applied to FurnitureMesh for the full explanation.
+// to re-run on every 2D-editor-only state change (hover, pan, tooltip).
 export const StairsMesh = React.memo(StairsMeshImpl)
 
 const RISER = 0.18   // realistic step height
 const RUN = 0.28      // realistic tread depth
 
-function StraightStairs({ w, d, h }: { w: number; d: number; h: number }) {
+function StraightStairs({
+    w, d, h, steps, railingEnabled, railingColor, railingHeight, treadMaterial,
+}: {
+    w: number
+    d: number
+    h: number
+    steps?: number
+    railingEnabled: boolean
+    railingColor: string
+    railingHeight: number
+    treadMaterial?: ResolvedTreadMaterial
+}) {
     const maxTreadsByHeight = Math.round(h / RISER)
     const maxTreadsByDepth = Math.floor(d / RUN)
-    const numTreads = Math.max(3, Math.min(maxTreadsByHeight, maxTreadsByDepth))
+    const numTreads = steps ?? Math.max(3, Math.min(maxTreadsByHeight, maxTreadsByDepth))
 
-    const usedH = numTreads * RISER
-    const usedD = numTreads * RUN
+    const riser = h / numTreads
+    const run = d / numTreads
+
+    const usedH = numTreads * riser
+    const usedD = numTreads * run
     const treadW = w - 0.04
 
     return (
         <group>
             {Array.from({ length: numTreads }, (_, i) => (
-                <mesh
-                    key={i}
-                    position={[0, RISER * (i + 0.5), -usedD / 2 + RUN * (i + 0.5)]}
-                    castShadow
-                    receiveShadow
-                >
-                    <boxGeometry args={[treadW, RISER * 0.9, RUN * 0.95]} />
-                    <meshStandardMaterial color={STAIR_COLOR} roughness={0.7} />
+                <mesh key={i} position={[0, riser * (i + 0.5), -usedD / 2 + run * (i + 0.5)]} castShadow receiveShadow>
+                    <boxGeometry args={[treadW, riser * 0.9, run * 0.95]} />
+                    <TreadMaterial def={treadMaterial} />
                 </mesh>
             ))}
             <StraightStringer x={-w / 2 + 0.02} d={usedD} h={usedH} />
             <StraightStringer x={w / 2 - 0.02} d={usedD} h={usedH} />
-            <Railing x={-w / 2} d={usedD} h={usedH} />
-            <Railing x={w / 2} d={usedD} h={usedH} />
+            {railingEnabled && <Railing x={-w / 2} d={usedD} h={usedH} color={railingColor} railH={railingHeight} />}
+            {railingEnabled && <Railing x={w / 2} d={usedD} h={usedH} color={railingColor} railH={railingHeight} />}
         </group>
     )
 }
+
 function StraightStringer({ x, d, h }: { x: number; d: number; h: number }) {
     const len = Math.hypot(d, h)
     const angle = Math.atan2(h, d)
@@ -79,8 +214,7 @@ function StraightStringer({ x, d, h }: { x: number; d: number; h: number }) {
     )
 }
 
-function Railing({ x, d, h }: { x: number; d: number; h: number }) {
-    const railH = 0.9
+function Railing({ x, d, h, color = RAILING_COLOR, railH = 0.9 }: { x: number; d: number; h: number; color?: string; railH?: number }) {
     const posts = 5
     return (
         <group>
@@ -91,7 +225,7 @@ function Railing({ x, d, h }: { x: number; d: number; h: number }) {
                 return (
                     <mesh key={i} position={[x, py, pz]} castShadow>
                         <boxGeometry args={[0.03, railH, 0.03]} />
-                        <meshStandardMaterial color={RAILING_COLOR} roughness={0.5} metalness={0.2} />
+                        <meshStandardMaterial color={color} roughness={0.5} metalness={0.2} />
                     </mesh>
                 )
             })}
@@ -101,14 +235,14 @@ function Railing({ x, d, h }: { x: number; d: number; h: number }) {
                 castShadow
             >
                 <boxGeometry args={[0.04, 0.04, Math.hypot(d, h)]} />
-                <meshStandardMaterial color={RAILING_COLOR} roughness={0.4} metalness={0.3} />
+                <meshStandardMaterial color={color} roughness={0.4} metalness={0.3} />
             </mesh>
         </group>
     )
 }
 
 /* ── L-Shaped Stairs ──────────────────────────────────────────────────── */
-function LStairs({ w, d, h }: { w: number; d: number; h: number }) {
+function LStairs({ w, d, h, treadMaterial }: { w: number; d: number; h: number; treadMaterial?: ResolvedTreadMaterial }) {
     const halfH = h / 2
     const landingSize = Math.min(w, d) * 0.4
     const run1Treads = Math.max(4, Math.round(halfH / 0.18))
@@ -127,35 +261,27 @@ function LStairs({ w, d, h }: { w: number; d: number; h: number }) {
             {Array.from({ length: run1Treads }, (_, i) => (
                 <mesh
                     key={`r1_${i}`}
-                    position={[
-                        -w / 2 + treadW / 2 + 0.02,
-                        treadH1 * (i + 0.5),
-                        -d / 2 + treadD1 * (i + 0.5),
-                    ]}
+                    position={[-w / 2 + treadW / 2 + 0.02, treadH1 * (i + 0.5), -d / 2 + treadD1 * (i + 0.5)]}
                     castShadow receiveShadow
                 >
                     <boxGeometry args={[treadW, treadH1 * 0.9, treadD1 * 0.95]} />
-                    <meshStandardMaterial color={STAIR_COLOR} roughness={0.7} />
+                    <TreadMaterial def={treadMaterial} />
                 </mesh>
             ))}
 
             <mesh position={[0, halfH - treadH1 * 0.4, 0]} castShadow receiveShadow>
                 <boxGeometry args={[landingSize * 1.2, treadH1 * 0.9, landingSize * 1.2]} />
-                <meshStandardMaterial color={LANDING_COLOR} roughness={0.65} />
+                <TreadMaterial def={treadMaterial} />
             </mesh>
 
             {Array.from({ length: run2Treads }, (_, i) => (
                 <mesh
                     key={`r2_${i}`}
-                    position={[
-                        landingSize / 2 + treadW2 * (i + 0.5),
-                        halfH + treadH2 * (i + 0.5),
-                        d / 2 - treadW2D / 2 - 0.02,
-                    ]}
+                    position={[landingSize / 2 + treadW2 * (i + 0.5), halfH + treadH2 * (i + 0.5), d / 2 - treadW2D / 2 - 0.02]}
                     castShadow receiveShadow
                 >
                     <boxGeometry args={[treadW2 * 0.95, treadH2 * 0.9, treadW2D]} />
-                    <meshStandardMaterial color={STAIR_COLOR} roughness={0.7} />
+                    <TreadMaterial def={treadMaterial} />
                 </mesh>
             ))}
         </group>
@@ -163,7 +289,7 @@ function LStairs({ w, d, h }: { w: number; d: number; h: number }) {
 }
 
 /* ── U-Shaped Stairs ──────────────────────────────────────────────────── */
-function UStairs({ w, d, h }: { w: number; d: number; h: number }) {
+function UStairs({ w, d, h, treadMaterial }: { w: number; d: number; h: number; treadMaterial?: ResolvedTreadMaterial }) {
     const halfH = h / 2
     const runW = (w - 0.2) / 2
     const landingD = d * 0.25
@@ -180,35 +306,27 @@ function UStairs({ w, d, h }: { w: number; d: number; h: number }) {
             {Array.from({ length: run1Treads }, (_, i) => (
                 <mesh
                     key={`r1_${i}`}
-                    position={[
-                        -w / 2 + runW / 2 + 0.05,
-                        treadH1 * (i + 0.5),
-                        -d / 2 + treadD1 * (i + 0.5),
-                    ]}
+                    position={[-w / 2 + runW / 2 + 0.05, treadH1 * (i + 0.5), -d / 2 + treadD1 * (i + 0.5)]}
                     castShadow receiveShadow
                 >
                     <boxGeometry args={[runW * 0.9, treadH1 * 0.9, treadD1 * 0.92]} />
-                    <meshStandardMaterial color={STAIR_COLOR} roughness={0.7} />
+                    <TreadMaterial def={treadMaterial} />
                 </mesh>
             ))}
 
             <mesh position={[0, halfH - treadH1 * 0.4, d / 2 - landingD / 2]} castShadow receiveShadow>
                 <boxGeometry args={[w * 0.9, treadH1 * 0.9, landingD * 0.9]} />
-                <meshStandardMaterial color={LANDING_COLOR} roughness={0.65} />
+                <TreadMaterial def={treadMaterial} />
             </mesh>
 
             {Array.from({ length: run2Treads }, (_, i) => (
                 <mesh
                     key={`r2_${i}`}
-                    position={[
-                        w / 2 - runW / 2 - 0.05,
-                        halfH + treadH2 * (i + 0.5),
-                        d / 2 - landingD - treadD2 * (i + 0.5),
-                    ]}
+                    position={[w / 2 - runW / 2 - 0.05, halfH + treadH2 * (i + 0.5), d / 2 - landingD - treadD2 * (i + 0.5)]}
                     castShadow receiveShadow
                 >
                     <boxGeometry args={[runW * 0.9, treadH2 * 0.9, treadD2 * 0.92]} />
-                    <meshStandardMaterial color={STAIR_COLOR} roughness={0.7} />
+                    <TreadMaterial def={treadMaterial} />
                 </mesh>
             ))}
 
@@ -221,18 +339,73 @@ function UStairs({ w, d, h }: { w: number; d: number; h: number }) {
 }
 
 /* ── Spiral Stairs ────────────────────────────────────────────────────── */
-function SpiralStairs({ w, d, h }: { w: number; d: number; h: number }) {
-    const numTreads = Math.max(12, Math.round(h / 0.16))
+function SpiralStairs({
+    w, d, h, steps, railingEnabled, railingColor, railingHeight, treadMaterial, filledRisers,
+}: {
+    w: number
+    d: number
+    h: number
+    steps?: number
+    railingEnabled: boolean
+    railingColor: string
+    railingHeight: number
+    treadMaterial?: ResolvedTreadMaterial
+    filledRisers?: boolean
+}) {
+    const numTreads = steps ?? Math.max(12, Math.round(h / 0.16))
     const treadH = h / numTreads
-    const radius = Math.min(w, d) / 2 - 0.05
+    // Radius driven by width alone. A spiral stair's "Width" is its
+    // diameter — it shouldn't get capped by depth just because depth
+    // wasn't also dragged up.
+    const radius = w / 2 - 0.05
     const poleRadius = 0.06
-    const totalAngle = Math.PI * 2
-    const angleStep = totalAngle / numTreads
 
+    // FIX: totalAngle is now DERIVED from numTreads using a realistic
+    // per-step turn angle (~27.7°, typical for real spiral stairs),
+    // rather than being hardcoded to exactly one revolution regardless
+    // of step count. Previously a 31-step spiral was crammed into a
+    // single 360° loop; now it correctly winds ~2.4 full turns, matching
+    // the reference image's multi-turn helix instead of a compressed
+    // single loop.
+    const anglePerStep = Math.PI / 6.5 // ≈ 27.7°
+    const angleStep = anglePerStep
+    const totalAngle = numTreads * angleStep
+
+    const outerR = radius - 0.02
+    const innerR = poleRadius + 0.02
+    // Posts and rail mount at the tread's true outer edge — same value
+    // used by the tread geometry itself, so there's no drift between them.
+    const postR = outerR
+
+    // Explicit post-top points computed ONCE, used for BOTH the visible
+    // posts AND the rail curve below — single source of truth instead of
+    // two independently parametrized paths that could drift relative to
+    // each other.
+    const postTopPoints = useMemo(() => {
+        const pts: THREE.Vector3[] = []
+        for (let i = 0; i < numTreads; i++) {
+            const angle = i * angleStep
+            const y = treadH * i + railingHeight
+            pts.push(new THREE.Vector3(postR * Math.cos(angle), y, postR * Math.sin(angle)))
+        }
+        return pts
+    }, [numTreads, angleStep, treadH, railingHeight, postR])
+
+    const railGeo = useMemo(() => {
+        if (postTopPoints.length < 2) return null
+        const curve = new THREE.CatmullRomCurve3(postTopPoints, false, 'catmullrom', 0.5)
+        return new THREE.TubeGeometry(curve, Math.max(numTreads * 4, 48), 0.022, 8, false)
+    }, [postTopPoints, numTreads])
+
+    // FIX: this geometry is now shared across ALL treads via the `geometry`
+    // prop on <mesh>, instead of being `.clone()`d inside the render loop
+    // on every render. Every tread's shape is identical (only position/
+    // rotation differ per-tread), so cloning it N times per render was
+    // pure waste — it forced N new BufferGeometry allocations + GPU
+    // re-uploads on every geometry-tab edit, which is what caused the
+    // visible flicker/re-render on property changes.
     const treadGeo = useMemo(() => {
         const shape = new THREE.Shape()
-        const innerR = poleRadius + 0.02
-        const outerR = radius - 0.02
         const halfAngle = angleStep * 0.42
         shape.moveTo(innerR * Math.cos(-halfAngle), innerR * Math.sin(-halfAngle))
         shape.lineTo(outerR * Math.cos(-halfAngle), outerR * Math.sin(-halfAngle))
@@ -242,50 +415,79 @@ function SpiralStairs({ w, d, h }: { w: number; d: number; h: number }) {
         const geo = new THREE.ExtrudeGeometry(shape, { depth: treadH * 0.6, bevelEnabled: false })
         geo.rotateX(Math.PI / 2)
         return geo
-    }, [radius, angleStep, treadH])
+    }, [innerR, outerR, angleStep, treadH])
+
+    // NEW — riser panel geometry, shared the same way, for the
+    // filledRisers (closed spiral) style.
+    const riserGeo = useMemo(() => {
+        if (!filledRisers) return null
+        const shape = new THREE.Shape()
+        shape.moveTo(innerR, 0)
+        shape.lineTo(outerR, 0)
+        shape.lineTo(outerR, treadH)
+        shape.lineTo(innerR, treadH)
+        shape.closePath()
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.03, bevelEnabled: false })
+        geo.rotateY(Math.PI / 2)
+        return geo
+    }, [filledRisers, innerR, outerR, treadH])
 
     return (
         <group>
             <mesh position={[0, h / 2, 0]} castShadow>
                 <cylinderGeometry args={[poleRadius, poleRadius, h, 16]} />
-                <meshStandardMaterial color={RAILING_COLOR} roughness={0.4} metalness={0.4} />
+                <meshStandardMaterial color={railingColor} roughness={0.4} metalness={0.4} />
             </mesh>
 
             {Array.from({ length: numTreads }, (_, i) => {
                 const angle = i * angleStep
                 const y = treadH * i
                 return (
-                    <mesh
-                        key={i}
-                        position={[0, y, 0]}
-                        rotation={[0, angle, 0]}
-                        castShadow
-                        receiveShadow
-                    >
-                        <primitive object={treadGeo.clone()} attach="geometry" />
-                        <meshStandardMaterial color={STAIR_COLOR} roughness={0.7} />
+                    <mesh key={i} position={[0, y, 0]} rotation={[0, -angle, 0]} castShadow receiveShadow geometry={treadGeo}>
+                        <TreadMaterial def={treadMaterial} />
                     </mesh>
                 )
             })}
 
-            {Array.from({ length: Math.min(numTreads, 16) }, (_, i) => {
-                const angle = (i / Math.min(numTreads, 16)) * totalAngle
-                const y = (i / Math.min(numTreads, 16)) * h
-                const px = (radius - 0.03) * Math.cos(angle)
-                const pz = (radius - 0.03) * Math.sin(angle)
+            {/* NEW — filled riser panels between consecutive treads,
+                closed/solid spiral style matching the reference image.
+                Now uses TreadMaterial (textured) instead of a hardcoded
+                flat color, so risers match the treads. */}
+            {filledRisers && riserGeo && Array.from({ length: numTreads - 1 }, (_, i) => {
+                const angle = i * angleStep + angleStep / 2
+                const y = treadH * i
                 return (
-                    <mesh key={`post_${i}`} position={[px, y + 0.45, pz]} castShadow>
-                        <boxGeometry args={[0.025, 0.9, 0.025]} />
-                        <meshStandardMaterial color={RAILING_COLOR} roughness={0.5} metalness={0.2} />
+                    <mesh key={`riser_${i}`} position={[0, y, 0]} rotation={[0, -angle, 0]} castShadow receiveShadow geometry={riserGeo}>
+                        <TreadMaterial def={treadMaterial} />
                     </mesh>
                 )
             })}
+
+            {railingEnabled && (
+                <>
+                    {postTopPoints.map((pt, i) => {
+                        const angle = i * angleStep
+                        const y = treadH * i
+                        return (
+                            <mesh key={`post_${i}`} position={[pt.x, y + railingHeight / 2, pt.z]} rotation={[0, -angle, 0]} castShadow>
+                                <boxGeometry args={[0.025, railingHeight, 0.025]} />
+                                <meshStandardMaterial color={railingColor} roughness={0.5} metalness={0.2} />
+                            </mesh>
+                        )
+                    })}
+                    {railGeo && (
+                        <mesh geometry={railGeo} castShadow>
+                            <meshStandardMaterial color={railingColor} roughness={0.4} metalness={0.3} />
+                        </mesh>
+                    )}
+                </>
+            )}
         </group>
     )
 }
 
 /* ── Ramp ─────────────────────────────────────────────────────────────── */
-function RampStairs({ w, d, h }: { w: number; d: number; h: number }) {
+function RampStairs({ w, d, h, treadMaterial }: { w: number; d: number; h: number; treadMaterial?: ResolvedTreadMaterial }) {
     const rampLen = Math.hypot(d, h)
     const angle = Math.atan2(h, d)
 
@@ -298,7 +500,7 @@ function RampStairs({ w, d, h }: { w: number; d: number; h: number }) {
                 receiveShadow
             >
                 <boxGeometry args={[w - 0.04, 0.08, rampLen]} />
-                <meshStandardMaterial color={STAIR_COLOR} roughness={0.75} />
+                <TreadMaterial def={treadMaterial} />
             </mesh>
 
             {[-1, 1].map(side => (

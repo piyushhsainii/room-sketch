@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ResilientCanvas from './ResilientCanvas'
 import { TOOL_CURSORS, Toolbar } from './Tools/ToolBar'
-import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_LABELS, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedStairs, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, StairsType, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
+import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_LABELS, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
 import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import * as THREE from 'three'
 import { SceneGraphPanel } from './objects/scene-graph'
@@ -35,6 +35,7 @@ import { CameraViewPickerV2 } from '../ui/CameraViewPicker'
 import { deriveFlatPlan2D } from './lib/export/flatten2d'
 import { createClient } from '@/lib/supabase/client'
 import { SunScenePanel } from '../ui/SunCompassPanel'
+import { PlacedStairs, StairsType } from './lib/stairs-constants'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -3292,10 +3293,10 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     data-panel="right-sidebar"
                     style={{
                         position: 'absolute',
-                        top: '50%',
+                        top: '53%',
                         right: 12,
                         transform: 'translateY(-50%)',
-                        height: '80vh',
+                        height: '75vh',
                         width: 320,
                         background: THEME.bg ?? '#fff',
                         border: `1px solid ${THEME.border}`,

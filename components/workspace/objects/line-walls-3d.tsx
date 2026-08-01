@@ -11,6 +11,7 @@ import { RoomSceneConfig } from '../FloorPlanEditor';
 import { Railing3D } from './railing-3d';
 import { matchClosedShape } from '../MaterialsPanel';
 import { Text } from '@react-three/drei';
+import { ArchHeader3D } from './arch-header';
 type WallSideOverride = {
     material?: WallMaterial | null
     color?: string
@@ -349,22 +350,42 @@ function LineWalls3DImpl({
                                 // global roomHeight, so a header on a partial-height
                                 // wall doesn't extend past that wall's own top.
                                 const headerH = effH - op.height
-                                if (headerH > 0.02) {
+                                const isPassage = op.type === 'opening' && op.variant === 'opening-passage'
+                                const isArchway = op.type === 'opening' && op.variant === 'opening-archway'
+
+                                if (!isPassage && headerH > 0.02) {
                                     const hx = a.x + (dx / len) * opPos2
                                     const hz = a.z + (dz / len) * opPos2
-                                    panels.push(
-                                        <mesh
-                                            key={`${seg.id}_${i}_h${si}`}
-                                            position={[hx, op.height + headerH / 2, hz]}
-                                            rotation={[0, -angle, 0]}
-                                            castShadow
-                                            receiveShadow
-                                            {...handlers}
-                                        >
-                                            <boxGeometry args={[op.width, headerH, segT]} />
-                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} />
-                                        </mesh>
-                                    )
+
+                                    if (isArchway) {
+                                        panels.push(
+                                            <group key={`${seg.id}_${i}_h${si}`} position={[hx, op.height, hz]}>
+                                                <ArchHeader3D
+                                                    width={op.width}
+                                                    headerH={headerH}
+                                                    thickness={segT}
+                                                    angle={-angle}
+                                                    mat={interior.mat}
+                                                    color={interior.color}
+                                                    roughness={wallRoughness}
+                                                />
+                                            </group>
+                                        )
+                                    } else {
+                                        panels.push(
+                                            <mesh
+                                                key={`${seg.id}_${i}_h${si}`}
+                                                position={[hx, op.height + headerH / 2, hz]}
+                                                rotation={[0, -angle, 0]}
+                                                castShadow
+                                                receiveShadow
+                                                {...handlers}
+                                            >
+                                                <boxGeometry args={[op.width, headerH, segT]} />
+                                                <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} />
+                                            </mesh>
+                                        )
+                                    }
                                 }
 
                                 if (op.type === 'window' && op.sillHeight > 0.02) {

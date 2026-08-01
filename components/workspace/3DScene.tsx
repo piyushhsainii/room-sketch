@@ -68,14 +68,8 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             const canvasEl = gl.domElement
             const aspect = canvasEl.width / canvasEl.height
             const fovDegrees = (camera as THREE.PerspectiveCamera).fov ?? 45
-
-            // Bounding box over ALL entity types, not just rooms — see fix in
-            // computeTopDownView below.
             const topView = computeTopDownView(fp, aspect, fovDegrees)
 
-            // Clone the camera rather than moving the live one — the on-screen
-            // camera/canvas is never touched, so R3F's own render loop can't
-            // race it and there's nothing to restore afterward.
             const snapCamera = camera.clone() as THREE.PerspectiveCamera
             snapCamera.position.set(...topView.position)
             snapCamera.lookAt(new THREE.Vector3(...topView.target))
@@ -92,9 +86,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             gl.setRenderTarget(renderTarget)
             gl.render(scene, snapCamera)
 
-            // Read pixels off the render target and draw to an offscreen 2D
-            // canvas so we can still get a JPEG blob via toBlob (WebGLRenderTarget
-            // has no toBlob of its own).
             const pixels = new Uint8Array(width * height * 4)
             gl.readRenderTargetPixels(renderTarget, 0, 0, width, height, pixels)
             gl.setRenderTarget(prevTarget)
@@ -106,7 +97,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             const ctx = offscreen.getContext('2d')!
             const imageData = ctx.createImageData(width, height)
 
-            // WebGL render targets are bottom-up; flip to top-down for canvas 2D.
             const rowBytes = width * 4
             for (let y = 0; y < height; y++) {
                 const srcStart = (height - y - 1) * rowBytes
@@ -146,9 +136,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         controls.update()
     }, [])
 
-    // Reuse the same bounds math already used for the mount-camera effect —
-    // hoist a shared bounds calc if you'd rather not duplicate; kept inline
-    // here to avoid touching the existing effect.
     const sunTimeOfDay = cfg.sunTimeOfDay ?? 12
     const sunCompassHeading = cfg.sunCompassHeading ?? 180
     const sunEnabled = cfg.sunToolEnabled ?? false
@@ -164,7 +151,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     const sunColor = sunEnabled ? sunLightColor(sunTimeOfDay) : '#FFF5E8'
     const sunIntensityVal = sunEnabled ? sunIntensity(sunTimeOfDay) : 2.5
 
-    // drei's Sky wants a normalized sun direction vector, elevation in radians
     const sunAzRad = (azimuth * Math.PI) / 180
     const sunElRad = (elevation * Math.PI) / 180
     const sunDirX = Math.cos(sunElRad) * Math.sin(sunAzRad)
@@ -367,18 +353,4 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     )
 })
 
-
-function SunDisc({ position, color }: { position: [number, number, number]; color: string }) {
-    return (
-        <sprite position={position} scale={[8, 8, 8]}>
-            <spriteMaterial
-                color={color}
-                transparent
-                opacity={0.9}
-                depthWrite={false}
-                toneMapped={false}
-            />
-        </sprite>
-    )
-}
 export default memo(Scene3D)

@@ -544,6 +544,74 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         <Button flex variant="secondary" onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rotation: s.rotation + Math.PI / 2 } : s) })}>↻ +90°</Button>
                     </div>
                 </Card>
+                <Card>
+                    <SectionLabel>Type</SectionLabel>
+                    <SegmentedControl
+                        options={[
+                            { value: 'stairs-straight', label: 'Straight' },
+                            { value: 'stairs-spiral', label: 'Spiral' },
+                        ] as const}
+                        value={stairs.type === 'stairs-u' ? 'stairs-l' : stairs.type}
+                        onChange={t => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, type: t } : s) })}
+                    />
+                </Card>
+                {stairs && (
+                    <Card>
+                        <SectionLabel>Step Material</SectionLabel>
+                        <MaterialTexturePicker
+                            items={getMaterialsFor('stairs')}
+                            currentId={stairs.materialId}
+                            onSelect={(id) => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, materialId: id } : s) })}
+                            onClear={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, materialId: undefined } : s) })}
+                            theme={pickerTheme}
+                        />
+                    </Card>
+                )}
+                {/* <Card>
+                    <SectionLabel>Opening</SectionLabel>
+                    <PropField label="Auto Cutout">
+                        <Button variant="secondary" onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, autoCutout: !(s.autoCutout ?? true) } : s) })}>
+                            {(stairs.autoCutout ?? true) ? '☑ On' : '☐ Off'}
+                        </Button>
+                    </PropField>
+               
+                    <PropField label="From Level">
+                        <span style={{ fontSize: 12, color: COLOR.textFaint }}>Level 1 (coming soon)</span>
+                    </PropField>
+                    <PropField label="To Level">
+                        <span style={{ fontSize: 12, color: COLOR.textFaint }}>Level 2 (coming soon)</span>
+                    </PropField>
+                    <PropField label="Opening Offset (m)">
+                        <NumInput value={stairs.openingOffset ?? 0.5} min={0} max={2} step={0.05}
+                            onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, openingOffset: v } : s) })} />
+                    </PropField>
+                </Card> */}
+
+                <Card>
+                    <SectionLabel>Geometry</SectionLabel>
+                    <PropField label="Width (m)">
+                        <NumInput
+                            value={stairs.width}
+                            min={0.6}
+                            max={4}
+                            step={0.1}
+                            onChange={v => onChange({
+                                ...fp,
+                                stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                    ? { ...s, width: v, ...(s.type === 'stairs-spiral' ? { depth: v } : {}) }
+                                    : s)
+                            })}
+                        />
+                    </PropField>
+                    <PropField label="Rise (m)">
+                        <NumInput value={stairs.rise ?? fp.roomHeight} min={1} max={6} step={0.1}
+                            onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rise: v } : s) })} />
+                    </PropField>
+                    <PropField label="Steps">
+                        <NumInput value={stairs.steps ?? 20} min={3} max={40} step={1}
+                            onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, steps: Math.round(v) } : s) })} />
+                    </PropField>
+                </Card>
             </>}
 
             {outdoorObj && <>

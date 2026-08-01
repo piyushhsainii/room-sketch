@@ -62,6 +62,7 @@ export function FloatingMenu({
     previewOpen,
     onTogglePreview,
     cameraViewPickerSlot,
+
 }: {
     walkMode: boolean
     onToggleWalkMode: () => void

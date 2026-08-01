@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import StarButton from "../workspace/dashboard/StarButton";
 
 function SearchIcon() {
     return (
@@ -59,6 +60,14 @@ function ComingSoonIcon() {
     );
 }
 
+function EmptyStarIcon() {
+    return (
+        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="rgba(15,23,42,0.22)" strokeWidth="1.4" strokeLinejoin="round">
+            <path d="M12 2l2.9 6.4 7 .7-5.3 4.7 1.6 6.9L12 17l-6.2 3.7 1.6-6.9L2.1 9.1l7-.7L12 2z" />
+        </svg>
+    );
+}
+
 function timeAgo(dateInput?: string | number | Date) {
     if (!dateInput) return "";
     const date = new Date(dateInput);
@@ -77,26 +86,86 @@ function timeAgo(dateInput?: string | number | Date) {
     return `Updated ${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 }
 
+function starredAgo(dateInput?: string | number | Date) {
+    // Same relative-time logic as timeAgo, different label prefix — kept
+    // as a separate function rather than a param flag so callers stay
+    // readable at the call site.
+    const base = timeAgo(dateInput);
+    return base.replace(/^Updated/, "Starred");
+}
+
 const TABS = [
     { id: "all", label: "All" },
     { id: "recent", label: "Recent" },
+    { id: "starred", label: "Starred" },
     { id: "shared", label: "Shared" },
 ] as const;
+
+type StarredProject = {
+    id: string;
+    name: string;
+    thumbnail_url: string | null;
+    author_name: string | null;
+    starred_at: string;
+    star_count: number;
+};
 
 export default function CollectionsPanel({
     projects = [],
     onCreateCollection,
     onOpenCollection,
+    onOpenStarredProject,
     onNavigate,
 }: {
     projects?: any[];
     onCreateCollection?: () => void;
     onOpenCollection?: (id: string) => void;
+    // Starred items are OTHER users' published community projects, not
+    // the current user's own collections — needs its own route (/community/[id]).
+    onOpenStarredProject?: (id: string) => void;
     onNavigate?: (feature: "3d_viewer" | "collections" | "settings") => void;
 }) {
     const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("all");
     const [search, setSearch] = useState("");
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+    // Starred tab has its own data source (community stars, not the
+    // user's own projects prop) — fetched lazily on first visit to the
+    // tab, not on mount, since most sessions won't open it.
+    const [starredProjects, setStarredProjects] = useState<StarredProject[]>([]);
+    const [starredLoading, setStarredLoading] = useState(false);
+    const [starredError, setStarredError] = useState<string | null>(null);
+    const [starredFetched, setStarredFetched] = useState(false);
+
+    useEffect(() => {
+        if (activeTab !== "starred" || starredFetched) return;
+        let cancelled = false;
+        async function load() {
+            setStarredLoading(true);
+            setStarredError(null);
+            try {
+                const res = await fetch("/api/me/starred");
+                if (!res.ok) throw new Error("Failed to load starred projects");
+                const body = await res.json();
+                if (!cancelled) {
+                    setStarredProjects(body.projects ?? []);
+                    setStarredFetched(true);
+                }
+            } catch {
+                if (!cancelled) setStarredError("Failed to load starred projects.");
+            } finally {
+                if (!cancelled) setStarredLoading(false);
+            }
+        }
+        void load();
+        return () => {
+            cancelled = true;
+        };
+    }, [activeTab, starredFetched]);
+
+    function handleUnstar(projectId: string) {
+        setStarredProjects((prev) => prev.filter((p) => p.id !== projectId));
+    }
 
     const normalized = useMemo(
         () =>
@@ -108,6 +177,16 @@ export default function CollectionsPanel({
                 updatedAt: new Date(p.updatedAt ?? p.updated_at ?? p.createdAt ?? p.created_at ?? 0).getTime(),
             })),
         [projects]
+    );
+
+    const filteredStarred = useMemo(
+        () =>
+            starredProjects.filter(
+                (p) =>
+                    p.name.toLowerCase().includes(search.toLowerCase()) ||
+                    (p.author_name ?? "").toLowerCase().includes(search.toLowerCase()),
+            ),
+        [starredProjects, search],
     );
 
     const filtered = useMemo(() => {
@@ -140,22 +219,24 @@ export default function CollectionsPanel({
                         <input
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search collections..."
+                            placeholder={activeTab === "starred" ? "Search starred..." : "Search collections..."}
                             style={{ border: "none", outline: "none", fontSize: 13, flex: 1, background: "transparent", color: "#0f172a" }}
                         />
                     </div>
-                    <button
-                        type="button"
-                        onClick={onCreateCollection}
-                        style={{
-                            display: "flex", alignItems: "center", gap: 7, height: 38, padding: "0 16px",
-                            borderRadius: 8, border: "none", background: "#0f172a", color: "#fff",
-                            fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
-                        }}
-                    >
-                        <PlusIcon />
-                        New Collection
-                    </button>
+                    {activeTab !== "starred" && (
+                        <button
+                            type="button"
+                            onClick={onCreateCollection}
+                            style={{
+                                display: "flex", alignItems: "center", gap: 7, height: 38, padding: "0 16px",
+                                borderRadius: 8, border: "none", background: "#0f172a", color: "#fff",
+                                fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                            }}
+                        >
+                            <PlusIcon />
+                            New Collection
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -182,7 +263,7 @@ export default function CollectionsPanel({
                     })}
                 </div>
 
-                {activeTab !== "shared" && (
+                {activeTab !== "shared" && activeTab !== "starred" && (
                     <button
                         type="button"
                         style={{
@@ -212,8 +293,60 @@ export default function CollectionsPanel({
                 </div>
             )}
 
+            {/* Starred tab */}
+            {activeTab === "starred" && (
+                <>
+                    {starredLoading && (
+                        <div style={{ textAlign: "center", padding: "48px 0", color: "rgba(15,23,42,0.45)", fontSize: 13.5 }}>
+                            Loading starred projects…
+                        </div>
+                    )}
+
+                    {!starredLoading && starredError && (
+                        <div style={{ textAlign: "center", padding: "48px 0", color: "#dc2626", fontSize: 13.5 }}>
+                            {starredError}
+                        </div>
+                    )}
+
+                    {!starredLoading && !starredError && filteredStarred.length === 0 && (
+                        <div style={{
+                            display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
+                            padding: "72px 24px", borderRadius: 14, background: "#fafbfe", border: "1px solid rgba(15,23,42,0.06)",
+                        }}>
+                            <EmptyStarIcon />
+                            <h4 style={{ margin: "20px 0 8px", fontSize: 17, fontWeight: 700, color: "#0f172a" }}>
+                                {search ? "No starred projects match your search" : "No starred projects yet"}
+                            </h4>
+                            <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "rgba(15,23,42,0.5)", maxWidth: 340, lineHeight: 1.5 }}>
+                                Star projects from the community to save them here.
+                            </p>
+                            {!search && (
+                                <button
+                                    type="button"
+                                    onClick={() => onNavigate?.("3d_viewer")}
+                                    style={{
+                                        height: 36, padding: "0 18px", borderRadius: 8, border: "none",
+                                        background: "#0f172a", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                    }}
+                                >
+                                    Browse Community
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {!starredLoading && !starredError && filteredStarred.length > 0 && (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 24 }}>
+                            {filteredStarred.map((p) => (
+                                <StarredCard key={p.id} project={p} onOpen={() => onOpenStarredProject?.(p.id)} onUnstar={handleUnstar} />
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+
             {/* All / Recent: real project grid */}
-            {activeTab !== "shared" && (
+            {activeTab !== "shared" && activeTab !== "starred" && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 24 }}>
                     {filtered.map((c) => (
                         <CollectionCard
@@ -240,6 +373,56 @@ export default function CollectionsPanel({
                     <NewFolderCard onClick={onCreateCollection} />
                 </div>
             )}
+        </div>
+    );
+}
+
+function StarredCard({
+    project, onOpen, onUnstar,
+}: {
+    project: StarredProject;
+    onOpen: () => void;
+    onUnstar: (id: string) => void;
+}) {
+    return (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+            <div
+                onClick={onOpen}
+                style={{
+                    aspectRatio: "4/3", borderRadius: 12, overflow: "hidden", cursor: "pointer",
+                    border: "1px solid rgba(15,23,42,0.08)",
+                    background: project.thumbnail_url ? "#f1f5f9" : "#e7ebfb",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+            >
+                {project.thumbnail_url ? (
+                    <img src={project.thumbnail_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                ) : (
+                    <DraftsIcon />
+                )}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: "0 0 3px", fontSize: 14.5, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {project.name}
+                    </p>
+                    <p style={{ margin: "0 0 2px", fontSize: 12, color: "rgba(15,23,42,0.5)" }}>
+                        {project.author_name ? `by ${project.author_name}` : ""}
+                    </p>
+                    <p style={{ margin: 0, fontSize: 11.5, color: "rgba(15,23,42,0.38)" }}>
+                        {starredAgo(project.starred_at)}
+                    </p>
+                </div>
+                <div style={{ flexShrink: 0 }}>
+                    <StarButton
+                        projectId={project.id}
+                        initialStarred={true}
+                        initialCount={project.star_count}
+                        onUnstar={onUnstar}
+                    />
+                </div>
+            </div>
         </div>
     );
 }

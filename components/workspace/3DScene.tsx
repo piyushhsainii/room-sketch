@@ -1,5 +1,5 @@
 import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from "react"
-import { OrbitControls } from "@react-three/drei"
+import { OrbitControls, Sky } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./lib/constants"
 import { Room3D } from "./3dRoom"
 import { LineWalls3D } from "./objects/line-walls-3d"
@@ -14,6 +14,7 @@ import { StringLightsMesh } from "./mesh/string-lights-mesh"
 import { useThree } from "@react-three/fiber"
 import { computeTopDownView } from "@/lib/helpers"
 import * as THREE from "three"
+import { sunIntensity, sunLightColor, sunPosition, sunVectorFromAngles } from "./lib/sunPosition"
 
 export type Scene3DHandle = {
     flyTo: (view: CameraView) => void
@@ -143,10 +144,32 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         controls.object.position.set(cx, span * 1.6, cz + 0.01)
         controls.target.set(cx, 0, cz)
         controls.update()
-        // run once on mount, not on every fp change
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
+    // Reuse the same bounds math already used for the mount-camera effect —
+    // hoist a shared bounds calc if you'd rather not duplicate; kept inline
+    // here to avoid touching the existing effect.
+    const sunTimeOfDay = cfg.sunTimeOfDay ?? 12
+    const sunCompassHeading = cfg.sunCompassHeading ?? 180
+    const sunEnabled = cfg.sunToolEnabled ?? false
+
+    const sunAllX = [...fp.rooms.flatMap(r => [r.x, r.x + r.width]), ...fp.lineNodes.map(n => n.x)]
+    const sunAllZ = [...fp.rooms.flatMap(r => [r.z, r.z + r.depth]), ...fp.lineNodes.map(n => n.z)]
+    const sunCx = sunAllX.length ? (Math.min(...sunAllX) + Math.max(...sunAllX)) / 2 : 0
+    const sunCz = sunAllZ.length ? (Math.min(...sunAllZ) + Math.max(...sunAllZ)) / 2 : 0
+    const sunSpan = sunAllX.length ? Math.max(Math.max(...sunAllX) - Math.min(...sunAllX), Math.max(...sunAllZ) - Math.min(...sunAllZ), 5) : 10
+
+    const { azimuth, elevation } = sunPosition(sunTimeOfDay, sunCompassHeading)
+    const sunVec = sunVectorFromAngles(azimuth, elevation, sunSpan * 2.5)
+    const sunColor = sunEnabled ? sunLightColor(sunTimeOfDay) : '#FFF5E8'
+    const sunIntensityVal = sunEnabled ? sunIntensity(sunTimeOfDay) : 2.5
+
+    // drei's Sky wants a normalized sun direction vector, elevation in radians
+    const sunAzRad = (azimuth * Math.PI) / 180
+    const sunElRad = (elevation * Math.PI) / 180
+    const sunDirX = Math.cos(sunElRad) * Math.sin(sunAzRad)
+    const sunDirY = Math.sin(sunElRad)
+    const sunDirZ = -Math.cos(sunElRad) * Math.cos(sunAzRad)
     return (
         <>
             <color attach="background" args={['#FFFFFF']} />
@@ -155,12 +178,31 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 <meshStandardMaterial color="#F5F5F3" roughness={0.9} />
             </mesh>
             <fog attach="fog" args={['#F2F2F0', 30, 90]} />
-            <ambientLight intensity={cfg.ambientIntensity} color="#FFF8F0" />
-            <directionalLight position={[10, 15, 10]} intensity={2.5} castShadow shadow-mapSize={[2048, 2048]} />
-            <directionalLight position={[-5, 8, -5]} intensity={0.8} color="#C8D4E8" />
-            {cfg.fogEnabled && <fog attach="fog" args={['#F2F2F0', 20, 60]} />}
 
-            {interactiveMode && (
+            <ambientLight intensity={sunEnabled ? cfg.ambientIntensity * 0.4 : cfg.ambientIntensity} color="#FFF8F0" />
+
+            <directionalLight
+                color={sunColor}
+                intensity={sunIntensityVal}
+                position={sunEnabled ? [sunCx + sunVec.x, Math.max(sunVec.y, 1), sunCz + sunVec.z] : [10, 15, 10]}
+                castShadow
+                shadow-mapSize={[2048, 2048]}
+            />
+            {sunEnabled ? (
+                <Sky
+                    distance={450000}
+                    sunPosition={[sunDirX, Math.max(sunDirY, -0.05), sunDirZ]}
+                    turbidity={8}
+                    rayleigh={sunDirY > 0.15 ? 2 : 4}
+                    mieCoefficient={0.005}
+                    mieDirectionalG={0.8}
+                />
+            ) : (
+                <color attach="background" args={['#FFFFFF']} />
+            )}
+
+            <directionalLight position={[-5, 8, -5]} intensity={sunEnabled ? 0.3 : 0.8} color="#C8D4E8" />
+            {cfg.fogEnabled && !sunEnabled && <fog attach="fog" args={['#F2F2F0', 20, 60]} />}            {interactiveMode && (
                 <mesh
                     position={[0, -0.01, 0]}
                     rotation={[-Math.PI / 2, 0, 0]}
@@ -325,4 +367,18 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     )
 })
 
+
+function SunDisc({ position, color }: { position: [number, number, number]; color: string }) {
+    return (
+        <sprite position={position} scale={[8, 8, 8]}>
+            <spriteMaterial
+                color={color}
+                transparent
+                opacity={0.9}
+                depthWrite={false}
+                toneMapped={false}
+            />
+        </sprite>
+    )
+}
 export default memo(Scene3D)

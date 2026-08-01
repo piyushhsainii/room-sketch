@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { ShareDialog } from "../ui/ExportShareable";
+import StarButton from "../workspace/dashboard/StarButton";
 
 type SortMode = "newest" | "oldest" | "name";
 
@@ -218,6 +219,8 @@ export function ProjectCard({
     const [menuOpen, setMenuOpen] = useState(false);
     const [hovered, setHovered] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const shareButtonRef = useRef<HTMLButtonElement>(null);
+
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -236,7 +239,6 @@ export function ProjectCard({
         else setEditValue(project.name || "Untitled");
         setIsEditing(false);
     }
-
     const thumbnail = project.thumbnail_url || project.render_url || project.floorplan_url;
 
     return (
@@ -245,7 +247,7 @@ export function ProjectCard({
             onMouseLeave={() => setHovered(false)}
             onClick={() => { if (!isEditing) onOpen(); }}
             style={{
-                border: `1px solid ${hovered ? "rgba(15,23,42,0.10)" : "rgba(15,23,42,0.06)"}`,
+                border: `1px solid ${hovered ? "rgba(75,23,62,0.20)" : "rgba(15,23,42,0.06)"}`,
                 borderRadius: 18,
                 overflow: "hidden",
                 background: "#ffffff",
@@ -279,6 +281,20 @@ export function ProjectCard({
                         <FloorplanIcon />
                     </div>
                 )}
+
+                <div style={{
+                    position: "absolute", top: 10, left: 10,
+                    opacity: hovered || project.starred ? 1 : 0,
+                    transform: hovered || project.starred ? "translateY(0)" : "translateY(-4px)",
+                    transition: "opacity 180ms ease, transform 180ms ease",
+                    pointerEvents: hovered || project.starred ? "auto" : "none",
+                }}>
+                    <StarButton
+                        projectId={project.id}
+                        initialStarred={!!project.starred}
+                        initialCount={project.star_count ?? 0}
+                    />
+                </div>
 
                 {/* Top-right action buttons */}
                 <div style={{
@@ -353,10 +369,16 @@ export function ProjectCard({
                 </div>
             </div>
 
+            <button ref={shareButtonRef} onClick={() => setShareOpen(true)}>
+                <ShareIcon />
+            </button>
+
             {shareOpen && (
-                <div onClick={e => e.stopPropagation()}>
-                    <ShareDialog projectId={project.id} onClose={() => setShareOpen(false)} />
-                </div>
+                <ShareDialog
+                    projectId={project.id}
+                    onClose={() => setShareOpen(false)}
+                    anchorEl={shareButtonRef.current}
+                />
             )}
         </div>
     );

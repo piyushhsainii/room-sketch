@@ -34,6 +34,7 @@ import { FloatingMenu } from '../ui/FloatingMenu'
 import { CameraViewPickerV2 } from '../ui/CameraViewPicker'
 import { deriveFlatPlan2D } from './lib/export/flatten2d'
 import { createClient } from '@/lib/supabase/client'
+import { SunScenePanel } from '../ui/SunCompassPanel'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -55,9 +56,13 @@ export type SceneConfig = {
     doorStyle: DoorStyle
     globalFloorMaterial: FloorMaterial
     globalWallMaterial?: WallMaterial
-    groundMaterial?: string   // ← NEW
+    groundMaterial?: string
     rooms: RoomSceneConfig[]
     lights: PlacedLight[]
+    // NEW — sun/time/compass tool
+    sunToolEnabled?: boolean
+    sunTimeOfDay?: number      // 0–24, default 12
+    sunCompassHeading?: number // 0–360°, default 180
 }
 
 export const THEME = {
@@ -241,7 +246,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [sheetOpen, setSheetOpen] = useState(false)
     const [rightPanelOpen, setRightPanelOpen] = useState(true)
-    const [rightTab, setRightTab] = useState<'properties' | 'scene' | 'materials'>('properties')
+    const [rightTab, setRightTab] = useState<'properties' | 'scene' | 'materials' | 'sun'>('properties')
     const [hoverTooltip, setHoverTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
     const [moveArmedForId, setMoveArmedForId] = useState<string | null>(null)  // QuickActionMenu click-to-relocate, unrelated to marquee
 
@@ -3144,6 +3149,24 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                             }
                         },
                     },
+                    {
+                        id: 'sun',
+                        title: 'Sun & Lighting',
+                        icon: (
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="4" />
+                                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                            </svg>
+                        ),
+                        onClick: () => {
+                            if (sheetOpen && rightTab === 'sun') {
+                                setSheetOpen(false)
+                            } else {
+                                setRightTab('sun')
+                                setSheetOpen(true)
+                            }
+                        },
+                    },
                 ]}
             />
             {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection && tool === 'select' ? (
@@ -3380,6 +3403,45 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     </div>
                 </div>
 
+            )}
+            {sheetOpen && rightTab === 'sun' && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: '50%',
+                        right: 12,
+                        transform: 'translateY(-50%)',
+                        height: 'auto',
+                        width: 320,
+                        background: THEME.bg ?? '#fff',
+                        border: `1px solid ${THEME.border}`,
+                        borderRadius: 8,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        zIndex: 20,
+                        overflow: 'hidden',
+                    }}
+                    className='rounded-full'
+                >
+                    {/* <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 12px', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0,
+                    }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>SUN & LIGHTING</span>
+                        <button
+                            onClick={() => setSheetOpen(false)}
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted, fontSize: 14, lineHeight: 1 }}
+                        >
+                            ✕
+                        </button>
+                    </div> */}
+                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}>
+                        <SunScenePanel
+                            sceneConfig={sceneConfig}
+                            onChange={patch => setSceneConfig(prev => ({ ...prev, ...patch }))}
+                        />
+                    </div>
+                </div>
             )}
         </div>
     )

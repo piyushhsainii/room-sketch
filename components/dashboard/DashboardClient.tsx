@@ -26,12 +26,6 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
   const [projects, setProjects] = useState<any>([]);
   const [activeProjectId, setActiveProjectId] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Auth state now comes from the server component — it's already
-  // resolved by the time this renders, so no loading state needed and
-  // no client fetch to re-derive it. `authed` is implicitly true: this
-  // component only renders for signed-in users (page.tsx redirects
-  // otherwise), so there's no unauthenticated branch to model here.
   const [userEmail, setUserEmail] = useState<string>(initialUser.email);
   const [plan, setPlan] = useState<PlanId>(initialPlan);
 
@@ -49,9 +43,6 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
     try {
       const res = await fetch("/api/projects", { method: "GET" });
       if (res.status === 401) {
-        // Session expired mid-session (token revoked, user deleted, etc).
-        // Middleware will catch this on next navigation; here we just
-        // reflect it locally rather than silently failing.
         setProjects([]);
         setActiveProjectId(null);
         return;
@@ -75,9 +66,6 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
   }
 
   useEffect(() => {
-    // Projects are still fetched client-side (they change more often than
-    // auth state and benefit from the existing cache), but we no longer
-    // need to resolve *who* the user is first — that's already known.
     const cached = getCache();
     if (cached && !isStale() && cached.me.email === userEmail) {
       setProjects(cached.projects);
@@ -89,10 +77,6 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
   }, []);
 
   async function refreshMe() {
-    // Used after auth dialog actions (sign in / sign up) where the
-    // session changes without a full page navigation. A lightweight
-    // client-side refresh is appropriate here since it's event-driven,
-    // not a per-load poll.
     try {
       const supabase = createClient();
       const {
@@ -206,6 +190,7 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
         <CollectionsPanel
           projects={projects}
           onOpenCollection={(id) => router.push(`/collections/${id}`)}
+          onOpenStarredProject={(id) => router.push(`/community/${id}`)}
           onNavigate={setActiveFeature}
         />
       );

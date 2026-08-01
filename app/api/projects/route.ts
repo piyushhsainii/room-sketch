@@ -4,10 +4,6 @@ import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-// GET — unchanged in shape, now authed via Supabase Auth instead of the
-// custom renderai_session JWT. RLS (auth.uid() = user_id) does the
-// filtering now; the explicit .eq("user_id", ...) is kept as a belt-and-
-// braces filter, not the sole line of defense.
 export async function GET() {
   const supabase = await createServerSupabaseClient();
   const {
@@ -15,11 +11,8 @@ export async function GET() {
     error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user) {
-    console.log(authError);
-
+  if (authError || !user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   const { data, error } = await supabase
     .from("projects")
@@ -29,13 +22,35 @@ export async function GET() {
 
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ projects: data });
+
+  const projects = data ?? [];
+
+  const projectIds = projects.map((p) => p.id);
+  const starredSet = new Set<string>();
+  const counts: Record<string, number> = {};
+
+  if (projectIds.length > 0) {
+    const { data: starRows } = await supabase
+      .from("project_stars")
+      .select("project_id, user_id")
+      .in("project_id", projectIds);
+
+    for (const row of starRows ?? []) {
+      counts[row.project_id] = (counts[row.project_id] ?? 0) + 1;
+      if (row.user_id === user.id) starredSet.add(row.project_id);
+    }
+  }
+
+  const projectsWithStars = projects.map((p) => ({
+    ...p,
+    starred: starredSet.has(p.id),
+    star_count: counts[p.id] ?? 0,
+  }));
+
+  return NextResponse.json({ projects: projectsWithStars });
 }
 
-// POST — create a project. Backward compatible with the old { name }-only
-// call shape; also accepts an optional { state, thumbnail_url } for the
-// Quick Start draft flow, where the project is created WITH content on
-// first save rather than blank-then-filled.
+// POST — unchanged from the migrated version
 export async function POST(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -53,10 +68,6 @@ export async function POST(req: NextRequest) {
     | undefined;
   const thumbnailUrl = body.thumbnail_url as string | undefined;
 
-  // user_id intentionally omitted — the `user_id` column now defaults to
-  // auth.uid() at the DB level (see migration SQL), so the client/server
-  // never needs to state it, and RLS's `with check (user_id = auth.uid())`
-  // can't be defeated by a route that forgets to set it.
   const insertPayload: Record<string, unknown> = {
     name,
     status: "uploaded",

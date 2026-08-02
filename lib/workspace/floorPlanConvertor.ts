@@ -15,7 +15,6 @@ import {
   FloorPlanState,
   LineNode,
   LineSegment,
-  PlacedStairs,
 } from "@/components/workspace/lib/constants";
 
 import { PlacedOutdoorObject } from "@/components/workspace/lib/outdoor-constants";
@@ -28,6 +27,7 @@ import type {
 } from "@/types/workspace";
 import { normalizeDoorMaterialOverride } from "@/components/workspace/mesh/door-style-migration";
 import { PlacedFurniture } from "@/components/workspace/lib/furniture-constants";
+import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
 
 export function floorPlanStateToSceneJSON(
   fp: FloorPlanState,

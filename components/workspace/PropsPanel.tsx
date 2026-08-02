@@ -1,6 +1,6 @@
 import { deriveClosedPolygons, snapFurniture, snapM, uid } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
-import { ClosedShape, EditorOpening, EditorRoom, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, FURNITURE_LABELS, FURNITURE_MATERIALS, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
+import { ClosedShape, EditorOpening, EditorRoom, FloorMaterial, FloorPlanState, FURNITURE_LABELS, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
 import { MaterialTexturePicker } from "./texture/MaterialPicker"
 import { OUTDOOR_OBJECT_LABELS, PlacedOutdoorObject } from "./lib/outdoor-constants"
@@ -155,6 +155,16 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         })
     }
 
+    const doorVariantSelectStyle: React.CSSProperties = {
+        width: '100%',
+        padding: '6px 8px',
+        borderRadius: 6,
+        border: '1px solid rgba(0,0,0,0.12)',
+        background: '#fff',
+        fontSize: 13,
+        color: 'inherit',
+    }
+
     const canDuplicate = !!(room || shape || furniture || stairs || outdoorObj || wallDecor || opening || light);
 
     const title = wallRoom ? 'Wall'
@@ -178,20 +188,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     <IconButton onClick={onDuplicate} title="Duplicate (Ctrl/Cmd+D)">⎘</IconButton>
                 )}
             </div>
-
-            {onMirror && (
-                <Card>
-                    <SectionLabel>Mirror</SectionLabel>
-                    <div style={{ display: 'flex', gap: SPACE.xxs }}>
-                        <Button flex variant="secondary" onClick={() => onMirror('horizontal')} title="Flip contents left↔right within this room">
-                            ⇋ Flip Horizontal
-                        </Button>
-                        <Button flex variant="secondary" onClick={() => onMirror('vertical')} title="Flip contents top↔bottom within this room">
-                            ⇅ Flip Vertical
-                        </Button>
-                    </div>
-                </Card>
-            )}
 
             {wallRoom && wallSel && (
                 <>
@@ -225,8 +221,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             />
                         </PropField>
                         <Divider />
-                        <SectionLabel>Texture</SectionLabel>
                         <MaterialTexturePicker
+                            label="Texture"
                             items={wallMaterials}
                             currentId={specificWallTexture}
                             onSelect={(id) => patchSpecificWall({ material: id as WallMaterial })}
@@ -245,8 +241,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 </Card>
 
                 <Card>
-                    <SectionLabel>Wall Texture</SectionLabel>
                     <MaterialTexturePicker
+                        label="Wall Texture"
                         items={wallMaterials}
                         currentId={shape.wallMaterial}
                         onSelect={(id) => patchShape({ wallMaterial: id as WallMaterial })}
@@ -254,8 +250,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         theme={pickerTheme}
                     />
                     <Divider />
-                    <SectionLabel>Floor Texture</SectionLabel>
                     <MaterialTexturePicker
+                        label="Floor Texture"
                         items={floorMaterials}
                         currentId={shape.floorMaterial}
                         onSelect={(id) => patchShape({ floorMaterial: id as FloorMaterial })}
@@ -286,8 +282,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         />
                     </PropField>
                     <Divider />
-                    <SectionLabel>Wall Texture</SectionLabel>
                     <MaterialTexturePicker
+                        label="Wall Texture"
                         items={wallMaterials}
                         currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallMaterial}
                         onSelect={(id) => patchRoomScene({ wallMaterial: id as WallMaterial })}
@@ -295,8 +291,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         theme={pickerTheme}
                     />
                     <Divider />
-                    <SectionLabel>Floor Texture</SectionLabel>
                     <MaterialTexturePicker
+                        label="Floor Texture"
                         items={floorMaterials}
                         currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.floorMaterial}
                         onSelect={(id) => patchRoomScene({ floorMaterial: id as FloorMaterial })}
@@ -380,13 +376,13 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         />
                     </PropField>
                     <Divider />
-                    <SectionLabel>{segWallSide === 'exterior' ? 'Exterior Wall Texture' : 'Interior Wall Texture'}</SectionLabel>
-                    <div style={{ fontSize: 11, color: COLOR.textFaint, marginTop: -4 }}>
+                    <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: -4 }}>
                         {segWallSide === 'exterior'
                             ? "Leave on \"Default\" to mirror the interior texture on this side."
                             : 'Applies to the inside face of this wall loop.'}
                     </div>
                     <MaterialTexturePicker
+                        label={segWallSide === 'exterior' ? 'Exterior Wall Texture' : 'Interior Wall Texture'}
                         items={wallMaterials}
                         currentId={segWallSide === 'exterior'
                             ? (segSceneConfig as any)?.exteriorWallMaterial
@@ -402,8 +398,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         theme={pickerTheme}
                     />
                     <Divider />
-                    <SectionLabel>Floor Texture</SectionLabel>
                     <MaterialTexturePicker
+                        label="Floor Texture"
                         items={floorMaterials}
                         currentId={segSceneConfig?.floorMaterial}
                         onSelect={(id) => patchRoomSceneById(seg.id, { floorMaterial: id as FloorMaterial })}
@@ -441,14 +437,39 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         </PropField>
                     </>}
                 </Card>
-
+                <PropField label="Style">
+                    <select
+                        value={opening.variant ?? 'door-swing-single'}
+                        onChange={e => patchOpening({ variant: e.target.value })}
+                        style={doorVariantSelectStyle}
+                    >
+                        <optgroup label="Single">
+                            <option value="door-swing-single">Swinging / Panel Door</option>
+                            <option value="door-pivot">Pivot Door</option>
+                            <option value="door-sliding">Sliding Door</option>
+                            <option value="door-pocket">Pocket Door</option>
+                            <option value="door-folding-single">Bi-Fold Door (2-leaf)</option>
+                        </optgroup>
+                        <optgroup label="Double">
+                            <option value="door-swing-double">Double Swing</option>
+                            <option value="door-swing-double-french">French Door</option>
+                            <option value="door-swing-double-arched">French Door (Arched)</option>
+                            <option value="door-sliding-double">Sliding Glass Door</option>
+                            <option value="door-folding">Bi-Fold (4-leaf)</option>
+                            <option value="door-folding-french">Bi-Fold (4-leaf, French)</option>
+                        </optgroup>
+                        <optgroup label="Other">
+                            <option value="door-garage">Garage</option>
+                        </optgroup>
+                    </select>
+                </PropField>
                 {opening.type === 'door' && (
                     <Card>
-                        <SectionLabel>Material</SectionLabel>
-                        <div style={{ fontSize: 11.5, color: COLOR.textFaint, marginTop: -4 }}>
+                        <div style={{ fontSize: 11.5, color: COLOR.textFaint, marginBottom: -4 }}>
                             Overrides the global door style for this door only. Leave on "Default" to follow the scene-wide setting.
                         </div>
                         <MaterialTexturePicker
+                            label="Material"
                             items={getMaterialsForDomain('door').map(({ key, def }) => ({
                                 id: key,
                                 label: def.label ?? key,
@@ -497,9 +518,9 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
                 {supportsFurnitureTexture(furniture.type) && (
                     <Card>
-                        <SectionLabel>Furniture Texture</SectionLabel>
                         {furnitureMaterials.length > 0 ? (
                             <MaterialTexturePicker
+                                label="Furniture Texture"
                                 items={furnitureMaterials}
                                 currentId={furniture.materialId}
                                 onSelect={(id) => patchFurniture({ materialId: id })}
@@ -507,10 +528,13 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                 theme={pickerTheme}
                             />
                         ) : (
-                            <div style={{ fontSize: 11.5, color: COLOR.textFaint }}>
-                                No furniture materials wired into the universal catalog yet —
-                                see the commented-out FURNITURE_MATERIALS import in universalMaterials.ts.
-                            </div>
+                            <>
+                                <SectionLabel>Furniture Texture</SectionLabel>
+                                <div style={{ fontSize: 11.5, color: COLOR.textFaint }}>
+                                    No furniture materials wired into the universal catalog yet —
+                                    see the commented-out FURNITURE_MATERIALS import in universalMaterials.ts.
+                                </div>
+                            </>
                         )}
                     </Card>
                 )}
@@ -557,8 +581,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 </Card>
                 {stairs && (
                     <Card>
-                        <SectionLabel>Step Material</SectionLabel>
                         <MaterialTexturePicker
+                            label="Step Material"
                             items={getMaterialsFor('stairs')}
                             currentId={stairs.materialId}
                             onSelect={(id) => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, materialId: id } : s) })}
@@ -567,26 +591,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         />
                     </Card>
                 )}
-                {/* <Card>
-                    <SectionLabel>Opening</SectionLabel>
-                    <PropField label="Auto Cutout">
-                        <Button variant="secondary" onClick={() => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, autoCutout: !(s.autoCutout ?? true) } : s) })}>
-                            {(stairs.autoCutout ?? true) ? '☑ On' : '☐ Off'}
-                        </Button>
-                    </PropField>
-               
-                    <PropField label="From Level">
-                        <span style={{ fontSize: 12, color: COLOR.textFaint }}>Level 1 (coming soon)</span>
-                    </PropField>
-                    <PropField label="To Level">
-                        <span style={{ fontSize: 12, color: COLOR.textFaint }}>Level 2 (coming soon)</span>
-                    </PropField>
-                    <PropField label="Opening Offset (m)">
-                        <NumInput value={stairs.openingOffset ?? 0.5} min={0} max={2} step={0.05}
-                            onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, openingOffset: v } : s) })} />
-                    </PropField>
-                </Card> */}
-
                 <Card>
                     <SectionLabel>Geometry</SectionLabel>
                     <PropField label="Width (m)">
@@ -647,8 +651,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
                 {outdoorObj.type === 'bench' && (
                     <Card>
-                        <SectionLabel>Material</SectionLabel>
                         <MaterialTexturePicker
+                            label="Material"
                             items={getMaterialsForDomain('outdoor').map(({ key, def }) => ({
                                 id: key, label: def.label ?? key, swatch: def.color, thumbnail: def.textureUrl,
                                 category: def.category as any, appliesTo: ['outdoor'],
@@ -859,22 +863,5 @@ function NumInput({ value, min, max, step, onChange }: { value: number; min: num
         <input type="number" min={min} max={max} step={step} value={value.toFixed(2)}
             onChange={e => onChange(Math.max(min, Math.min(max, parseFloat(e.target.value) || min)))}
             style={{ ...inputStyle, width: 72 }} />
-    )
-}
-
-function DuplicateIconButton({ onClick, title }: { onClick: () => void; title: string }) {
-    return (
-        <button
-            onClick={onClick}
-            title={title}
-            style={{
-                width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: 5, border: '1px solid rgba(99,102,241,0.3)',
-                background: 'rgba(99,102,241,0.08)', color: 'rgba(165,168,255,0.9)',
-                fontSize: 12, cursor: 'pointer', flexShrink: 0,
-            }}
-        >
-            ⎘
-        </button>
     )
 }

@@ -36,6 +36,7 @@ import { deriveFlatPlan2D } from './lib/export/flatten2d'
 import { createClient } from '@/lib/supabase/client'
 import { SunScenePanel } from '../ui/SunCompassPanel'
 import { PlacedStairs, StairsType } from './lib/stairs-constants'
+import { checkPlacementValidity, findNearestWallPoint } from './lib/lights-drag-utils'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -407,7 +408,64 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
             })
         })
     }
+    const getShapeNodeIds = useCallback((shapeId: string): string[] | null => {
+        const existing = (fpRef.current.closedShapes ?? []).find(sh => sh.id === shapeId)
+        if (existing) return existing.nodeIds
+        if (shapeId.startsWith('unconfigured::')) {
+            return shapeId.slice('unconfigured::'.length).split(',')
+        }
+        return null
+    }, [])
 
+    const deleteClosedShape = useCallback((shapeId: string) => {
+        const nodeIds = getShapeNodeIds(shapeId)
+        if (!nodeIds) return false
+        const targetSet = new Set(nodeIds)
+
+        const allFaces = deriveClosedPolygons(fpRef.current.lineNodes, fpRef.current.lineSegments)
+        const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`)
+
+        const edgeFaceCount = new Map<string, number>()
+        const targetEdges = new Set<string>()
+        for (const face of allFaces) {
+            const isTarget = face.length === nodeIds.length && face.every(id => targetSet.has(id))
+            for (let i = 0; i < face.length; i++) {
+                const key = edgeKey(face[i]!, face[(i + 1) % face.length]!)
+                edgeFaceCount.set(key, (edgeFaceCount.get(key) ?? 0) + 1)
+                if (isTarget) targetEdges.add(key)
+            }
+        }
+
+        const segIdsToRemove = new Set(
+            fpRef.current.lineSegments
+                .filter(seg => {
+                    for (let i = 0; i < seg.nodeIds.length - 1; i++) {
+                        const key = edgeKey(seg.nodeIds[i]!, seg.nodeIds[i + 1]!)
+                        if (targetEdges.has(key) && (edgeFaceCount.get(key) ?? 0) <= 1) return true
+                    }
+                    return false
+                })
+                .map(s => s.id)
+        )
+
+        pushHistory()
+        setFp(prev => {
+            const remainingSegments = prev.lineSegments.filter(s => !segIdsToRemove.has(s.id))
+            const referencedNodeIds = new Set(remainingSegments.flatMap(s => s.nodeIds))
+            const remainingNodes = prev.lineNodes.filter(n => !targetSet.has(n.id) || referencedNodeIds.has(n.id))
+
+            return {
+                ...prev,
+                closedShapes: (prev.closedShapes ?? []).filter(sh => sh.id !== shapeId),
+                lineSegments: remainingSegments,
+                lineNodes: remainingNodes,
+                openings: prev.openings.filter(o => !segIdsToRemove.has(o.roomId)),
+                wallDecor: (prev.wallDecor ?? []).filter(d => !segIdsToRemove.has(d.roomId)),
+                lights: (prev.lights ?? []).filter(l => !l.roomId || !segIdsToRemove.has(l.roomId)),
+            }
+        })
+        return true
+    }, [getShapeNodeIds, pushHistory])
 
     useEffect(() => {
         const topView = getBuiltInViews(fp).find(v => v.id === "preset-top")
@@ -569,16 +627,21 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 setDrawRect(null)
             }
             if ((key === 'delete' || key === 'backspace') && selectedId) {
+                const isKnownShape = (fpRef.current.closedShapes ?? []).some(sh => sh.id === selectedId)
+                    || selectedId.startsWith('unconfigured::')
+                if (isKnownShape) {
+                    deleteClosedShape(selectedId)
+                    setSelectedId(null)
+                    return
+                }
                 setFp(prev => {
                     const isRoom = prev.rooms.some(r => r.id === selectedId)
                     const isNode = prev.lineNodes.some(n => n.id === selectedId)
                     const isSeg = prev.lineSegments.some(s => s.id === selectedId)
-                    const isShape = (prev.closedShapes ?? []).some(sh => sh.id === selectedId)
-
+                    // isShape branch removed — handled above
                     if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
                     if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
                     if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                    if (isShape) return { ...prev, closedShapes: (prev.closedShapes ?? []).filter(sh => sh.id !== selectedId) }
                     const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
                     if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
                     const isStairs = (prev.stairs ?? []).some(s => s.id === selectedId)
@@ -949,6 +1012,34 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                         lineNodes: base.lineNodes.map(n => nodeIdSet.has(n.id) ? { ...n, x: n.x + ddx, z: n.z + ddz } : n),
                     }
                 })
+                return
+            }
+            case 'light': {
+                const light = (currentFp.lights ?? []).find(l => l.id === id)
+                if (!light) return
+                if (light.x !== undefined && light.z !== undefined) {
+                    // free-placed — simple snap move
+                    pushHistory()
+                    setFp(prev => ({ ...prev, lights: (prev.lights ?? []).map(l => l.id === id ? { ...l, x: snapM(wx), z: snapM(wz) } : l) }))
+                    return
+                }
+                const cand = findNearestWallPoint(wx, wz, currentFp)
+                if (!cand) return // nowhere valid to drop — Move stays armed, nothing happens
+                const validity = checkPlacementValidity(cand, currentFp, currentFp.roomHeight)
+                if (!validity.valid) return
+                pushHistory()
+                setFp(prev => ({
+                    ...prev,
+                    lights: (prev.lights ?? []).map(l => l.id !== id ? l : {
+                        ...l,
+                        segmentNodeIds: cand.segmentNodeIds,
+                        segmentT: cand.segmentT,
+                        roomId: cand.roomId,
+                        wall: cand.wall,
+                        position: cand.position,
+                        heightOffset: validity.onDoorHeader ? (validity.heightOffset ?? l.heightOffset) : l.heightOffset,
+                    }),
+                }))
                 return
             }
             default:
@@ -1650,6 +1741,11 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 setFp(prev => ({ ...prev, wallDecor: (prev.wallDecor ?? []).filter(d => d.id !== decorToDelete.id) }))
                 return
             }
+            const shapeToDelete = hitClosedShape(wx, wz)
+            if (shapeToDelete) {
+                deleteClosedShape(shapeToDelete.id)
+                return
+            }
             const room = hitRoom(wx, wz)
             if (room) {
                 pushHistory();
@@ -1659,6 +1755,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     openings: prev.openings.filter(o => o.roomId !== room.id),
                 }))
             }
+
         }
         if (isStairsTool) {
             const stairsType = tool as StairsType
@@ -2173,48 +2270,58 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 },
             },
             {
-                // Single entry replaces both the old early partial check AND the
-                // late full check — handles isFree / wall / segment in one place,
-                // always returns via runActiveDrag's `return true`, so it no
-                // longer falls through into hover-detection for wall/segment
-                // lights the way the old duplicate block did.
                 name: 'lightDrag',
                 isActive: () => !!lightDragRef?.current,
                 apply: (wx, wz) => {
                     const ld = lightDragRef!.current!
+
+                    // Free-placed lights (ceiling pendant, floor lamp, etc.) aren't
+                    // wall-constrained — keep existing behavior untouched.
                     if (ld.isFree) {
                         setFp(prev => ({
                             ...prev,
                             lights: (prev.lights ?? []).map(l => l.id === ld.id ? { ...l, x: snapM(wx), z: snapM(wz) } : l)
                         }))
-                    } else if (ld.wall && ld.roomId) {
-                        const room = fpRef.current.rooms.find(r => r.id === ld.roomId)
-                        if (room) {
-                            const isH = ld.wall === 'north' || ld.wall === 'south'
-                            const wallLen = isH ? room.width : room.depth
-                            const rawPos = isH ? wx - room.x : wz - room.z
-                            setFp(prev => ({
-                                ...prev,
-                                lights: (prev.lights ?? []).map(l => {
-                                    if (l.id !== ld.id) return l
-                                    const clamped = Math.max(0.2, Math.min(wallLen - 0.2, rawPos))
-                                    return { ...l, position: parseFloat(clamped.toFixed(2)) }
-                                })
-                            }))
-                        }
-                    } else if (ld.segmentNodeIds) {
-                        const a = fpRef.current.lineNodes.find(n => n.id === ld.segmentNodeIds![0])
-                        const b = fpRef.current.lineNodes.find(n => n.id === ld.segmentNodeIds![1])
-                        if (a && b) {
-                            const dx = b.x - a.x, dz = b.z - a.z
-                            const segLen = Math.hypot(dx, dz)
-                            const t = Math.max(0, Math.min(1, ((wx - a.x) * dx + (wz - a.z) * dz) / (segLen * segLen)))
-                            setFp(prev => ({
-                                ...prev,
-                                lights: (prev.lights ?? []).map(l => l.id === ld.id ? { ...l, segmentT: t, position: t * segLen } : l)
-                            }))
-                        }
+                        document.body.style.cursor = 'grabbing'
+                        return
                     }
+
+                    // Wall-anchored lights now search ALL wall segments/room walls for
+                    // the nearest valid point, instead of being locked to the segment
+                    // they started on. This is what lets a sconce be dragged from one
+                    // wall onto a completely different one.
+                    const cand = findNearestWallPoint(wx, wz, fpRef.current)
+                    if (!cand) {
+                        document.body.style.cursor = 'not-allowed'
+                        return // no wall nearby — don't move, effectively holds last valid spot
+                    }
+
+                    const validity = checkPlacementValidity(cand, fpRef.current, fpRef.current.roomHeight)
+                    if (!validity.valid) {
+                        document.body.style.cursor = 'not-allowed'
+                        return // over a door body / window — don't move, holds last valid spot
+                    }
+
+                    document.body.style.cursor = 'grabbing'
+                    setFp(prev => ({
+                        ...prev,
+                        lights: (prev.lights ?? []).map(l => {
+                            if (l.id !== ld.id) return l
+                            return {
+                                ...l,
+                                // Clear whichever anchor style isn't being used this time,
+                                // so a light moved from a legacy room wall onto a line
+                                // segment (or vice versa) doesn't keep stale fields that
+                                // hitLight/rendering would misread.
+                                segmentNodeIds: cand.segmentNodeIds,
+                                segmentT: cand.segmentT,
+                                roomId: cand.roomId,
+                                wall: cand.wall,
+                                position: cand.position,
+                                heightOffset: validity.onDoorHeader ? (validity.heightOffset ?? l.heightOffset) : l.heightOffset,
+                            }
+                        })
+                    }))
                 },
             },
         ]
@@ -2966,14 +3073,6 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                         isWallDecorTool={isWallDecorTool}
                         selectedFurnitureType={selectedFurnitureType}
                     />
-
-                    {/* Shortcut legend */}
-                    <div style={{ position: 'absolute', top: 12, right: 12, background: THEME.bgPanel, border: `1px solid ${THEME.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 10, color: THEME.textMuted, lineHeight: 1.9, boxShadow: THEME.shadow }}>
-                        {[['V', 'Select'], ['R', 'Room'], ['L', 'Line Wall'], ['B', 'Bend Wall'], ['D', 'Door'], ['N', 'Window'], ['⌫', 'Delete'], ['⌘Z', 'Undo'], ['ESC', 'Cancel'], ['Scroll', 'Zoom'], ['Mid drag', 'Pan'], ['Space+drag', 'Pan']].map(([k, l]) => (
-                            <div key={k}><kbd style={{ background: '#F0F0EE', border: `1px solid ${THEME.borderStrong}`, borderRadius: 3, padding: '0 3px', fontFamily: 'monospace', marginRight: 4, color: THEME.text }}>{k}</kbd>{l}</div>
-                        ))}
-                    </div>
-
                     {/* Annotation editor */}
                     {editingAnnotation && (
                         <div style={{ position: 'fixed', left: Math.min(editingAnnotation.x - 80, window.innerWidth - 260), top: Math.min(editingAnnotation.y - 40, window.innerHeight - 120), zIndex: 300, background: THEME.bgPanel, border: `1px solid ${THEME.accent}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: THEME.shadowLg }}>
@@ -3119,6 +3218,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 document.body
             )}
             <FloatingDock
+                orientation="vertical"
                 activeId={sheetOpen ? rightTab : null}
                 items={[
                     {
@@ -3176,7 +3276,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     },
                 ]}
             />
-            {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection && tool === 'select' ? (
+            {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection ? (
                 <div
                     onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
                     style={{
@@ -3252,10 +3352,10 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     visible={!isDraggingSelection && tool === 'select'}
                     onDuplicate={handleDuplicateSelected}
                     onDelete={() => {
-                        // CHANGED — was single-id, now handles the full selectedIds set.
-                        // Falls back to the old single-id path when only one thing is
-                        // selected, so behavior for the common case is unchanged.
-                        const idsToDelete = selectedIds.filter(id => !id.includes('::wall::'))
+                        const rawIds = selectedIds.length > 0
+                            ? selectedIds
+                            : (selectedId ? [selectedId] : [])
+                        const idsToDelete = rawIds.filter(id => !id.includes('::wall::'))
                         if (idsToDelete.length === 0) return
                         const idSet = new Set(idsToDelete)
 
@@ -3263,13 +3363,12 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                             ...prev,
                             rooms: prev.rooms.filter(r => !idSet.has(r.id)),
                             openings: prev.openings.filter(o =>
-                                !idSet.has(o.id) &&
-                                !(o.roomId && idSet.has(o.roomId))   // cascade: opening on a deleted room/segment
+                                !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))
                             ),
                             lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
                             lineSegments: prev.lineSegments
                                 .filter(s => !idSet.has(s.id))
-                                .filter(s => !s.nodeIds.some(nid => idSet.has(nid))), // cascade: segment referencing a deleted node
+                                .filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
                             closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
                             furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
                             stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
@@ -3280,6 +3379,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                         }))
                         selectedIdsRef.current = []
                         setSelectedIds([])
+                        setSelectedId(null)
                     }}
                     onBend={handleBendSelectedSegment}
                     onMove={handleArmMove}

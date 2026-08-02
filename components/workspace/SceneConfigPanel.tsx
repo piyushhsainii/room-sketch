@@ -2,7 +2,6 @@ import { useMemo, useState } from "react"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
 import { DEFAULT_SCENE_CONFIG, DOOR_STYLES, FLOOR_MATERIALS, FloorMaterial, FloorPlanState, WALL_COLORS } from "./lib/constants"
 import { deriveClosedPolygons } from "@/lib/helpers"
-import { MaterialCategory, toMaterialItems } from "./MaterialPicker"
 
 export function SceneConfigPanel({
     fp, config, onChange, onChangeFp, embedded
@@ -266,6 +265,103 @@ function CfgToggle({ label, value, onChange }: { label: string; value: boolean; 
                 <div style={{ position: 'absolute', top: 2, left: value ? 13 : 2, width: 12, height: 12, borderRadius: '50%', background: 'white', transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }} />
             </div>
             <span style={{ fontSize: 11, color: value ? 'var(--fp-accent)' : 'var(--fp-text-muted)' }}>{label}</span>
+        </div>
+    )
+}
+
+type MaterialItem = { key: string; label: string; color?: string; thumbnail?: string; icon?: string }
+
+// Normalizes the various material-source shapes used across the app into a
+// common MaterialItem[]:
+//  - FLOOR_MATERIALS-style: { id, label, preview (emoji), color, roughness }[]
+//  - simple option-style:   { value, label, color?, thumbnail? }[]
+//  - keyed map:             Record<key, { label, color?, thumbnail? }>
+function toMaterialItems(
+    materials:
+        | { id: string; label: string; preview?: string; color?: string; thumbnail?: string }[]
+        | { value: string; label: string; color?: string; thumbnail?: string }[]
+        | Record<string, { label: string; color?: string; thumbnail?: string }>
+): MaterialItem[] {
+    if (Array.isArray(materials)) {
+        return materials.map(m => ({
+            key: 'id' in m ? m.id : m.value,
+            label: m.label,
+            color: m.color,
+            thumbnail: m.thumbnail,
+            icon: 'preview' in m ? m.preview : undefined,
+        }))
+    }
+    return Object.entries(materials).map(([key, def]) => ({ key, label: def.label, color: def.color, thumbnail: def.thumbnail }))
+}
+
+// Horizontal-scroll material picker: 56x56 fixed-size tiles, checkmark badge
+// on the selected tile. Tiles use a fixed width (not flex-grow) inside a
+// non-wrapping flex row with overflow-x scroll — unlike a wrapping grid,
+// there's no "last row" for the browser to stretch, so a category with only
+// 1-2 items renders at the same tile size as one with a dozen.
+function MaterialCategory({
+    icon, title, items, currentVal, onSelect,
+}: {
+    icon: string
+    title: string
+    items: MaterialItem[]
+    currentVal: string
+    onSelect: (val: string) => void
+}) {
+    return (
+        <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                <span style={{ fontSize: 11 }}>{icon}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--fp-text-muted)' }}>{title}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+                {items.map(item => {
+                    const selected = item.key === currentVal
+                    return (
+                        <button
+                            key={item.key}
+                            type="button"
+                            title={item.label}
+                            onClick={() => onSelect(item.key)}
+                            style={{
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                                flex: '0 0 auto', width: 56,
+                                background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+                            }}
+                        >
+                            <div
+                                style={{
+                                    position: 'relative',
+                                    width: 56, height: 56, borderRadius: 8,
+                                    background: item.thumbnail ? undefined : (item.color ?? 'var(--fp-bg-subtle)'),
+                                    border: selected ? '2px solid var(--fp-accent)' : '1px solid var(--fp-border-strong)',
+                                    boxShadow: selected ? '0 0 0 3px var(--fp-accent-bg)' : 'none',
+                                    overflow: 'hidden', transition: 'border-color 150ms, box-shadow 150ms',
+                                }}
+                            >
+                                {item.thumbnail && (
+                                    <img src={item.thumbnail} alt="" loading="lazy" decoding="async"
+                                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                                )}
+                                {selected && (
+                                    <div style={{
+                                        position: 'absolute', top: 3, right: 3, width: 16, height: 16, borderRadius: '50%',
+                                        background: 'var(--fp-accent)', color: 'white', fontSize: 10, fontWeight: 700,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                    }}>✓</div>
+                                )}
+                            </div>
+                            <span style={{
+                                fontSize: 9, color: 'var(--fp-text-muted)', textAlign: 'center', lineHeight: 1.2,
+                                maxWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                                {item.label}
+                            </span>
+                        </button>
+                    )
+                })}
+            </div>
         </div>
     )
 }

@@ -1,272 +1,305 @@
-// components/workspace/MaterialPicker.tsx
-//
-// Shared premium asset-browser-style material picker — used by both
-// MaterialsPanel.tsx (the dedicated Materials dock tab) and
-// SceneConfigPanel.tsx (the Scene/Rooms tab's inline material pickers), so
-// there's exactly one visual language for "pick a material" across the app
-// instead of two divergent implementations.
-'use client'
+import React, { useMemo, useState } from 'react'
+import { UniversalMaterial } from './texture/universalMaterials'
+import { COLOR, EASE, RADIUS, SPACE } from './texture/inspector-ui'
 
-import React, { useRef, useState } from 'react'
+const MAX_CATEGORY_HEIGHT = 216 // ~3 rows before internal scroll kicks in
+const DEFAULT_SWATCH = 'repeating-conic-gradient(#D9D5C8 0% 25%, #FFFFFF 0% 50%) 0 0/10px 10px'
 
-export const MP_THEME = {
-    bg: '#FAFAFB',
-    card: '#FFFFFF',
-    border: '#E5E7EB',
-    borderStrong: '#D1D5DB',
-    text: '#0F172A',
-    textMuted: '#6B7280',
-    textFaint: '#9CA3AF',
-    accent: '#4F46E5',
-    accentBg: 'rgba(79,70,229,0.08)',
-    accentGlow: '0 0 0 3px rgba(79,70,229,0.18)',
-    hoverBg: '#F3F4F6',
-    shadow: '0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.06)',
-    shadowMd: '0 4px 12px rgba(15,23,42,0.08), 0 2px 4px rgba(15,23,42,0.04)',
-}
-const T = MP_THEME
+export function MaterialTexturePicker({
+    items,
+    currentId,
+    onSelect,
+    onClear,
+    theme,
+    label,
+}: {
+    items: UniversalMaterial[]
+    currentId: string | undefined | null
+    onSelect: (id: string) => void
+    onClear: () => void
+    theme: { border: string; borderStrong: string; textMuted: string }
+    // Optional section label (e.g. "Floor Texture"). When provided it's rendered
+    // on the same line as the search toggle, replacing the separate
+    // SectionLabel + Divider that used to sit above this component.
+    label?: string
+}) {
+    const [query, setQuery] = useState('')
+    const [searchOpen, setSearchOpen] = useState(false)
+    // The picker now opens on a single compact "current selection" row.
+    // The full grid only mounts once the user taps that row (or the search icon).
+    const [expanded, setExpanded] = useState(false)
+    const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
-export function labelize(key: string) {
-    return key
-        .split(/[-_]/)
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ')
-}
+    const current = items.find(m => m.id === currentId)
 
-export type MaterialItem = { key: string; label: string; color: string; preview?: string }
+    const filtered = useMemo(() => {
+        if (!query.trim()) return items
+        const q = query.trim().toLowerCase()
+        return items.filter(m => m.label.toLowerCase().includes(q))
+    }, [items, query])
 
-/**
- * Normalizes either a Record<string, {color, preview?}> (WALL_MAT_DEFS /
- * FLOOR_MAT_DEFS shape) or an array of {id, label, color, preview?}
- * (FLOOR_MATERIALS / WALL_COLORS shape) into one common MaterialItem[]
- * shape, so both call sites can feed this the same picker component
- * regardless of which underlying data source they use.
- */
-export function toMaterialItems(
-    source:
-        | Record<string, { color: string; preview?: string }>
-        | { id: string; label?: string; color: string; preview?: string }[]
-): MaterialItem[] {
-    if (Array.isArray(source)) {
-        return source.map(s => ({ key: s.id, label: s.label ?? labelize(s.id), color: s.color, preview: s.preview }))
-    }
-    return Object.entries(source).map(([key, def]) => ({ key, label: labelize(key), color: def.color, preview: def.preview }))
-}
+    const groups = useMemo(() => {
+        const map = new Map<string, UniversalMaterial[]>()
+        for (const m of filtered) {
+            const cat = (m as any).category || 'Miscellaneous'
+            if (!map.has(cat)) map.set(cat, [])
+            map.get(cat)!.push(m)
+        }
+        return Array.from(map.entries())
+    }, [filtered])
 
-// ── Horizontal wheel-scroll row ──────────────────────────────────────────
-// FIX: previously this had no overflow containment, so within a narrow Dock
-// panel the row's content forced the PARENT wider instead of scrolling,
-// which is what hard-clipped the last card against the panel edge with no
-// visual cue it was scrollable. `minWidth: 0` on every flex ancestor down
-// to this row is required for `overflow-x: auto` to actually engage instead
-// of the flex item refusing to shrink below its content size. A right-edge
-// fade mask now also signals "there's more, keep scrolling" instead of a
-// hard clip.
-export function HScrollRow({ children }: { children: React.ReactNode }) {
-    const ref = useRef<HTMLDivElement>(null)
-    const [showFade, setShowFade] = useState(true)
+    const showCategories = items.length > 12 // small palettes (e.g. door/outdoor) skip the grouping UI
 
-    const updateFade = () => {
-        const el = ref.current
-        if (!el) return
-        const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2
-        setShowFade(el.scrollWidth > el.clientWidth && !atEnd)
-    }
-
-    const onWheel = (e: React.WheelEvent) => {
-        const el = ref.current
-        if (!el) return
-        if (el.scrollWidth <= el.clientWidth) return
-        e.preventDefault()
-        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
-        el.scrollBy({ left: delta, behavior: 'auto' })
-        requestAnimationFrame(updateFade)
+    const openSearch = () => {
+        setSearchOpen(true)
+        setExpanded(true)
     }
 
     return (
-        <div style={{ position: 'relative', minWidth: 0 }}>
-            <div
-                ref={ref}
-                onWheel={onWheel}
-                onScroll={updateFade}
-                className="fp-hscroll"
+        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.xs }}>
+            {/* Header row: label + click-to-expand search, ALWAYS on a single line.
+                justify-content: space-between anchors the label left / control right
+                regardless of whether label is present, so this can't wrap onto two rows. */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.xs, minHeight: 26 }}>
+                {label && !searchOpen && (
+                    <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '-0.01em', textTransform: 'uppercase', color: COLOR.textMuted, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                        {label}
+                    </span>
+                )}
+                {searchOpen ? (
+                    <input
+                        autoFocus
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
+                        onBlur={() => { if (!query.trim()) setSearchOpen(false) }}
+                        placeholder={label ? `Search ${label.toLowerCase()}…` : 'Search textures…'}
+                        style={{
+                            height: 26, borderRadius: RADIUS.sm, flex: 1,
+                            border: `1px solid ${theme.borderStrong}`,
+                            background: COLOR.bgCard, color: COLOR.text, fontSize: 12,
+                            padding: '0 8px', outline: 'none', minWidth: 0,
+                        }}
+                    />
+                ) : (
+                    <button
+                        onClick={openSearch}
+                        title="Search textures"
+                        style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: 24, height: 24, borderRadius: RADIUS.sm, border: 'none',
+                            background: 'transparent', cursor: 'pointer', color: COLOR.textMuted,
+                            flexShrink: 0, marginLeft: 'auto',
+                        }}
+                    >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="11" cy="11" r="7" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                    </button>
+                )}
+            </div>
+
+            {/* Compact single-row summary of the current selection. Tap to expand the full grid. */}
+            <button
+                onClick={() => setExpanded(e => !e)}
                 style={{
-                    display: 'flex', gap: 10, overflowX: 'auto', overflowY: 'hidden',
-                    scrollSnapType: 'x proximity', scrollBehavior: 'smooth',
-                    paddingBottom: 2, marginBottom: -2, minWidth: 0,
+                    display: 'flex', alignItems: 'center', gap: SPACE.xs, width: '100%',
+                    padding: '2px 0', background: 'transparent', border: 'none', cursor: 'pointer',
+                    textAlign: 'left',
                 }}
             >
-                {/* Visible-but-thin scrollbar — an earlier version hid this
-                    entirely per the original "hide the scrollbar" spec, but
-                    that made it genuinely ambiguous whether a row was
-                    scrollable at all. A slim, low-contrast scrollbar removes
-                    that ambiguity while staying visually quiet. */}
-                <style>{`
-                    .fp-hscroll::-webkit-scrollbar{height:6px}
-                    .fp-hscroll::-webkit-scrollbar-track{background:transparent}
-                    .fp-hscroll::-webkit-scrollbar-thumb{background:${T.borderStrong};border-radius:99px}
-                    .fp-hscroll::-webkit-scrollbar-thumb:hover{background:${T.textFaint}}
-                    .fp-hscroll{scrollbar-width:thin;scrollbar-color:${T.borderStrong} transparent}
-                `}</style>
-                {children}
-            </div>
-            {showFade && (
                 <div
-                    aria-hidden
                     style={{
-                        position: 'absolute', top: 0, right: 0, bottom: 2, width: 28,
-                        background: `linear-gradient(to right, transparent, ${T.card})`,
-                        pointerEvents: 'none',
+                        width: 40, height: 40, borderRadius: RADIUS.md, overflow: 'hidden', flexShrink: 0,
+                        background: current?.thumbnail ? undefined : (current?.swatch ?? DEFAULT_SWATCH),
                     }}
-                />
+                >
+                    {current?.thumbnail && (
+                        <img src={current.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    )}
+                </div>
+                <span style={{ fontSize: 12.5, color: COLOR.text, fontWeight: 500, flex: 1 }}>
+                    {current?.label ?? 'Default'}
+                </span>
+                <svg
+                    width="10" height="10" viewBox="0 0 10 10"
+                    style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: `transform 200ms ${EASE}`, flexShrink: 0 }}
+                >
+                    <path d="M2 3 L5 7 L8 3" stroke={COLOR.textMuted} strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </button>
+
+            {expanded && (
+                <>
+                    {/* Default / clear tile, always visible above the groups.
+                        CSS grid (not flex-wrap) so a lone tile — or any
+                        under-filled row — keeps the same column width as a
+                        full row instead of stretching to fill the space. */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 80px))', gap: SPACE.xxs }}>
+                        <TextureTile
+                            label="Default"
+                            selected={!currentId}
+                            onClick={onClear}
+                            theme={theme}
+                            swatch={DEFAULT_SWATCH}
+                            title="Use scene default"
+                        />
+                        {!showCategories && filtered.map(m => (
+                            <TextureTile
+                                key={m.id}
+                                label={m.label}
+                                selected={currentId === m.id}
+                                onClick={() => onSelect(m.id)}
+                                onHover={() => prefetch(m)}
+                                swatch={m.swatch}
+                                thumbnail={m.thumbnail}
+                                theme={theme}
+                                title={m.label}
+                            />
+                        ))}
+                    </div>
+
+                    {showCategories && groups.map(([cat, matList]) => {
+                        const isCollapsed = collapsed[cat] ?? true
+                        return (
+                            <div key={cat} style={{ borderTop: `1px solid ${theme.border}`, paddingTop: SPACE.xxs }}>
+                                <button
+                                    onClick={() => setCollapsed(c => ({ ...c, [cat]: !isCollapsed }))}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+                                        background: 'transparent', border: 'none', cursor: 'pointer',
+                                        padding: '4px 2px', color: COLOR.textMuted,
+                                    }}
+                                >
+                                    <svg
+                                        width="10" height="10" viewBox="0 0 10 10"
+                                        style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: `transform 200ms ${EASE}`, flexShrink: 0 }}
+                                    >
+                                        <path d="M2 3 L5 7 L8 3" stroke={COLOR.textMuted} strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                    <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '-0.01em', textTransform: 'uppercase' }}>
+                                        {cat}
+                                    </span>
+                                    <span style={{
+                                        fontSize: 10, fontWeight: 600, color: COLOR.textFaint,
+                                        background: COLOR.bgSubtle, borderRadius: 999, padding: '1px 7px', marginLeft: 2,
+                                    }}>
+                                        {matList.length}
+                                    </span>
+                                </button>
+
+                                {!isCollapsed && (
+                                    <div
+                                        style={{
+                                            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 80px))', gap: SPACE.xxs,
+                                            maxHeight: MAX_CATEGORY_HEIGHT, overflowY: 'auto',
+                                            padding: 0,
+                                        }}
+                                    >
+                                        {matList.map(m => (
+                                            <TextureTile
+                                                key={m.id}
+                                                label={m.label}
+                                                selected={currentId === m.id}
+                                                onClick={() => onSelect(m.id)}
+                                                onHover={() => prefetch(m)}
+                                                swatch={m.swatch}
+                                                thumbnail={m.thumbnail}
+                                                theme={theme}
+                                                title={m.label}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+
+                    {showCategories && groups.length === 0 && (
+                        <div style={{ fontSize: 11.5, color: COLOR.textFaint, padding: '8px 2px' }}>
+                            No textures match "{query}"
+                        </div>
+                    )}
+                </>
             )}
         </div>
     )
 }
 
-// ── Material card: 56x56 preview, label below, selected checkmark+glow, hover lift ──
-export function MaterialCard({
-    item, selected, onSelect,
-}: {
-    item: MaterialItem
-    selected: boolean
-    onSelect: () => void
-}) {
-    const [hover, setHover] = useState(false)
-    const hasImagePreview = item.preview?.startsWith('/')
+// Hover-prefetch: with thumbnails lazy-loaded in the tile itself, this makes
+// select-on-first-click feel instant for the item the user is about to pick,
+// without forcing everything to load upfront.
+function prefetch(m: UniversalMaterial) {
+    if (m.textureUrl) {
+        const img = new Image()
+        img.src = m.textureUrl
+    }
+}
 
+function TextureTile({
+    label, selected, onClick, onHover, swatch, thumbnail, theme, title,
+}: {
+    label: string
+    selected: boolean
+    onClick: () => void
+    onHover?: () => void
+    swatch: string
+    thumbnail?: string
+    theme: { border: string; borderStrong: string; textMuted: string }
+    title: string
+}) {
     return (
         <button
-            onClick={onSelect}
-            onMouseEnter={() => setHover(true)}
-            onMouseLeave={() => setHover(false)}
-            title={item.label}
+            onClick={onClick}
+            onMouseEnter={onHover}
+            title={title}
             style={{
-                flexShrink: 0, scrollSnapAlign: 'start',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                width: 64, border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                // Fills its CSS grid cell (grid columns are fixed-size and shared
+                // across every row — see the grid containers below — so this no
+                // longer needs its own width logic or a flex-basis to avoid
+                // stretching on under-filled rows).
+                width: '100%',
+                padding: '4px 2px', borderRadius: RADIUS.md, cursor: 'pointer',
+                border: selected ? `2px solid ${COLOR.accent}` : 'none',
+                background: selected ? COLOR.accentSoft : 'transparent',
+                boxShadow: selected ? `0 0 0 3px ${COLOR.accentSoft}` : 'none',
+                transition: `border-color 180ms ${EASE}, box-shadow 180ms ${EASE}, transform 180ms ${EASE}`,
             }}
+            onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.96)')}
+            onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
         >
-            <div style={{
-                position: 'relative', width: 56, height: 56, borderRadius: 10,
-                backgroundColor: hasImagePreview ? '#EEE' : item.color,
-                backgroundImage: hasImagePreview ? `url(${item.preview})` : undefined,
-                backgroundSize: 'cover', backgroundPosition: 'center',
-                border: selected ? `2px solid ${T.accent}` : `1px solid ${T.border}`,
-                boxShadow: selected ? T.accentGlow : hover ? T.shadowMd : T.shadow,
-                transform: hover && !selected ? 'translateY(-2px)' : selected ? 'scale(1.03)' : 'none',
-                transition: 'transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease',
-            }}>
-                {selected && (
-                    <div style={{
-                        position: 'absolute', bottom: -4, right: -4, width: 18, height: 18, borderRadius: '50%',
-                        background: T.accent, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.25)', border: '2px solid white',
-                    }}>
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                    </div>
-                )}
-            </div>
-            <span style={{
-                fontSize: 11, fontWeight: selected ? 600 : 500, color: selected ? T.accent : T.textMuted,
-                textAlign: 'center', lineHeight: 1.2, maxWidth: 64, overflow: 'hidden', textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-            }}>
-                {item.label}
-            </span>
-        </button>
-    )
-}
-
-// ── Category section: icon + uppercase title, horizontal scroll row of cards ──
-export function MaterialCategory({
-    icon, title, items, currentVal, onSelect,
-}: {
-    icon: string
-    title: string
-    items: MaterialItem[]
-    currentVal: string
-    onSelect: (key: string) => void
-}) {
-    return (
-        <div style={{ marginBottom: 18, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                <span style={{ fontSize: 13 }}>{icon}</span>
-                <span style={{
-                    fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                    color: T.accent,
-                }}>{title}</span>
-                <div style={{ flex: 1, height: 1, background: T.border, marginLeft: 4 }} />
-            </div>
-            <HScrollRow>
-                {items.map(item => (
-                    <MaterialCard
-                        key={item.key}
-                        item={item}
-                        selected={currentVal === item.key}
-                        onSelect={() => onSelect(item.key)}
-                    />
-                ))}
-            </HScrollRow>
-        </div>
-    )
-}
-
-// ── Collapsible card wrapper (rooms / areas) ────────────────────────────────
-export function CollapsibleCard({
-    title, subtitle, defaultOpen = false, children,
-}: {
-    title: string
-    subtitle?: string
-    defaultOpen?: boolean
-    children: React.ReactNode
-}) {
-    const [open, setOpen] = useState(defaultOpen)
-    return (
-        <div style={{
-            background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
-            marginBottom: 10, overflow: 'hidden', boxShadow: T.shadow, minWidth: 0,
-        }}>
-            <button
-                onClick={() => setOpen(o => !o)}
+            <div
                 style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '12px 14px', background: 'transparent', border: 'none', cursor: 'pointer',
-                    textAlign: 'left',
+                    position: 'relative',
+                    width: '100%', aspectRatio: '1 / 1', borderRadius: RADIUS.sm,
+                    // No more white card background/border behind the preview —
+                    // the swatch or thumbnail now fills the tile directly.
+                    background: thumbnail ? undefined : swatch,
+                    overflow: 'hidden',
+                    transition: `transform 180ms ${EASE}`,
                 }}
             >
-                <svg
-                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={T.textMuted} strokeWidth="2.6"
-                    strokeLinecap="round" strokeLinejoin="round"
-                    style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 200ms ease-in-out', flexShrink: 0 }}
-                >
-                    <polyline points="9 18 15 12 9 6" />
-                </svg>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{title}</div>
-                    {subtitle && <div style={{ fontSize: 11, color: T.textFaint, marginTop: 1 }}>{subtitle}</div>}
-                </div>
-            </button>
-            <div style={{
-                maxHeight: open ? 900 : 0, opacity: open ? 1 : 0,
-                transition: 'max-height 200ms ease-in-out, opacity 200ms ease-in-out',
-                overflow: 'hidden',
-            }}>
-                <div style={{ padding: '4px 14px 16px', minWidth: 0 }}>{children}</div>
+                {/* NOTE: m.thumbnail currently equals the full-res textureUrl for every
+                    registry entry with a real texture (see thumbnailFromDef in
+                    textureCategorize.ts — there's no lighter preview asset yet).
+                    loading="lazy" defers fetch until the tile is in/near the viewport,
+                    but any tile that *is* visible still pulls the full-res file.
+                    Generating real thumbnail-sized previews is a separate follow-up. */}
+                {thumbnail && (
+                    <img
+                        src={thumbnail}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                )}
             </div>
-        </div>
-    )
-}
-
-export function SectionHeading({ children }: { children: React.ReactNode }) {
-    return (
-        <div style={{
-            fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
-            color: T.textFaint, padding: '18px 2px 10px', borderBottom: `1px solid ${T.border}`, marginBottom: 14,
-        }}>
-            {children}
-        </div>
+            <span style={{ fontSize: 9, fontWeight: 400, color: '#000000', letterSpacing: '-0.01em', textAlign: 'center', lineHeight: 1.2, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {label}
+            </span>
+        </button>
     )
 }

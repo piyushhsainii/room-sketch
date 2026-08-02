@@ -2,10 +2,10 @@ import {
   DoorMaterial,
   DoorStyle,
   FloorMaterial,
-  PlacedStairs,
   WallMaterial,
 } from "@/components/workspace/lib/constants";
 import { PlacedFurniture } from "@/components/workspace/lib/furniture-constants";
+import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
 import { SceneLight } from "@/components/workspace/lights-constant";
 
 export interface WallPoint {

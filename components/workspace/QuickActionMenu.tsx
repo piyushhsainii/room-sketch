@@ -24,7 +24,7 @@ const ACTIONS_BY_ENTITY: Record<
     opening: ['properties', 'duplicate', 'delete'],     // doors/windows — same, slide-along-wall stays free
     shape: ['properties', 'move', 'duplicate', 'delete'],
     node: ['properties', 'delete'],
-    light: ['properties', 'duplicate', 'delete'],
+    light: ['properties', 'move', 'duplicate', 'delete'],
 }
 
 const ICONS: Record<QuickAction, React.ReactNode> = {

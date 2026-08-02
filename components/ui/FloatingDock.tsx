@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
  * Note: Use position fixed according to your needs
  * Desktop navbar is better positioned at the bottom
  * Mobile navbar is better positioned at bottom right.
+ * Vertical dock is better positioned at a side edge (e.g. right-4 top-1/2 -translate-y-1/2).
  **/
 
 import { IconLayoutNavbarCollapse } from "@tabler/icons-react";
@@ -28,19 +29,70 @@ type DockItem = {
 export const FloatingDock = ({
     items,
     activeId,
+    orientation = "horizontal",
     desktopClassName,
     mobileClassName,
 }: {
     items: DockItem[];
     activeId?: string | null;
+    // "vertical" renders the plain stacked pill dock (matches the reference
+    // screenshot: static icon size, no magnify-on-hover physics). Mobile
+    // collapse behavior is unchanged either way.
+    orientation?: "horizontal" | "vertical";
     desktopClassName?: string;
     mobileClassName?: string;
 }) => {
+    if (orientation === "vertical") {
+        return <FloatingDockVertical items={items} activeId={activeId} className={desktopClassName} />;
+    }
     return (
         <>
             <FloatingDockDesktop items={items} activeId={activeId} className={desktopClassName} />
             <FloatingDockMobile items={items} activeId={activeId} className={mobileClassName} />
         </>
+    );
+};
+
+// ── New: static vertical pill dock ──
+// Matches the reference: a single rounded-full bg-gray-50 pill, icons
+// stacked with even spacing, no size magnification on hover — just a
+// subtle background highlight on hover/active.
+const FloatingDockVertical = ({
+    items,
+    activeId,
+    className,
+}: {
+    items: DockItem[];
+    activeId?: string | null;
+    className?: string;
+}) => {
+    return (
+        <div
+            className={cn(
+                "flex flex-col items-center gap-1 rounded-full bg-gray-50 p-2",
+                className,
+            )}
+        >
+            {items.map((item) => {
+                const isActive = !!item.id && item.id === activeId;
+                return (
+                    <button
+                        key={item.title}
+                        type="button"
+                        title={item.title}
+                        onClick={item.onClick}
+                        className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-full transition-colors",
+                            isActive
+                                ? "bg-blue-100 text-blue-600"
+                                : "text-neutral-600 hover:bg-gray-200",
+                        )}
+                    >
+                        <div className="h-4 w-4">{item.icon}</div>
+                    </button>
+                );
+            })}
+        </div>
     );
 };
 

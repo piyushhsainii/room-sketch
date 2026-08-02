@@ -2,6 +2,7 @@ import {
   DOOR_MATERIALS,
   FLOOR_MAT_DEFS,
   FURNITURE_MATERIALS,
+  MaterialDomain,
   WALL_MAT_DEFS,
   WALL_MATERIALS,
 } from "../lib/constants";
@@ -21,13 +22,6 @@ export type MaterialCategory =
   | "leather"
   | "outdoor"
   | "wicker";
-
-export type MaterialDomain =
-  | "wall"
-  | "floor"
-  | "door"
-  | "furniture"
-  | "outdoor";
 
 export type MaterialDef = {
   color: string;

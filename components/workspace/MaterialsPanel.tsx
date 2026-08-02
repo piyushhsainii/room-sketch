@@ -8,12 +8,12 @@ import {
     DoorStyle,
     ClosedShape,
     LineNode,
+    MaterialDomain,
 } from './lib/constants'
 import { SceneConfig, RoomSceneConfig } from './FloorPlanEditor'
 import { deriveClosedPolygons } from '@/lib/helpers'
 import { ScrollableList } from '../ui/ScrollableList'
-import { labelize } from './MaterialPicker'
-import { getMaterialsByCategory, MaterialCategory, MaterialDomain } from './texture/materials-registry'
+import { getMaterialsByCategory, labelize, MaterialCategory } from './texture/materials-registry'
 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 

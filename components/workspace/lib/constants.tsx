@@ -60,7 +60,6 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     'wood-siding-008': { color: '#BC9C74', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding008_1K-JPG/WoodSiding008_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding008_1K-JPG/WoodSiding008_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding008_1K-JPG/WoodSiding008_1K-JPG_Roughness.jpg' },
     'wood-siding-009': { color: '#846246', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding009_1K-JPG/WoodSiding009_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding009_1K-JPG/WoodSiding009_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding009_1K-JPG/WoodSiding009_1K-JPG_Roughness.jpg' },
     'wood-siding-010': { color: '#AC8C64', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding010_1K-JPG/WoodSiding010_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding010_1K-JPG/WoodSiding010_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding010_1K-JPG/WoodSiding010_1K-JPG_Roughness.jpg' },
-    'wood-siding-011': { color: '#785838', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding011_1K-JPG/WoodSiding011_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding011_1K-JPG/WoodSiding011_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding011_1K-JPG/WoodSiding011_1K-JPG_Roughness.jpg' },
     'wood-siding-012': { color: '#98785450', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding012_1K-JPG/WoodSiding012_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding012_1K-JPG/WoodSiding012_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding012_1K-JPG/WoodSiding012_1K-JPG_Roughness.jpg' },
     'wood-siding-013': { color: '#B0906C', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding013_1K-JPG/WoodSiding013_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding013_1K-JPG/WoodSiding013_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding013_1K-JPG/WoodSiding013_1K-JPG_Roughness.jpg' },
 
@@ -239,7 +238,6 @@ export type FloorPlanState = {
     lights: PlacedLight[],
     outdoorObjects: PlacedOutdoorObject[],
     savedViews: CameraView[]
-
 }
 
 export const DEFAULT_FP: FloorPlanState = {

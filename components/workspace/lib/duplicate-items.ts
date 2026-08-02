@@ -8,14 +8,10 @@
 //
 // Every clone gets a fresh id via uid(), same rule as duplicate.ts.
 
-import {
-  EditorOpening,
-  PlacedWallDecor,
-  PlacedStairs,
-  FloorPlanState,
-} from "./constants";
+import { EditorOpening, PlacedWallDecor, FloorPlanState } from "./constants";
 import { PlacedFurniture } from "./furniture-constants";
 import { PlacedOutdoorObject } from "./outdoor-constants";
+import { PlacedStairs } from "./stairs-constants";
 
 function uid() {
   return Math.random().toString(36).slice(2, 9);

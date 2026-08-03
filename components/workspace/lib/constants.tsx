@@ -742,45 +742,12 @@ export const WALL_TEXTURE_URLS = {
 //     panel_white: '#F5F2EE',
 // }
 
-export const FURNITURE_LABELS: Record<FurnitureType, string> = {
-    sofa: 'Sofa', bed: 'Bed', dining_table: 'Table', desk: 'Desk',
-    wardrobe: 'WRB', bathtub: 'Bath', toilet: 'WC', plant: '♣',
-    chair: 'Chair', coffee_table: 'C.T',
-    single_sofa: 'S.Sofa', lamp: 'Lamp', mirror: 'Mirr',
-    kitchen_stove: 'Stove', chimney: 'Chimney', commode: 'Commode',
-    shower: 'Shower', shoe_rack: 'Shoe-Rack',
-    led_strip: 'LED', wall_panel_pvc: 'PVC Panel', painting: 'Art',
-    lounge_recliner: 'Recliner'
-}
+
 
 export const GRID_M = 0.5
 export const PX_PER_M = 40
 export const MIN_ROOM = 1.0
 
-export const FURNITURE_COLORS: Record<FurnitureType, string> = {
-    sofa: 'rgba(160,148,130,0.88)',
-    bed: 'rgba(130,120,155,0.88)',
-    dining_table: 'rgba(155,125,95,0.88)',
-    desk: 'rgba(110,130,155,0.88)',
-    wardrobe: 'rgba(70,60,50,0.88)',
-    bathtub: 'rgba(140,175,185,0.88)',
-    toilet: 'rgba(200,200,200,0.88)',
-    plant: 'rgba(65,140,65,0.88)',
-    chair: 'rgba(145,135,115,0.88)',
-    coffee_table: 'rgba(140,118,88,0.88)',
-    single_sofa: 'rgba(170,150,125,0.88)',
-    lamp: 'rgba(230,200,120,0.88)',
-    mirror: 'rgba(180,200,215,0.88)',
-    kitchen_stove: 'rgba(90,95,100,0.88)',
-    chimney: 'rgba(60,65,70,0.88)',
-    commode: 'rgba(210,210,205,0.88)',
-    shower: 'rgba(150,190,200,0.88)',
-    shoe_rack: 'rgba(120,95,70,0.88)',
-    led_strip: 'rgba(255,220,150,0.9)',
-    wall_panel_pvc: 'rgba(228,221,207,0.88)',
-    painting: 'rgba(120,105,85,0.88)',
-    lounge_recliner: "rgb(185, 94, 3)"
-}
 
 
 export const OPENING_VARIANT_LABELS: Record<string, string> = {
@@ -842,6 +809,36 @@ export const FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
     { type: 'lamp', label: 'Lamp', icon: 'Lamp', category: 'lighting' },
     { type: 'led_strip', label: 'LED Strip', icon: 'Sparkles', category: 'lighting', isNew: true, newSince: '2026-07-10' },
     { type: 'wall_panel_pvc', label: 'PVC Wall Panel', icon: 'PanelTop', category: 'wall', isNew: true, newSince: '2026-07-10' },
+    {
+        type: 'sofa_l',
+        label: 'L-Shape Sofa',
+        icon: 'Sofa',
+        category: 'seating',
+    },
+    {
+        type: 'bed_single',
+        label: 'Single Bed',
+        icon: 'BedSingle',
+        category: 'bedroom',
+    },
+    {
+        type: 'bed_double',
+        label: 'Double Bed',
+        icon: 'BedDouble',
+        category: 'bedroom',
+    },
+    {
+        type: 'bed_bunk',
+        label: 'Bunk Bed',
+        icon: 'Rows3',
+        category: 'bedroom',
+    },
+    {
+        type: 'dressing_table',
+        label: 'Dressing Table',
+        icon: 'Table2',
+        category: 'bedroom',
+    },
 ]
 
 export interface FurnitureMaterial {
@@ -849,15 +846,6 @@ export interface FurnitureMaterial {
     label: string
     swatch: string // Hex color, image url, or gradient
 }
-
-// export const FURNITURE_MATERIALS: FurnitureMaterial[] = [
-//     { id: 'wood_light', label: 'Light Wood', swatch: '#E6C280' },
-//     { id: 'wood_dark', label: 'Dark Wood', swatch: '#5C4033' },
-//     { id: 'fabric_grey', label: 'Grey Fabric', swatch: '#808080' },
-//     { id: 'fabric_blue', label: 'Blue Fabric', swatch: '#2B4C7E' },
-//     { id: 'leather_black', label: 'Black Leather', swatch: '#1A1A1A' },
-//     { id: 'metal_chrome', label: 'Chrome', swatch: 'linear-gradient(45deg, #999, #e1e1e1, #999)' },
-// ]
 
 // Helper function to check if a furniture type supports textures
 export function supportsFurnitureTexture(type: string): boolean {
@@ -872,7 +860,6 @@ export function supportsFurnitureTexture(type: string): boolean {
     ] // Customize this array with types that support textures in your app
     return textureSupportedTypes.includes(type.toLowerCase())
 }
-
 
 export function getFurnitureByCategory(): Record<FurnitureCategory, FurnitureCatalogEntry[]> {
     return FURNITURE_CATALOG.reduce((acc, item) => {

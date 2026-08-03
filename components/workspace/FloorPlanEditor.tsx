@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ResilientCanvas from './ResilientCanvas'
 import { TOOL_CURSORS, Toolbar } from './Tools/ToolBar'
-import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FURNITURE_COLORS, FURNITURE_LABELS, GRID_M, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
+import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
 import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import * as THREE from 'three'
 import { SceneGraphPanel } from './objects/scene-graph'
@@ -23,7 +23,7 @@ import { duplicateClosedShape, duplicateRoom, MirrorAxis, mirrorRoom } from './l
 import { duplicateFurniture, duplicateOpening, duplicateOutdoorObject, duplicateStairs, duplicateWallDecor } from './lib/duplicate-items'
 import { FloatingDock } from '../ui/FloatingDock'
 import { useFurnitureCollisions } from './hooks/useFurnitureCollisions'
-import { FURNITURE_FOOTPRINTS, FurnitureType, PlacedFurniture } from './lib/furniture-constants'
+import { FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, PlacedFurniture } from './lib/furniture-constants'
 import { bendSegment, classifySelection, getSelectionAnchorWorld, QuickActionMenu } from './QuickActionMenu'
 import { RoomTemplate, WallPreset } from './lib/presets'
 import { PresetsPanel } from '../ui/PresetPanel'
@@ -2999,7 +2999,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                     })}
                                 </ScrollableList>
                             </div>
-                        </div>,
+                        </div>
+                        ,
                         document.body
                     )}
                     {presetsMounted && presetsAnchorRect && typeof document !== 'undefined' && createPortal(
@@ -3218,7 +3219,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 document.body
             )}
             <FloatingDock
-                orientation="vertical"
+                orientation="horizontal"
                 activeId={sheetOpen ? rightTab : null}
                 items={[
                     {
@@ -3428,7 +3429,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     <ScrollableList maxHeight={1200}>
                         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}
                         >
-                            <SceneGraphPanel fp={fp} selectedId={selectedId} onSelect={setSelectedId} />
+                            {/* <SceneGraphPanel fp={fp} selectedId={selectedId} onSelect={setSelectedId} /> */}
                             <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
                             <PropsPanel
                                 fp={fp}

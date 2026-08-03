@@ -1,8 +1,8 @@
 import { getSegmentOpeningWorldPos, toCanvas } from "@/lib/helpers";
-import { EditorTool, FloorPlanState, FURNITURE_COLORS, FURNITURE_LABELS, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./lib/constants";
+import { EditorTool, FloorPlanState, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./lib/constants";
 import { LIGHT_FIXTURE_LABELS, LIGHT_PLACEMENT_KIND } from "./lights-constant";
 import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./lib/outdoor-constants";
-import { FURNITURE_FOOTPRINTS } from "./lib/furniture-constants";
+import { FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS } from "./lib/furniture-constants";
 
 const labelWidthCache = new Map<string, number>()
 // Hard cap so a long drawing/dragging session can't leak memory — every
@@ -149,16 +149,86 @@ export function draw2D(
 
             if (op.type === 'door') {
                 const doorPx = op.width * scale
+                const dv = op.variant ?? 'door-swing-single'
+                const isDouble = dv === 'door-swing-double' || dv === 'door-swing-double-french' || dv === 'door-swing-double-arched'
+                const isSliding = dv === 'door-sliding' || dv === 'door-sliding-double' || dv === 'door-pocket'
+                const isFolding = dv === 'door-folding' || dv === 'door-folding-single' || dv === 'door-folding-french'
+                const isGarage = dv === 'door-garage'
+
                 ctx.save()
                 ctx.strokeStyle = isOpSel ? '#4F46E5' : isOpHov ? '#A5A9FF' : '#818CF8'
                 ctx.lineWidth = isOpSel ? 2.5 : 1.5
-                if (isHorizontal) {
-                    ctx.beginPath(); ctx.arc(gx1, (gy1 + gy2) / 2, doorPx, 0, Math.PI / 2); ctx.stroke()
-                    ctx.beginPath(); ctx.moveTo(gx1, (gy1 + gy2) / 2); ctx.lineTo(gx1 + doorPx, (gy1 + gy2) / 2); ctx.stroke()
+
+                const midX = (gx1 + gx2) / 2
+                const midY = (gy1 + gy2) / 2
+                const halfPx = doorPx / 2
+
+                if (isGarage) {
+                    // Garage doors don't swing — a single thick bar across
+                    // the opening instead of an arc that implies motion.
+                    ctx.lineWidth += 2
+                    ctx.beginPath()
+                    if (isHorizontal) { ctx.moveTo(gx1, midY); ctx.lineTo(gx2, midY) }
+                    else { ctx.moveTo(midX, gy1); ctx.lineTo(midX, gy2) }
+                    ctx.stroke()
+                } else if (isSliding) {
+                    // Opening line + a short offset bar showing the panel
+                    // parked to one side — standard sliding-door symbol.
+                    ctx.beginPath()
+                    if (isHorizontal) { ctx.moveTo(gx1, midY); ctx.lineTo(gx2, midY) }
+                    else { ctx.moveTo(midX, gy1); ctx.lineTo(midX, gy2) }
+                    ctx.stroke()
+                    const panelLen = doorPx * 0.9
+                    ctx.beginPath()
+                    if (isHorizontal) { ctx.moveTo(gx1, midY - 3); ctx.lineTo(gx1 + panelLen, midY - 3) }
+                    else { ctx.moveTo(midX - 3, gy1); ctx.lineTo(midX - 3, gy1 + panelLen) }
+                    ctx.stroke()
+                } else if (isFolding) {
+                    // Accordion / zig-zag symbol across the opening.
+                    const segs = 4
+                    ctx.beginPath()
+                    if (isHorizontal) {
+                        const segW = doorPx / segs
+                        ctx.moveTo(gx1, midY)
+                        for (let i = 1; i <= segs; i++) {
+                            const x = gx1 + segW * i
+                            const y = i % 2 === 0 ? midY : midY - segW * 0.35
+                            ctx.lineTo(x, y)
+                        }
+                    } else {
+                        const segH = doorPx / segs
+                        ctx.moveTo(midX, gy1)
+                        for (let i = 1; i <= segs; i++) {
+                            const y = gy1 + segH * i
+                            const x = i % 2 === 0 ? midX : midX - segH * 0.35
+                            ctx.lineTo(x, y)
+                        }
+                    }
+                    ctx.stroke()
+                } else if (isDouble) {
+                    // Double-swing door: two symmetric quarter-arcs meeting
+                    // at the opening's center, each leaf's radius equal to
+                    // half the total opening (one leaf's width).
+                    if (isHorizontal) {
+                        ctx.beginPath(); ctx.arc(gx1, midY, halfPx, 0, Math.PI / 2); ctx.stroke()
+                        ctx.beginPath(); ctx.arc(gx2, midY, halfPx, Math.PI / 2, Math.PI); ctx.stroke()
+                        ctx.beginPath(); ctx.moveTo(gx1, midY); ctx.lineTo(gx2, midY); ctx.stroke()
+                    } else {
+                        ctx.beginPath(); ctx.arc(midX, gy1, halfPx, 0, Math.PI / 2); ctx.stroke()
+                        ctx.beginPath(); ctx.arc(midX, gy2, halfPx, -Math.PI / 2, 0); ctx.stroke()
+                        ctx.beginPath(); ctx.moveTo(midX, gy1); ctx.lineTo(midX, gy2); ctx.stroke()
+                    }
                 } else {
-                    ctx.beginPath(); ctx.arc((gx1 + gx2) / 2, gy1, doorPx, 0, Math.PI / 2); ctx.stroke()
-                    ctx.beginPath(); ctx.moveTo((gx1 + gx2) / 2, gy1); ctx.lineTo((gx1 + gx2) / 2, gy1 + doorPx); ctx.stroke()
+                    // Single swing / pivot door.
+                    if (isHorizontal) {
+                        ctx.beginPath(); ctx.arc(gx1, midY, doorPx, 0, Math.PI / 2); ctx.stroke()
+                        ctx.beginPath(); ctx.moveTo(gx1, midY); ctx.lineTo(gx1 + doorPx, midY); ctx.stroke()
+                    } else {
+                        ctx.beginPath(); ctx.arc(midX, gy1, doorPx, 0, Math.PI / 2); ctx.stroke()
+                        ctx.beginPath(); ctx.moveTo(midX, gy1); ctx.lineTo(midX, gy1 + doorPx); ctx.stroke()
+                    }
                 }
+
                 // Selection ring around the whole opening footprint, matching
                 // the pattern used for rooms/nodes elsewhere in this file
                 if (isOpSel) {
@@ -623,15 +693,78 @@ export function draw2D(
             ctx.clearRect(-hw, -wallT / 2, hw * 2, wallT)
 
             if (op.type === 'door') {
+                const dv = op.variant ?? 'door-swing-single'
+                const isDouble = dv === 'door-swing-double' || dv === 'door-swing-double-french' || dv === 'door-swing-double-arched'
+                const isSliding = dv === 'door-sliding' || dv === 'door-sliding-double' || dv === 'door-pocket'
+                const isFolding = dv === 'door-folding' || dv === 'door-folding-single' || dv === 'door-folding-french'
+                const isGarage = dv === 'door-garage'
+
                 ctx.strokeStyle = isOpSel ? '#4F46E5' : isOpHov ? '#A5A9FF' : '#818CF8'
                 ctx.lineWidth = isOpSel ? 2.5 : 1.5
-                ctx.beginPath()
-                ctx.arc(-hw, 0, op.width * scale, 0, Math.PI / 2)
-                ctx.stroke()
-                ctx.beginPath()
-                ctx.moveTo(-hw, 0)
-                ctx.lineTo(hw, 0)
-                ctx.stroke()
+
+                if (isGarage) {
+                    // Garage doors don't swing — a single thick bar across
+                    // the opening reads better than an arc that implies
+                    // motion the door doesn't actually have.
+                    ctx.lineWidth += 2
+                    ctx.beginPath()
+                    ctx.moveTo(-hw, 0)
+                    ctx.lineTo(hw, 0)
+                    ctx.stroke()
+                } else if (isSliding) {
+                    // Sliding-door symbol: the opening line, plus a short
+                    // offset bar showing the panel parked to one side —
+                    // matches the standard "sliding door" plan symbol.
+                    ctx.beginPath()
+                    ctx.moveTo(-hw, 0)
+                    ctx.lineTo(hw, 0)
+                    ctx.stroke()
+                    const panelLen = hw * 0.9
+                    ctx.beginPath()
+                    ctx.moveTo(-hw, -3)
+                    ctx.lineTo(-hw + panelLen, -3)
+                    ctx.stroke()
+                } else if (isFolding) {
+                    // Accordion / zig-zag symbol across the opening,
+                    // matching a bifold door's plan symbol.
+                    const segs = 4
+                    const segW = (hw * 2) / segs
+                    ctx.beginPath()
+                    ctx.moveTo(-hw, 0)
+                    for (let i = 1; i <= segs; i++) {
+                        const x = -hw + segW * i
+                        const y = i % 2 === 0 ? 0 : -segW * 0.35
+                        ctx.lineTo(x, y)
+                    }
+                    ctx.stroke()
+                } else if (isDouble) {
+                    // Double-swing door: two symmetric quarter-arcs
+                    // meeting at the opening's center — each leaf hinges
+                    // at its own jamb and its radius is exactly one leaf's
+                    // width (hw, since hw already equals half the total
+                    // opening width, i.e. one leaf's width).
+                    ctx.beginPath()
+                    ctx.arc(-hw, 0, hw, 0, Math.PI / 2)
+                    ctx.stroke()
+                    ctx.beginPath()
+                    ctx.arc(hw, 0, hw, Math.PI / 2, Math.PI)
+                    ctx.stroke()
+                    ctx.beginPath()
+                    ctx.moveTo(-hw, 0)
+                    ctx.lineTo(hw, 0)
+                    ctx.stroke()
+                } else {
+                    // Single swing / pivot door: one quarter-arc from the
+                    // hinge jamb, radius equal to the full leaf width.
+                    ctx.beginPath()
+                    ctx.arc(-hw, 0, op.width * scale, 0, Math.PI / 2)
+                    ctx.stroke()
+                    ctx.beginPath()
+                    ctx.moveTo(-hw, 0)
+                    ctx.lineTo(hw, 0)
+                    ctx.stroke()
+                }
+
                 if (isOpSel) {
                     ctx.strokeStyle = 'rgba(99,102,241,0.35)'
                     ctx.lineWidth = 2

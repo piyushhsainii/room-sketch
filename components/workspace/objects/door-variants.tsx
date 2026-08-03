@@ -21,11 +21,29 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
     const dirX = Math.cos(angle), dirZ = Math.sin(angle)
     const perpX = -dirZ, perpZ = dirX
 
-    function DoorKnob({ zSide }: { zSide: 1 | -1 }) {
+    // NOTE: `flipped` mirrors which jamb a single-leaf door hinges from
+    // (and therefore which side the knob ends up on). This assumes
+    // `EditorOpening` has (or will have) an optional `flipped?: boolean`
+    // field — add it to the type in lib/constants.ts if it isn't there
+    // yet. Reading it defensively via `(op as any)` in the meantime so
+    // this compiles either way.
+    const baseHingeSign: 1 | -1 = (op as any).flipped ? 1 : -1
+
+    function DoorKnob({ zSide, hingeSign }: { zSide: 1 | -1; hingeSign: 1 | -1 }) {
         const rosetteZ = zSide * (T / 2 + 0.003)
         const rodLen = 0.045
         const rodZ = zSide * (T / 2 + rodLen / 2)
         const leverZ = zSide * (T / 2 + rodLen)
+        // Lever must point away from the free/latch edge (where the knob
+        // itself is mounted) back toward the panel's own hinge side. That
+        // direction is `-hingeSign`, not a fixed sign — using a hardcoded
+        // `-0.06` here (regardless of hingeSign) happened to be correct
+        // for one leaf of a double door but pointed the *other* leaf's
+        // lever the wrong way, back in toward the center meeting line,
+        // where it visually crossed and overlapped the first leaf's
+        // lever. Mirroring by hingeSign fixes both leaves symmetrically.
+        const leverX = -hingeSign * 0.06
+        const capX = -hingeSign * 0.115
         return (
             <group>
                 <mesh position={[0, 0, rosetteZ]} rotation={[Math.PI / 2, 0, 0]} castShadow>
@@ -37,14 +55,18 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                     <meshStandardMaterial color="#B9B9B4" metalness={0.6} roughness={0.3} />
                 </mesh>
                 {/* Lever points back toward the hinge-opposite (free) edge,
-                    i.e. away from where the knob itself is mounted. */}
-                <mesh position={[-0.06, 0, leverZ]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                    i.e. away from where the knob itself is mounted. Given a
+                    slight downward pitch (rotation.x) instead of sitting
+                    perfectly horizontal — a real lever handle hangs down a
+                    little, and dead-flat read as "floating rod" rather than
+                    a handle. */}
+                <mesh position={[leverX, -0.012, leverZ]} rotation={[0.3, 0, Math.PI / 2]} castShadow>
                     <cylinderGeometry args={[0.009, 0.009, 0.12, 12]} />
                     <meshStandardMaterial color="#B9B9B4" metalness={0.65} roughness={0.28} />
                 </mesh>
                 {/* Small return-cap at the far end of the lever so it doesn't
                     read as a bare-ended rod from the free-edge side. */}
-                <mesh position={[-0.115, 0, leverZ]} castShadow>
+                <mesh position={[capX, -0.03, leverZ]} castShadow>
                     <sphereGeometry args={[0.009, 10, 10]} />
                     <meshStandardMaterial color="#B9B9B4" metalness={0.65} roughness={0.28} />
                 </mesh>
@@ -75,8 +97,24 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
         )
     }
 
-    function DoorHinges({ height, hingeSign }: { height: number; hingeSign: 1 | -1 }) {
-        const hingeX = hingeSign * (0.045 / 2) // sits right at the panel's edge face
+    function DoorHinges({ width, height, hingeSign }: { width: number; height: number; hingeSign: 1 | -1 }) {
+        // BUG FIX: this used to be `hingeSign * (0.045 / 2)` — half the
+        // panel's *thickness* (T), not its *width*. That placed every
+        // hinge ~2cm from the door's vertical centerline regardless of how
+        // wide the panel was, which is why they showed up as floating
+        // clanks scattered down the middle of the face instead of sitting
+        // on the door's actual edge. Hinges belong at the hinge-side edge,
+        // same edge the panel itself pivots from — mirroring how knobX is
+        // computed on the free edge, just on the opposite side.
+        // Hinge edge is the *opposite* of the free edge knobX sits on —
+        // knobX uses `+hingeSign` to land on the free edge (see DoorFace),
+        // so this must use `-hingeSign` to land on the true hinge/jamb
+        // edge. Using the same sign as knobX (as before) put both the
+        // knob and the hinges on the free edge, which is why hinges were
+        // showing up clustered at the doors' meeting line instead of out
+        // at the jambs.
+        const inset = Math.min(0.05, width * 0.05)
+        const hingeX = -hingeSign * (width / 2 - inset)
         const knuckleR = 0.009
         const positions = [0.85, 0.5, 0.15].map(f => (f - 0.5) * height * 0.9)
         return (
@@ -87,7 +125,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                             <boxGeometry args={[0.01, 0.14, 0.07]} />
                             <meshStandardMaterial color="#B9B9B4" metalness={0.6} roughness={0.35} />
                         </mesh>
-                        <mesh rotation={[Math.PI / 2, 0, 0]} position={[hingeSign * 0.008, 0, 0]} castShadow>
+                        <mesh rotation={[Math.PI / 2, 0, 0]} position={[-hingeSign * 0.008, 0, 0]} castShadow>
                             <cylinderGeometry args={[knuckleR, knuckleR, 0.15, 10]} />
                             <meshStandardMaterial color="#A8A8A2" metalness={0.7} roughness={0.25} />
                         </mesh>
@@ -201,11 +239,10 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                 <PanelMolding width={width} height={height} zSide={1} />
                 <PanelMolding width={width} height={height} zSide={-1} />
                 <group position={[knobX, 0, 0]}>
-                    <DoorKnob zSide={1} />
-                    <DoorKnob zSide={-1} />
+                    <DoorKnob zSide={1} hingeSign={hingeSign} />
+                    <DoorKnob zSide={-1} hingeSign={hingeSign} />
                 </group>
-                <DoorHinges height={height} hingeSign={hingeSign} />
-                {/* thin kickplate along the bottom, both faces */}
+                <DoorHinges width={width} height={height} hingeSign={hingeSign} />
                 <mesh position={[0, -height / 2 + 0.09, T / 2 + 0.0015]}>
                     <boxGeometry args={[width - inset, 0.16, 0.002]} />
                     <meshStandardMaterial color="#8f8f88" metalness={0.5} roughness={0.4} />
@@ -233,7 +270,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                     <DoorPull zSide={1} width={0} />
                     <DoorPull zSide={-1} width={0} />
                 </group>
-                <DoorHinges height={height} hingeSign={hingeSign} />
+                <DoorHinges width={width} height={height} hingeSign={hingeSign} />
             </group>
         )
     }
@@ -253,7 +290,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                     <DoorPull zSide={1} width={0} />
                     <DoorPull zSide={-1} width={0} />
                 </group>
-                <DoorHinges height={height} hingeSign={hingeSign} />
+                <DoorHinges width={width} height={height} hingeSign={hingeSign} />
             </group>
         )
     }
@@ -290,8 +327,8 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                 <PanelMolding width={width} height={height} zSide={1} />
                 <PanelMolding width={width} height={height} zSide={-1} />
                 <group position={[knobX, 0, 0]}>
-                    <DoorKnob zSide={1} />
-                    <DoorKnob zSide={-1} />
+                    <DoorKnob zSide={1} hingeSign={hingeSign} />
+                    <DoorKnob zSide={-1} hingeSign={hingeSign} />
                 </group>
             </group>
         )
@@ -313,6 +350,29 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
                 </mesh>
                 <mesh position={[0, height + jambW / 2, 0]} castShadow>
                     <boxGeometry args={[width + jambW * 2, jambW, jambD]} />
+                    <meshStandardMaterial color="#e8e5df" roughness={0.6} />
+                </mesh>
+            </group>
+        )
+    }
+
+    /** Side jambs only (no head lintel) for sliding / pocket / bypass
+     *  doors. The head track rail rendered alongside these already reads
+     *  as the "head" visually — without these jambs the rail had nothing
+     *  to visually anchor to and looked like a disconnected floating
+     *  shelf above the opening, which is what this fixes. */
+    function SlidingSideJambs({ width, height }: { width: number; height: number }) {
+        const jambW = 0.05
+        const jambD = T + 0.02
+        const floorPos: [number, number, number] = [basePos[0], 0, basePos[2]]
+        return (
+            <group position={floorPos} rotation={[0, -angle, 0]}>
+                <mesh position={[-width / 2 - jambW / 2, height / 2, 0]} castShadow>
+                    <boxGeometry args={[jambW, height, jambD]} />
+                    <meshStandardMaterial color="#e8e5df" roughness={0.6} />
+                </mesh>
+                <mesh position={[width / 2 + jambW / 2, height / 2, 0]} castShadow>
+                    <boxGeometry args={[jambW, height, jambD]} />
                     <meshStandardMaterial color="#e8e5df" roughness={0.6} />
                 </mesh>
             </group>
@@ -387,6 +447,113 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
         )
     }
 
+    /** Animated accordion/bifold leaves — shared by door-folding,
+     *  door-folding-single and door-folding-french. Previously these
+     *  variants rendered a single static folded pose and ignored
+     *  `op.isOpen` entirely (no animation, no click-to-toggle). Now a
+     *  shared `frac` ref eases 0 (closed/flat) → 1 (open/folded) via
+     *  useFrame, same easing approach as SwingHinge/SlidingLeaf, and each
+     *  panel's position/rotation is recomputed from it every frame. */
+    function FoldingDoor({
+        width, height, panelCount, foldAngleMax, glazed = false,
+    }: {
+        width: number; height: number; panelCount: number; foldAngleMax: number; glazed?: boolean
+    }) {
+        const groupRefs = useRef<(THREE.Group | null)[]>([])
+        const frac = useRef(0)
+        const panelW = width / panelCount
+        const isOpen = !!op.isOpen
+
+        useFrame((_, delta) => {
+            const target = isOpen ? 1 : 0
+            const speed = 9
+            const diff = target - frac.current
+            frac.current = Math.abs(diff) < 0.001 ? target : frac.current + diff * Math.min(1, delta * speed)
+            for (let i = 0; i < panelCount; i++) {
+                const g = groupRefs.current[i]
+                if (!g) continue
+                const angleFold = (i % 2 === 0 ? 1 : -1) * foldAngleMax * swingSign * frac.current
+                const centerOffset = -width / 2 + panelW * (i + 0.5)
+                const perp = Math.abs(Math.sin(angleFold)) * (panelW / 2)
+                g.position.set(
+                    basePos[0] + dirX * centerOffset + perpX * perp,
+                    basePos[1],
+                    basePos[2] + dirZ * centerOffset + perpZ * perp,
+                )
+                g.rotation.set(0, -angle + angleFold, 0)
+            }
+        })
+
+        return (
+            <group
+                onClick={interactive && onToggleOpen ? (e: any) => { e.stopPropagation(); onToggleOpen(op.id) } : undefined}
+                onPointerOver={interactive && onToggleOpen ? () => { document.body.style.cursor = 'pointer' } : undefined}
+                onPointerOut={interactive && onToggleOpen ? () => { document.body.style.cursor = 'auto' } : undefined}
+            >
+                {Array.from({ length: panelCount }).map((_, i) => (
+                    <group key={i} ref={el => { groupRefs.current[i] = el }}>
+                        <mesh castShadow>
+                            <boxGeometry args={[panelW * 0.96, height, T]} />
+                            <DoorMat style={resolvedStyle} />
+                        </mesh>
+                        {glazed && <GlassGrid width={panelW * 0.96} height={height} cols={1} rows={5} bottomRail={0.1} />}
+                        <mesh position={[panelW * 0.96 / 2 - 0.006, 0, T / 2 + 0.001]}>
+                            <boxGeometry args={[0.008, height * 0.92, 0.002]} />
+                            <meshStandardMaterial color="#00000030" transparent opacity={0.4} />
+                        </mesh>
+                    </group>
+                ))}
+            </group>
+        )
+    }
+
+    /** Animated garage door — previously a fully static slat stack that
+     *  never reacted to `op.isOpen` at all. Now eases a lift fraction
+     *  (0 = down/closed, 1 = risen into the head) via useFrame and is
+     *  click-to-toggle like every other variant. */
+    function AnimatedGarageDoor({ width, height }: { width: number; height: number }) {
+        const groupRef = useRef<THREE.Group>(null)
+        const frac = useRef(0)
+        const isOpen = !!op.isOpen
+        const slats = 5
+        const slatH = Math.min(0.5, height * 0.4) / slats
+
+        useFrame((_, delta) => {
+            const target = isOpen ? 1 : 0
+            const speed = 6
+            const diff = target - frac.current
+            frac.current = Math.abs(diff) < 0.001 ? target : frac.current + diff * Math.min(1, delta * speed)
+            if (groupRef.current) {
+                groupRef.current.position.y = frac.current * height * 0.92
+            }
+        })
+
+        return (
+            <group
+                ref={groupRef}
+                onClick={interactive && onToggleOpen ? (e: any) => { e.stopPropagation(); onToggleOpen(op.id) } : undefined}
+                onPointerOver={interactive && onToggleOpen ? () => { document.body.style.cursor = 'pointer' } : undefined}
+                onPointerOut={interactive && onToggleOpen ? () => { document.body.style.cursor = 'auto' } : undefined}
+            >
+                {Array.from({ length: slats }).map((_, i) => {
+                    const y = height - slatH * (i + 0.5) - 0.02
+                    return (
+                        <group key={`slat${i}`} position={[basePos[0], y, basePos[2]]} rotation={[0, -angle, 0]}>
+                            <mesh castShadow>
+                                <boxGeometry args={[width * 0.98, slatH * 0.85, T]} />
+                                <DoorMat style={resolvedStyle} />
+                            </mesh>
+                            <mesh position={[0, -slatH * 0.85 / 2 - 0.004, T / 2 + 0.001]}>
+                                <boxGeometry args={[width * 0.98, 0.006, 0.002]} />
+                                <meshStandardMaterial color="#00000040" transparent opacity={0.45} />
+                            </mesh>
+                        </group>
+                    )
+                })}
+            </group>
+        )
+    }
+
     switch (variant) {
         case 'door-swing-double': {
             const half = op.width / 2
@@ -448,7 +615,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
             return (
                 <group>
                     <DoorFrame width={op.width} height={op.height} />
-                    {swingingPanel(-1, op.width, 0, 'doorPivot', restAngle, openAngle, PivotFace, pivotInset)}
+                    {swingingPanel(baseHingeSign, op.width, 0, 'doorPivot', restAngle, openAngle, PivotFace, pivotInset)}
                 </group>
             )
         }
@@ -458,37 +625,11 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
             // to one jamb (like a closet/bifold door) instead of 4 leaves
             // meeting in the center — matches the chart's single "Bi-Fold
             // Door", which is a narrower opening than door-folding's
-            // double-sided 4-leaf version.
-            const panelCount = 2
-            const panelW = op.width / panelCount
-            const foldAngle = Math.PI / 6
-            const panels: React.ReactNode[] = []
-            for (let i = 0; i < panelCount; i++) {
-                const centerOffset = -op.width / 2 + panelW * (i + 0.5)
-                const angleFold = (i % 2 === 0 ? 1 : -1) * foldAngle * swingSign
-                const perp = Math.abs(Math.sin(angleFold)) * (panelW / 2)
-                const pos: [number, number, number] = [
-                    basePos[0] + dirX * centerOffset + perpX * perp,
-                    basePos[1],
-                    basePos[2] + dirZ * centerOffset + perpZ * perp,
-                ]
-                panels.push(
-                    <group key={`fold1${i}`} position={pos} rotation={[0, -angle + angleFold, 0]}>
-                        <mesh castShadow>
-                            <boxGeometry args={[panelW * 0.96, op.height, T]} />
-                            <DoorMat style={resolvedStyle} />
-                        </mesh>
-                        <mesh position={[panelW * 0.96 / 2 - 0.006, 0, T / 2 + 0.001]}>
-                            <boxGeometry args={[0.008, op.height * 0.92, 0.002]} />
-                            <meshStandardMaterial color="#00000030" transparent opacity={0.4} />
-                        </mesh>
-                    </group>
-                )
-            }
+            // double-sided 4-leaf version. Now animated (see FoldingDoor).
             return (
                 <group>
                     <DoorFrame width={op.width} height={op.height} />
-                    {panels}
+                    <FoldingDoor width={op.width} height={op.height} panelCount={2} foldAngleMax={Math.PI / 6} />
                 </group>
             )
         }
@@ -505,6 +646,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
             ]
             return (
                 <group>
+                    <SlidingSideJambs width={op.width} height={op.height} />
                     {/* Top track rail the panel appears to hang from */}
                     <group position={basePos} rotation={[0, -angle, 0]}>
                         <mesh position={[0, op.height + 0.03, 0]}>
@@ -572,6 +714,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
             const half = op.width / 2
             return (
                 <group>
+                    <SlidingSideJambs width={op.width} height={op.height} />
                     <group position={basePos} rotation={[0, -angle, 0]}>
                         <mesh position={[0, op.height + 0.03, 0]}>
                             <boxGeometry args={[op.width + 0.14, 0.04, 0.1]} />
@@ -595,98 +738,20 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
         }
 
         case 'door-folding': {
-            const panelCount = 4
-            const panelW = op.width / panelCount
-            const foldAngle = Math.PI / 8
-            const panels: React.ReactNode[] = []
-            for (let i = 0; i < panelCount; i++) {
-                const centerOffset = -op.width / 2 + panelW * (i + 0.5)
-                const angleFold = (i % 2 === 0 ? 1 : -1) * foldAngle * swingSign
-                const perp = Math.abs(Math.sin(angleFold)) * (panelW / 2)
-                const pos: [number, number, number] = [
-                    basePos[0] + dirX * centerOffset + perpX * perp,
-                    basePos[1],
-                    basePos[2] + dirZ * centerOffset + perpZ * perp,
-                ]
-                panels.push(
-                    <group key={`fold${i}`} position={pos} rotation={[0, -angle + angleFold, 0]}>
-                        <mesh castShadow>
-                            <boxGeometry args={[panelW * 0.96, op.height, T]} />
-                            <DoorMat style={resolvedStyle} />
-                        </mesh>
-                        {/* thin vertical reveal line at each fold seam to
-                            read as separate louvered leaves rather than one
-                            continuous slab bent into a zig-zag */}
-                        <mesh position={[panelW * 0.96 / 2 - 0.006, 0, T / 2 + 0.001]}>
-                            <boxGeometry args={[0.008, op.height * 0.92, 0.002]} />
-                            <meshStandardMaterial color="#00000030" transparent opacity={0.4} />
-                        </mesh>
-                    </group>
-                )
-            }
-            return <group>{panels}</group>
+            return <FoldingDoor width={op.width} height={op.height} panelCount={4} foldAngleMax={Math.PI / 8} />
         }
 
         case 'door-folding-french': {
             // Same bifold mechanism as door-folding, glazed leaves instead
             // of solid slats — matches "Bifold French Doors".
-            const panelCount = 4
-            const panelW = op.width / panelCount
-            const foldAngle = Math.PI / 8
-            const panels: React.ReactNode[] = []
-            for (let i = 0; i < panelCount; i++) {
-                const centerOffset = -op.width / 2 + panelW * (i + 0.5)
-                const angleFold = (i % 2 === 0 ? 1 : -1) * foldAngle * swingSign
-                const perp = Math.abs(Math.sin(angleFold)) * (panelW / 2)
-                const pos: [number, number, number] = [
-                    basePos[0] + dirX * centerOffset + perpX * perp,
-                    basePos[1],
-                    basePos[2] + dirZ * centerOffset + perpZ * perp,
-                ]
-                panels.push(
-                    <group key={`foldfr${i}`} position={pos} rotation={[0, -angle + angleFold, 0]}>
-                        <mesh castShadow>
-                            <boxGeometry args={[panelW * 0.96, op.height, T]} />
-                            <DoorMat style={resolvedStyle} />
-                        </mesh>
-                        <GlassGrid width={panelW * 0.96} height={op.height} cols={1} rows={5} bottomRail={0.1} />
-                        <mesh position={[panelW * 0.96 / 2 - 0.006, 0, T / 2 + 0.001]}>
-                            <boxGeometry args={[0.008, op.height * 0.92, 0.002]} />
-                            <meshStandardMaterial color="#00000030" transparent opacity={0.4} />
-                        </mesh>
-                    </group>
-                )
-            }
-            return <group>{panels}</group>
+            return <FoldingDoor width={op.width} height={op.height} panelCount={4} foldAngleMax={Math.PI / 8} glazed />
         }
 
         case 'door-garage': {
-            const slats = 5
-            const slatH = Math.min(0.5, op.height * 0.4) / slats
-            const panels: React.ReactNode[] = []
-            for (let i = 0; i < slats; i++) {
-                const y = op.height - slatH * (i + 0.5) - 0.02
-                const pos: [number, number, number] = [basePos[0], y, basePos[2]]
-                panels.push(
-                    <group key={`slat${i}`} position={pos} rotation={[0, -angle, 0]}>
-                        <mesh castShadow>
-                            <boxGeometry args={[op.width * 0.98, slatH * 0.85, T]} />
-                            <DoorMat style={resolvedStyle} />
-                        </mesh>
-                        {/* recessed shadow line under each slat for a
-                            corrugated-panel look instead of flat stacked bars */}
-                        <mesh position={[0, -slatH * 0.85 / 2 - 0.004, T / 2 + 0.001]}>
-                            <boxGeometry args={[op.width * 0.98, 0.006, 0.002]} />
-                            <meshStandardMaterial color="#00000040" transparent opacity={0.45} />
-                        </mesh>
-                    </group>
-                )
-            }
-            // side tracks for a bit of realism
             const trackPositions: [number, number][] = [[-op.width / 2 - 0.02, 1], [op.width / 2 + 0.02, 1]]
             return (
                 <group>
-                    {panels}
+                    <AnimatedGarageDoor width={op.width} height={op.height} />
                     {trackPositions.map(([x], i) => (
                         <group key={`track${i}`} position={[basePos[0] + dirX * x, 0, basePos[2] + dirZ * x]} rotation={[0, -angle, 0]}>
                             <mesh position={[0, op.height / 2, 0]}>
@@ -706,7 +771,7 @@ export function DoorVariant3D({ op, angle, basePos, doorStyle, interactive = fal
             return (
                 <group>
                     <DoorFrame width={op.width} height={op.height} />
-                    {swingingPanel(-1, op.width, 0, 'doorSingle', restAngle, openAngle)}
+                    {swingingPanel(baseHingeSign, op.width, 0, 'doorSingle', restAngle, openAngle)}
                 </group>
             )
         }

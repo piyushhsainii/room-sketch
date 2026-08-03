@@ -1,7 +1,6 @@
 import React from 'react'
 import { THEME } from '../workspace/FloorPlanEditor';
-import { FURNITURE_LABELS } from '../workspace/lib/constants';
-import { FurnitureType } from '../workspace/lib/furniture-constants';
+import { FURNITURE_LABELS, FurnitureType } from '../workspace/lib/furniture-constants';
 
 
 interface WorkspaceStatusBarProps {

@@ -1,15 +1,22 @@
+import { FurnitureCategory } from "./constants";
+
 export type FurnitureType =
   | "sofa"
+  | "sofa_l"
+  | "single_sofa"
   | "bed"
+  | "bed_single"
+  | "bed_double"
+  | "bed_bunk"
   | "dining_table"
   | "desk"
+  | "dressing_table"
   | "wardrobe"
   | "bathtub"
   | "toilet"
   | "plant"
   | "chair"
   | "coffee_table"
-  | "single_sofa"
   | "lamp"
   | "mirror"
   | "kitchen_stove"
@@ -22,6 +29,10 @@ export type FurnitureType =
   | "painting"
   | "lounge_recliner";
 
+export type FurnitureVariant = "modern" | "classical";
+
+export type FurnitureOrientation = "left" | "right";
+
 export type PlacedFurniture = {
   id: string;
   type: FurnitureType;
@@ -30,6 +41,8 @@ export type PlacedFurniture = {
   rotation: number;
   scale: number;
   materialId?: string;
+  variant?: FurnitureVariant;
+  orientation?: FurnitureOrientation;
 };
 
 export const FURNITURE_FOOTPRINTS: Record<
@@ -58,8 +71,14 @@ export const FURNITURE_FOOTPRINTS: Record<
   wall_panel_pvc: { w: 1.2, d: 0.05 },
   painting: { w: 0.9, d: 0.05 },
   lounge_recliner: { w: 2, d: 2 },
-};
 
+  // New types
+  sofa_l: { w: 2.6, d: 1.9 }, // main run + chaise leg, bounding box
+  bed_single: { w: 1.15, d: 2.1 }, // includes classical arched headboard width
+  bed_double: { w: 1.95, d: 2.2 }, // includes classical carved headboard
+  bed_bunk: { w: 1.15, d: 2.05 }, // includes ladder projection on open side
+  dressing_table: { w: 1.2, d: 0.9 }, // includes stool space in front of table
+};
 export function getFurnitureFootprint(
   type: FurnitureType,
   scale: number | undefined,
@@ -75,3 +94,76 @@ export function getFurnitureFootprintFor(f: {
 }): { w: number; d: number } {
   return getFurnitureFootprint(f.type, f.scale);
 }
+
+export const FURNITURE_LABELS: Record<FurnitureType, string> = {
+  sofa: "Sofa",
+  bed: "Bed",
+  dining_table: "Table",
+  desk: "Desk",
+  wardrobe: "WRB",
+  bathtub: "Bath",
+  toilet: "WC",
+  plant: "♣",
+  chair: "Chair",
+  coffee_table: "C.T",
+  single_sofa: "S.Sofa",
+  lamp: "Lamp",
+  mirror: "Mirr",
+  kitchen_stove: "Stove",
+  chimney: "Chimney",
+  commode: "Commode",
+  shower: "Shower",
+  shoe_rack: "Shoe-Rack",
+  led_strip: "LED",
+  wall_panel_pvc: "PVC Panel",
+  painting: "Art",
+  lounge_recliner: "Recliner",
+  sofa_l: "L-Sofa",
+  bed_single: "S.Bed",
+  bed_double: "D.Bed",
+  bed_bunk: "Bunk Bed",
+  dressing_table: "Dresser",
+};
+export const FURNITURE_COLORS: Record<FurnitureType, string> = {
+  sofa: "rgba(160,148,130,0.88)",
+  bed: "rgba(130,120,155,0.88)",
+  dining_table: "rgba(155,125,95,0.88)",
+  desk: "rgba(110,130,155,0.88)",
+  wardrobe: "rgba(70,60,50,0.88)",
+  bathtub: "rgba(140,175,185,0.88)",
+  toilet: "rgba(200,200,200,0.88)",
+  plant: "rgba(65,140,65,0.88)",
+  chair: "rgba(145,135,115,0.88)",
+  coffee_table: "rgba(140,118,88,0.88)",
+  single_sofa: "rgba(170,150,125,0.88)",
+  lamp: "rgba(230,200,120,0.88)",
+  mirror: "rgba(180,200,215,0.88)",
+  kitchen_stove: "rgba(90,95,100,0.88)",
+  chimney: "rgba(60,65,70,0.88)",
+  commode: "rgba(210,210,205,0.88)",
+  shower: "rgba(150,190,200,0.88)",
+  shoe_rack: "rgba(120,95,70,0.88)",
+  led_strip: "rgba(255,220,150,0.9)",
+  wall_panel_pvc: "rgba(228,221,207,0.88)",
+  painting: "rgba(120,105,85,0.88)",
+  lounge_recliner: "rgb(185, 94, 3)",
+  // New types — kept in the same family as their closest existing relative
+  // (sofa, bed, desk) so they read as part of the same set on a floor plan.
+  sofa_l: "rgba(165,150,128,0.88)", // near `sofa`
+  bed_single: "rgba(135,124,158,0.88)", // near `bed`
+  bed_double: "rgba(128,116,152,0.88)", // near `bed`, slightly deeper
+  bed_bunk: "rgba(120,110,148,0.88)", // near `bed`, deepest of the three
+  dressing_table: "rgba(150,128,150,0.88)", // desk/mirror hybrid tone
+};
+
+export const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
+  seating: "Seating",
+  tables: "Tables",
+  bedroom: "Bedroom",
+  kitchen: "Kitchen",
+  bathroom: "Bathroom",
+  storage: "Storage",
+  decor: "Decor",
+  lighting: "Lighting",
+  wall: "Wall",
+};

@@ -4,7 +4,6 @@ import {
   EditorOpening,
   EditorRoom,
   FloorPlanState,
-  FURNITURE_LABELS,
   GRID_M,
   LineNode,
   LineSegment,
@@ -12,7 +11,10 @@ import {
   PX_PER_M,
   STAIRS_LABELS,
 } from "@/components/workspace/lib/constants";
-import { FURNITURE_FOOTPRINTS } from "@/components/workspace/lib/furniture-constants";
+import {
+  FURNITURE_FOOTPRINTS,
+  FURNITURE_LABELS,
+} from "@/components/workspace/lib/furniture-constants";
 
 // export function deriveClosedPolygons(
 //   lineNodes: LineNode[],

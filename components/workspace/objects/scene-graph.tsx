@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FloorPlanState, FURNITURE_LABELS, OPENING_VARIANT_LABELS, STAIRS_LABELS, WALL_DECOR_LABELS } from "../lib/constants";
+import { FloorPlanState, OPENING_VARIANT_LABELS, STAIRS_LABELS, WALL_DECOR_LABELS } from "../lib/constants";
 import { OUTDOOR_OBJECT_LABELS } from "../lib/outdoor-constants"
 import { THEME } from "../FloorPlanEditor";
 
@@ -69,6 +69,7 @@ function buildSceneGraph(fp: FloorPlanState) {
 
 import { ScrollableList } from "../../ui/ScrollableList"
 import { LIGHT_FIXTURE_LABELS } from "../lights-constant";
+import { FURNITURE_LABELS } from "../lib/furniture-constants";
 
 export function SceneGraphPanel({ fp, selectedId, onSelect }: {
     fp: FloorPlanState

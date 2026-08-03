@@ -1,6 +1,6 @@
 import { deriveClosedPolygons, snapFurniture, snapM, uid } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
-import { ClosedShape, EditorOpening, EditorRoom, FloorMaterial, FloorPlanState, FURNITURE_LABELS, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
+import { ClosedShape, EditorOpening, EditorRoom, FloorMaterial, FloorPlanState, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
 import { MaterialTexturePicker } from "./texture/MaterialPicker"
 import { OUTDOOR_OBJECT_LABELS, PlacedOutdoorObject } from "./lib/outdoor-constants"
@@ -9,6 +9,25 @@ import { useMemo, useState } from "react"
 import { getMaterialsForDomain } from "./texture/materials-registry"
 import { Button, Card, COLOR, ColorSwatchInput, Divider, EmptyState, IconButton, RangeRow, SectionLabel, SegmentedControl, SPACE } from "./texture/inspector-ui"
 import { LIGHT_FIXTURE_LABELS, PlacedLight } from "./lights-constant"
+import { FURNITURE_LABELS } from "./lib/furniture-constants"
+
+// Every door geometry variant DoorVariant3D actually knows how to render
+// (its switch-case keys) — kept here so the "Type" dropdown can't offer an
+// option that silently falls through to the default single-swing door.
+const DOOR_VARIANT_OPTIONS = [
+    'door-swing-single',
+    'door-swing-double',
+    'door-swing-double-french',
+    'door-swing-double-arched',
+    'door-pivot',
+    'door-sliding',
+    'door-pocket',
+    'door-sliding-double',
+    'door-folding',
+    'door-folding-single',
+    'door-folding-french',
+    'door-garage',
+] as const
 
 
 export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, onChangeSceneConfig, onDuplicate, onMirror }: {
@@ -153,16 +172,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
             ...fp,
             lights: (fp.lights ?? []).map(l => l.id === light.id ? { ...l, ...patch } : l)
         })
-    }
-
-    const doorVariantSelectStyle: React.CSSProperties = {
-        width: '100%',
-        padding: '6px 8px',
-        borderRadius: 6,
-        border: '1px solid rgba(0,0,0,0.12)',
-        background: '#fff',
-        fontSize: 13,
-        color: 'inherit',
     }
 
     const canDuplicate = !!(room || shape || furniture || stairs || outdoorObj || wallDecor || opening || light);
@@ -425,6 +434,17 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     )}
                     <PropField label="Position (m)"><NumInput value={opening.position} min={0.3} max={20} step={0.1} onChange={v => patchOpening({ position: v })} /></PropField>
                     {opening.type === 'door' && <>
+                        <PropField label="Type">
+                            <select
+                                value={opening.variant ?? 'door-swing-single'}
+                                onChange={e => patchOpening({ variant: e.target.value as any })}
+                                style={{ height: 30, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 12.5, padding: '0 8px', outline: 'none', cursor: 'pointer' }}
+                            >
+                                {DOOR_VARIANT_OPTIONS.map(v => (
+                                    <option key={v} value={v}>{OPENING_VARIANT_LABELS[v] ?? v}</option>
+                                ))}
+                            </select>
+                        </PropField>
                         <PropField label="Swing">
                             <Button variant="secondary" onClick={() => patchOpening({ swingDirection: opening.swingDirection === 'inward' ? 'outward' : 'inward' })}>
                                 {opening.swingDirection === 'inward' ? '← Inward' : '→ Outward'}
@@ -435,34 +455,21 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                 {opening.isOpen ? '🚪 Open' : '🚪 Closed'}
                             </Button>
                         </PropField>
+                        {/* Only meaningful for single-leaf doors (swing/pivot) —
+                            double-leaf doors are symmetric so flipping which
+                            jamb hinges doesn't change anything visually. */}
+                        {(opening.variant ?? 'door-swing-single') !== 'door-swing-double'
+                            && (opening.variant ?? 'door-swing-single') !== 'door-swing-double-french'
+                            && (opening.variant ?? 'door-swing-single') !== 'door-swing-double-arched' && (
+                                <PropField label="Hinge Side">
+                                    <Button variant="secondary" onClick={() => patchOpening({ flipped: !(opening as any).flipped } as any)}>
+                                        ⇋ Flip Horizontal
+                                    </Button>
+                                </PropField>
+                            )}
                     </>}
                 </Card>
-                <PropField label="Style">
-                    <select
-                        value={opening.variant ?? 'door-swing-single'}
-                        onChange={e => patchOpening({ variant: e.target.value })}
-                        style={doorVariantSelectStyle}
-                    >
-                        <optgroup label="Single">
-                            <option value="door-swing-single">Swinging / Panel Door</option>
-                            <option value="door-pivot">Pivot Door</option>
-                            <option value="door-sliding">Sliding Door</option>
-                            <option value="door-pocket">Pocket Door</option>
-                            <option value="door-folding-single">Bi-Fold Door (2-leaf)</option>
-                        </optgroup>
-                        <optgroup label="Double">
-                            <option value="door-swing-double">Double Swing</option>
-                            <option value="door-swing-double-french">French Door</option>
-                            <option value="door-swing-double-arched">French Door (Arched)</option>
-                            <option value="door-sliding-double">Sliding Glass Door</option>
-                            <option value="door-folding">Bi-Fold (4-leaf)</option>
-                            <option value="door-folding-french">Bi-Fold (4-leaf, French)</option>
-                        </optgroup>
-                        <optgroup label="Other">
-                            <option value="door-garage">Garage</option>
-                        </optgroup>
-                    </select>
-                </PropField>
+
                 {opening.type === 'door' && (
                     <Card>
                         <div style={{ fontSize: 11.5, color: COLOR.textFaint, marginBottom: -4 }}>

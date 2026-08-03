@@ -175,6 +175,14 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     }
 
     const canDuplicate = !!(room || shape || furniture || stairs || outdoorObj || wallDecor || opening || light);
+    const VARIANT_TYPES = new Set([
+        'sofa_l', 'bed_single', 'bed_double', 'bed_bunk', 'dressing_table',
+    ]);
+
+    const VARIANT_OPTIONS: { id: 'modern' | 'classical'; label: string }[] = [
+        { id: 'modern', label: 'Modern' },
+        { id: 'classical', label: 'Classical' },
+    ];
 
     const title = wallRoom ? 'Wall'
         : room || seg ? 'Room'
@@ -517,13 +525,32 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             min={50} max={150} step={5}
                         />
                     </PropField>
+                    {VARIANT_TYPES.has(furniture.type) && (
+                        <PropField label="Style">
+                            <div style={{ display: 'flex', gap: SPACE.xxs }}>
+                                {VARIANT_OPTIONS.map(opt => {
+                                    const active = (furniture.variant ?? 'modern') === opt.id;
+                                    return (
+                                        <Button
+                                            key={opt.id}
+                                            flex
+                                            variant={active ? 'secondary' : 'ghost'}
+                                            onClick={() => patchFurniture({ variant: opt.id })}
+                                        >
+                                            {opt.label}
+                                        </Button>
+                                    );
+                                })}
+                            </div>
+                        </PropField>
+                    )}
                     <div style={{ display: 'flex', gap: SPACE.xxs }}>
                         <Button flex variant="secondary" onClick={() => patchFurniture({ rotation: furniture.rotation - Math.PI / 2 })}>↺ −90°</Button>
                         <Button flex variant="secondary" onClick={() => patchFurniture({ rotation: furniture.rotation + Math.PI / 2 })}>↻ +90°</Button>
                     </div>
                 </Card>
 
-                {supportsFurnitureTexture(furniture.type) && (
+                {furniture && (
                     <Card>
                         {furnitureMaterials.length > 0 ? (
                             <MaterialTexturePicker

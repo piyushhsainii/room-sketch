@@ -66,6 +66,11 @@ function Room3D({
         return axis === 'x' ? [W, H, T] : [T, H, D]
     }
 
+    // NEW — the horizontal run-length for texture UVs, independent of box thickness
+    function wallRunLength(axis: 'x' | 'z'): number {
+        return axis === 'x' ? W : D
+    }
+
     return (
         <group>
             {/* Floor */}
@@ -104,7 +109,7 @@ function Room3D({
                                 color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
                                 roughness={wallRoughness}
                                 textured={wallTextured}
-                                width={wallSize(wall.axis)[0]}
+                                width={wallRunLength(wall.axis)}
                                 height={wallSize(wall.axis)[1]}
                                 depth={wallSize(wall.axis)[2]}
                             />
@@ -130,7 +135,15 @@ function Room3D({
                         panels.push(
                             <mesh key={`l${i}`} position={pos} castShadow receiveShadow {...wallClickHandlers}>
                                 <boxGeometry args={size} />
-                                <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor} roughness={wallRoughness} textured={wallTextured} width={size[0]} height={size[1]} depth={size[2]} />
+                                <WallMat
+                                    mat={resolvedWallMaterial}
+                                    color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
+                                    roughness={wallRoughness}
+                                    textured={wallTextured}
+                                    width={segLen}
+                                    height={size[1]}
+                                    depth={size[2]}
+                                />
                             </mesh>
                         )
                     }
@@ -162,10 +175,23 @@ function Room3D({
                                 )
                             } else {
                                 const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, headerH, T] : [T, headerH, op.width]
+                                const opMid = op.position
+                                const basePos: [number, number, number] = wall.axis === 'x'
+                                    ? [room.x + opMid, op.height, wPos[2]]
+                                    : [wPos[0], op.height, room.z + opMid]
+
                                 panels.push(
                                     <mesh key={`h${i}`} position={[basePos[0], op.height + headerH / 2, basePos[2]]} castShadow receiveShadow {...wallClickHandlers}>
                                         <boxGeometry args={hSize} />
-                                        <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor} roughness={wallRoughness} textured={wallTextured} width={hSize[0]} height={hSize[1]} depth={hSize[2]} />
+                                        <WallMat
+                                            mat={resolvedWallMaterial}
+                                            color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
+                                            roughness={wallRoughness}
+                                            textured={wallTextured}
+                                            width={op.width}
+                                            height={hSize[1]}
+                                            depth={hSize[2]}
+                                        />
                                     </mesh>
                                 )
                             }

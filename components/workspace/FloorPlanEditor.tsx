@@ -3,10 +3,10 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ResilientCanvas from './ResilientCanvas'
 import { TOOL_CURSORS, Toolbar } from './Tools/ToolBar'
-import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
+import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FurnitureCategory, getFurnitureByCategory, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
 import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import * as THREE from 'three'
-import { SceneGraphPanel } from './objects/scene-graph'
+import * as Icons from 'lucide-react'
 import { ScrollableList } from '../ui/ScrollableList'
 import { matchClosedShape, MaterialsPanel } from './MaterialsPanel'
 import Scene3D, { Scene3DHandle } from './3DScene'
@@ -189,53 +189,31 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const [preview, setPreview] = useState<{ x: number; z: number } | null>(null)
     const pathDraftRef = useRef<string[] | null>(null)
     const pencilPointsRef = useRef<{ x: number, z: number }[]>([])
-    const supabase = createClient()
-
-
-    function commitRoom(rect: { x: number; z: number; w: number; d: number }) {
-        setFp(prev => ({
-            ...prev,
-            rooms: [
-                ...prev.rooms,
-                {
-                    id: uid(),
-                    label: `Room ${prev.rooms.length + 1}`,
-                    x: rect.x,
-                    z: rect.z,
-                    width: rect.w,
-                    depth: rect.d,
-                },
-            ],
-        }))
-    }
-
-    // on pointerup, only THEN sync to state if something downstream needs it
-    function onPointerUpRectTool() {
-        const r = drawRectRef.current
-        if (r && Math.abs(r.w) > 0.1 && Math.abs(r.d) > 0.1) {
-            // Normalize negative width/depth (dragged up-left instead of
-            // down-right) before committing, same convention draw2D already
-            // uses to render the live preview (see its Math.min(drawRect.x, ...)
-            // handling in the drawRect preview block).
-            const normalized = {
-                x: Math.min(r.x, r.x + r.w),
-                z: Math.min(r.z, r.z + r.d),
-                w: Math.abs(r.w),
-                d: Math.abs(r.d),
-            }
-            commitRoom(normalized)
-        }
-        drawRectRef.current = null
-        drawStartRef.current = null
-        scheduleRedraw()
-    } // ─────────────────────────────────────────────────────────────────────────
+    const openingDragRef = useRef<{
+        id: string
+        width: number
+        wall?: 'north' | 'south' | 'east' | 'west'
+        roomId?: string
+        segmentNodeIds?: [string, string]
+    } | null>(null)
     // Furniture placement + collisions
     // ─────────────────────────────────────────────────────────────────────────
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
     const [openFurnitureCats, setOpenFurnitureCats] = useState<Set<string>>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
     const { checkCollisions, overlappingRef, hasChanged, clear } = useFurnitureCollisions()
     const [overlappingIds, setOverlappingIds] = useState<Set<string>>(new Set())
-
+    const furnitureByCategory = useMemo(() => getFurnitureByCategory(), [])
+    const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
+        seating: 'Seating',
+        tables: 'Tables',
+        bedroom: 'Bedroom',
+        kitchen: 'Kitchen',
+        bathroom: 'Bathroom',
+        storage: 'Storage',
+        decor: 'Decor',
+        lighting: 'Lighting',
+        wall: 'Wall',
+    }
     // ─────────────────────────────────────────────────────────────────────────
     // Annotations
     // ─────────────────────────────────────────────────────────────────────────
@@ -2324,6 +2302,47 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     }))
                 },
             },
+            {
+                name: 'openingDrag',
+                isActive: () => !!openingDragRef.current,
+                apply: (wx, wz) => {
+                    const od = openingDragRef.current!
+                    if (od.wall) {
+                        const room = fpRef.current.rooms.find(r => r.id === od.roomId)
+                        if (room) {
+                            const isH = od.wall === 'north' || od.wall === 'south'
+                            const wallLen = isH ? room.width : room.depth
+                            const rawPos = isH ? wx - room.x : wz - room.z
+                            setFp(prev => ({
+                                ...prev,
+                                openings: prev.openings.map(o => {
+                                    if (o.id !== od.id) return o
+                                    const clamped = Math.max(o.width / 2, Math.min(wallLen - o.width / 2, rawPos))
+                                    return { ...o, position: parseFloat(clamped.toFixed(2)) }
+                                })
+                            }))
+                        }
+                    } else if (od.segmentNodeIds) {
+                        const a = fpRef.current.lineNodes.find(n => n.id === od.segmentNodeIds![0])
+                        const b = fpRef.current.lineNodes.find(n => n.id === od.segmentNodeIds![1])
+                        if (a && b) {
+                            const dx = b.x - a.x, dz = b.z - a.z
+                            const segLen = Math.hypot(dx, dz)
+                            const rawT = segLen > 0
+                                ? ((wx - a.x) * dx + (wz - a.z) * dz) / (segLen * segLen)
+                                : 0
+                            // Clamp so the door body doesn't hang off the end of the segment,
+                            // same intent as the room-wall branch's position clamp above.
+                            const halfWidthT = segLen > 0 ? (od.width / 2) / segLen : 0
+                            const t = Math.max(halfWidthT, Math.min(1 - halfWidthT, rawT))
+                            setFp(prev => ({
+                                ...prev,
+                                openings: prev.openings.map(o => o.id === od.id ? { ...o, segmentT: t, position: t * segLen } : o)
+                            }))
+                        }
+                    }
+                },
+            },
         ]
 
         const wasActiveDrag = runActiveDrag(dragEntries, dragOriginRef, cx, cy, wx, wz)
@@ -2920,7 +2939,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                 background: THEME.bgPanel,
                                 border: `1px solid ${THEME.border}`,
                                 borderRadius: 12,
-                                width: 260,
+                                width: 280,
                                 display: 'flex',
                                 flexDirection: 'column',
                                 boxShadow: THEME.shadowLg,
@@ -2936,71 +2955,108 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                             }}>
                                 FURNITURE
                             </div>
-                            <div style={{ padding: '6px 8px' }}>
-                                <ScrollableList maxHeight={300}>
-                                    {FURNITURE_CATEGORIES.map(cat => {
-                                        const isOpen = openFurnitureCats.has(cat.id)
-                                        return (
-                                            <div key={cat.id}>
-                                                <button
-                                                    onClick={() => setOpenFurnitureCats(prev => {
-                                                        const next = new Set(prev)
-                                                        next.has(cat.id) ? next.delete(cat.id) : next.add(cat.id)
-                                                        return next
-                                                    })}
+                            <div style={{ padding: '8px' }}>
+                                <ScrollableList maxHeight={340}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {(Object.keys(furnitureByCategory) as FurnitureCategory[]).map(catId => {
+                                            const items = furnitureByCategory[catId]
+                                            if (!items || items.length === 0) return null
+                                            const isOpen = openFurnitureCats.has(catId)
+                                            return (
+                                                <div
+                                                    key={catId}
                                                     style={{
-                                                        width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-                                                        padding: '8px 4px', background: 'transparent', border: 'none',
-                                                        cursor: 'pointer', textAlign: 'left',
+                                                        borderRadius: 10,
+                                                        border: `1px solid ${isOpen ? THEME.accent : THEME.border}`,
+                                                        background: isOpen ? 'rgba(99,102,241,0.06)' : 'transparent',
+                                                        overflow: 'hidden',
+                                                        transition: 'border-color 150ms, background 150ms',
                                                     }}
                                                 >
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
-                                                        style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 120ms', flexShrink: 0 }}>
-                                                        <polyline points="9 18 15 12 9 6" />
-                                                    </svg>
-                                                    <span style={{ fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text }}>{cat.label}</span>
-                                                    <span style={{ fontSize: 11, color: THEME.textFaint }}>{cat.items.length}</span>
-                                                </button>
-                                                {isOpen && (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: 22 }}>
-                                                        {cat.items.map(id => {
-                                                            const catalogEntry = FURNITURE_CATALOG.find(c => c.type === id)
-                                                            const isNew = catalogEntry ? isFurnitureNew(catalogEntry) : false
-                                                            return (
-                                                                <button
-                                                                    key={id}
-                                                                    onClick={() => setSelectedFurnitureType(id)}
-                                                                    style={{
-                                                                        display: 'flex', alignItems: 'center', gap: 8,
-                                                                        padding: '7px 8px', borderRadius: 6, border: 'none',
-                                                                        background: selectedFurnitureType === id ? 'rgba(99,102,241,0.1)' : 'transparent',
-                                                                        color: selectedFurnitureType === id ? THEME.accent : THEME.text,
-                                                                        fontSize: 12, fontWeight: selectedFurnitureType === id ? 600 : 400,
-                                                                        cursor: 'pointer', textAlign: 'left', width: '100%',
-                                                                    }}
-                                                                >
-                                                                    <span style={{ flex: 1 }}>{FURNITURE_LABELS[id]}</span>
-                                                                    {isNew && (
-                                                                        <span style={{
-                                                                            fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
-                                                                            color: '#fff', background: THEME.accent,
-                                                                            borderRadius: 4, padding: '2px 5px', flexShrink: 0,
-                                                                        }}>
-                                                                            NEW
-                                                                        </span>
-                                                                    )}
-                                                                </button>
-                                                            )
+                                                    <button
+                                                        onClick={() => setOpenFurnitureCats(prev => {
+                                                            const next = new Set(prev)
+                                                            next.has(catId) ? next.delete(catId) : next.add(catId)
+                                                            return next
                                                         })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )
-                                    })}
+                                                        style={{
+                                                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                                            padding: '8px 10px', background: 'transparent', border: 'none',
+                                                            cursor: 'pointer', textAlign: 'left',
+                                                        }}
+                                                    >
+                                                        <span style={{
+                                                            fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text,
+                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                        }}>
+                                                            {CATEGORY_LABELS[catId]}
+                                                        </span>
+                                                        <span style={{
+                                                            fontSize: 10.5, fontWeight: 700, color: THEME.accent,
+                                                            background: 'rgba(99,102,241,0.12)', borderRadius: 999,
+                                                            padding: '1px 7px', flexShrink: 0, minWidth: 18, textAlign: 'center',
+                                                        }}>
+                                                            {items.length}
+                                                        </span>
+                                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
+                                                            style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }}>
+                                                            <polyline points="9 18 15 12 9 6" />
+                                                        </svg>
+                                                    </button>
+
+                                                    {isOpen && (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 8px 8px' }}>
+                                                            {items.map(catalogEntry => {
+                                                                const id = catalogEntry.type
+                                                                const isNew = isFurnitureNew(catalogEntry)
+                                                                const Icon = (Icons as any)[catalogEntry.icon] ?? Icons.Box
+                                                                const selected = selectedFurnitureType === id
+                                                                return (
+                                                                    <button
+                                                                        key={id}
+                                                                        onClick={() => setSelectedFurnitureType(id)}
+                                                                        style={{
+                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                            padding: '6px 8px', borderRadius: 8, border: 'none',
+                                                                            background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
+                                                                            cursor: 'pointer', textAlign: 'left', width: '100%',
+                                                                        }}
+                                                                    >
+                                                                        <div style={{
+                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                            width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                                                                            background: selected ? 'rgba(99,102,241,0.14)' : THEME.bgCanvas,
+                                                                        }}>
+                                                                            <Icon size={14} strokeWidth={1.8} color={selected ? THEME.accent : THEME.textMuted} />
+                                                                        </div>
+                                                                        <span style={{
+                                                                            flex: 1, fontSize: 12, fontWeight: selected ? 600 : 400,
+                                                                            color: selected ? THEME.accent : THEME.text,
+                                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                                        }}>
+                                                                            {catalogEntry.label}
+                                                                        </span>
+                                                                        {isNew && (
+                                                                            <span style={{
+                                                                                fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
+                                                                                color: '#fff', background: THEME.accent,
+                                                                                borderRadius: 4, padding: '2px 5px', flexShrink: 0,
+                                                                            }}>
+                                                                                NEW
+                                                                            </span>
+                                                                        )}
+                                                                    </button>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
                                 </ScrollableList>
                             </div>
-                        </div>
-                        ,
+                        </div>,
                         document.body
                     )}
                     {presetsMounted && presetsAnchorRect && typeof document !== 'undefined' && createPortal(
@@ -3226,10 +3282,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                         id: 'properties',
                         title: 'Properties',
                         icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
-                            </svg>
+                            <img className='w-full' src={'/icons/properties.png'} />
+
                         ),
                         onClick: () => {
                             if (sheetOpen && rightTab === 'properties') {
@@ -3244,9 +3298,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                         id: 'scene',
                         title: 'Scene',
                         icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M4 4h16v16H4zM4 12h16M12 4v16" />
-                            </svg>
+                            <img className='w-full' src={'/icons/scene.png'} />
+
                         ),
                         onClick: () => {
                             if (sheetOpen && rightTab === 'scene') {
@@ -3261,10 +3314,8 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                         id: 'sun',
                         title: 'Sun & Lighting',
                         icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="4" />
-                                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-                            </svg>
+                            <img className='w-full' src={'/icons/light.png'} />
+
                         ),
                         onClick: () => {
                             if (sheetOpen && rightTab === 'sun') {

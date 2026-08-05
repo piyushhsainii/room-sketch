@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { FloorPlanState } from "@/components/workspace/lib/constants";
+import type { ProjectFloorPlan } from "@/components/workspace/lib/floor-data";
+import { SceneConfig } from "@/components/workspace/FloorPlanEditor";
+import { migrateToMultiFloor } from "@/components/workspace/lib/migrateToMultiFloor";
 
 const WorkspaceContainer = dynamic(
     () => import("@/components/workspace/WorkspaceContainer"),
@@ -78,14 +81,14 @@ export default function ProjectViewerPage() {
         );
     }
 
-    async function saveProject(fp: FloorPlanState, cfg: any, thumbnailUrl?: string) {
+    async function saveProject(projectFloorPlan: ProjectFloorPlan, cfg: SceneConfig, thumbnailUrl?: string) {
         try {
             const res = await fetch("/api/workspace/floorplan-editor-state", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     project_id: project.id,
-                    state: { floorPlanState: fp, sceneConfig: cfg },
+                    state: { projectFloorPlan, sceneConfig: cfg },
                     thumbnail_url: thumbnailUrl,
                 }),
             });
@@ -110,15 +113,21 @@ export default function ProjectViewerPage() {
     }
 
     if (project.floorplan_editor_state) {
-        const { floorPlanState, sceneConfig } = project.floorplan_editor_state as {
-            floorPlanState: any;
-            sceneConfig: any;
+
+        const rawState = project.floorplan_editor_state as {
+            projectFloorPlan?: ProjectFloorPlan;
+            floorPlanState?: FloorPlanState;
+            sceneConfig: SceneConfig;
         };
+
+        const projectFloorPlan: ProjectFloorPlan =
+            rawState.projectFloorPlan ?? migrateToMultiFloor(rawState.floorPlanState!);
+        const sceneConfig = rawState.sceneConfig;
 
         return (
             <FloorPlanEditor
                 projectId={project.id}
-                initialState={floorPlanState}
+                initialProjectFloorPlan={projectFloorPlan}
                 initialSceneConfig={sceneConfig}
                 onSave={saveProject}
                 onClose={() => router.push("/dashboard")}
@@ -126,7 +135,8 @@ export default function ProjectViewerPage() {
         );
     }
 
-    // AI-extracted floor plan — original extraction flow, unchanged
+    // AI-extracted floor plan — original extraction flow, unchanged, out of
+    // multi-floor scope per Phase 3 discussion.
     return (
         <WorkspaceContainer
             projectId={project.id}

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { LightFixtureType, PlacedLight, LIGHT_PLACEMENT_KIND } from '../lights-constant'
 
 function FixtureBody({ type }: { type: LightFixtureType }) {
@@ -122,23 +122,58 @@ function bulbLocalPosition(type: LightFixtureType): [number, number, number] {
     }
 }
 
+
 export function LightFixtureMesh({
     light,
     position,
     rotation = 0,
     selected = false,
     onSelect,
+    opacity = 1,          // NEW
+    transparent = false,  // NEW
 }: {
     light: PlacedLight
     position: [number, number, number]
     rotation?: number
     selected?: boolean
     onSelect?: () => void
+    opacity?: number       // NEW
+    transparent?: boolean  // NEW
 }) {
     const bulbPos = bulbLocalPosition(light.type)
     const scale = light.scale ?? 1
     const kind = LIGHT_PLACEMENT_KIND[light.type]
     const targetRef = useRef(new THREE.Object3D())
+    const groupRef = useRef<THREE.Group>(null)
+    const itemTransparent = transparent || opacity < 1
+
+    // Ghosting applied uniformly via traversal — same approach as
+    // FurnitureMesh — so FixtureBody's internal materials (unseen here)
+    // ghost correctly without needing their own prop wiring. Skips
+    // meshBasicMaterial (selection wireframes) and leaves emissive bulb
+    // glow/pointLight intensity untouched on purpose: a ghosted floor's
+    // light fixtures should still read as light sources, not vanish along
+    // with their glow — only the fixture BODY should fade.
+    useEffect(() => {
+        const root = groupRef.current
+        if (!root) return
+        root.traverse((obj) => {
+            const mesh = obj as THREE.Mesh
+            if (!mesh.isMesh) return
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+            for (const mat of mats) {
+                if (mat instanceof THREE.MeshBasicMaterial) continue
+                if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
+                    if (mat.userData.__baseOpacity === undefined) {
+                        mat.userData.__baseOpacity = mat.opacity
+                    }
+                    mat.opacity = mat.userData.__baseOpacity * opacity
+                    mat.transparent = itemTransparent || mat.userData.__baseOpacity < 1
+                    mat.needsUpdate = true
+                }
+            }
+        })
+    }, [opacity, itemTransparent, light.type])
 
     if (light.type === 'string_lights') return null
 
@@ -150,29 +185,15 @@ export function LightFixtureMesh({
         }
         : {}
 
-
     if (light.type === 'shelf_strip') {
         const w = (light.width ?? 1) * scale
         return (
-            <group position={position} rotation={[0, rotation, 0]} {...clickHandlers}>
+            <group ref={groupRef} position={position} rotation={[0, rotation, 0]} {...clickHandlers}>
                 <mesh position={[0, 0, 0.017]}>
                     <boxGeometry args={[w * 0.96, 0.022, 0.008]} />
-                    <meshStandardMaterial
-                        color={light.color}
-                        emissive={light.color}
-                        emissiveIntensity={2.2}
-                        roughness={0.3}
-                        toneMapped={false}
-                    />
+                    <meshStandardMaterial color={light.color} emissive={light.color} emissiveIntensity={2.2} roughness={0.3} toneMapped={false} />
                 </mesh>
-                <pointLight
-                    position={[0, -0.02, 0.03]}
-                    color={light.color}
-                    intensity={light.intensity}
-                    distance={2.5}
-                    decay={2}
-                    castShadow={false}
-                />
+                <pointLight position={[0, -0.02, 0.03]} color={light.color} intensity={light.intensity} distance={2.5} decay={2} castShadow={false} />
                 {selected && (
                     <mesh renderOrder={999}>
                         <boxGeometry args={[w * 1.05, 0.1, 0.1]} />
@@ -186,33 +207,17 @@ export function LightFixtureMesh({
     if (light.type === 'spotlight') {
         const aimYaw = light.aimRotation ?? 0
         const aimTilt = light.aimTilt ?? -0.3
-
         return (
-            <group position={position} rotation={[0, rotation, 0]} scale={scale} {...clickHandlers}>
+            <group ref={groupRef} position={position} rotation={[0, rotation, 0]} scale={scale} {...clickHandlers}>
                 <group rotation={[aimTilt, aimYaw, 0]}>
                     <FixtureBody type={light.type} />
                     <mesh position={bulbPos}>
                         <sphereGeometry args={[0.025, 10, 10]} />
-                        <meshStandardMaterial
-                            color={light.color}
-                            emissive={light.color}
-                            emissiveIntensity={2.5}
-                            toneMapped={false}
-                        />
+                        <meshStandardMaterial color={light.color} emissive={light.color} emissiveIntensity={2.5} toneMapped={false} />
                     </mesh>
                     <primitive object={targetRef.current} position={[0, -3, 0]} />
-                    <spotLight
-                        position={bulbPos}
-                        target={targetRef.current}
-                        color={light.color}
-                        intensity={light.intensity}
-                        angle={0.4}
-                        penumbra={0.4}
-                        distance={8}
-                        decay={2}
-                        castShadow={light.castShadow}
-                        shadow-mapSize={[512, 512]}
-                    />
+                    <spotLight position={bulbPos} target={targetRef.current} color={light.color} intensity={light.intensity}
+                        angle={0.4} penumbra={0.4} distance={8} decay={2} castShadow={light.castShadow} shadow-mapSize={[512, 512]} />
                 </group>
                 {selected && (
                     <mesh renderOrder={999}>
@@ -225,34 +230,17 @@ export function LightFixtureMesh({
     }
 
     return (
-        <group
-            position={position}
-            rotation={[0, rotation, 0]}
-            scale={scale}
-            {...clickHandlers}
-        >
+        <group ref={groupRef} position={position} rotation={[0, rotation, 0]} scale={scale} {...clickHandlers}>
             <FixtureBody type={light.type} />
             <mesh position={bulbPos}>
                 <sphereGeometry args={[light.type === 'chandelier' ? 0.022 : 0.035, 12, 12]} />
-                <meshStandardMaterial
-                    color={light.color}
-                    emissive={light.color}
-                    emissiveIntensity={2.2}
-                    toneMapped={false}
-                />
+                <meshStandardMaterial color={light.color} emissive={light.color} emissiveIntensity={2.2} toneMapped={false} />
             </mesh>
             <pointLight
-                position={bulbPos}
-                color={light.color}
-                intensity={light.intensity}
+                position={bulbPos} color={light.color} intensity={light.intensity}
                 distance={light.type === 'chandelier' ? 8 : light.type === 'outdoor_bollard' ? 5 : light.type === 'track_lighting' ? 6.5 : 6}
-                decay={2}
-                castShadow={light.castShadow}
-                shadow-mapSize={[512, 512]}
-                shadow-bias={-0.002}
-                shadow-radius={2}
+                decay={2} castShadow={light.castShadow} shadow-mapSize={[512, 512]} shadow-bias={-0.002} shadow-radius={2}
             />
-
             {selected && (
                 <mesh position={bulbPos} renderOrder={999}>
                     <sphereGeometry args={[0.09, 12, 12]} />

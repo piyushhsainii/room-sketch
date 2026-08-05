@@ -37,6 +37,10 @@ import { createClient } from '@/lib/supabase/client'
 import { SunScenePanel } from '../ui/SunCompassPanel'
 import { PlacedStairs, StairsType } from './lib/stairs-constants'
 import { checkPlacementValidity, findNearestWallPoint } from './lib/lights-drag-utils'
+import { migrateToMultiFloor, recomputeFloorElevations } from './lib/migrateToMultiFloor'
+import { createEmptyFloor, DEFAULT_ROOF, Floor, ProjectFloorPlan, RoofConfig } from './lib/floor-data'
+import { computeDerivedFloorData } from './computeDerivedFloorData'
+import ViewModeControl from '../ui/ViewModeControl'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -82,15 +86,30 @@ export const THEME = {
 }
 
 type Props = {
-    projectId?: string,
-    onSave?: (fp: FloorPlanState, sceneConfig: SceneConfig, thumbnailUrl?: string) => Promise<{ projectId: string } | void>
+    projectId: string,
+    onSave?: (
+        projectFloorPlan: ProjectFloorPlan,
+        sceneConfig: SceneConfig,
+        thumbnailUrl?: string
+    ) => Promise<{ projectId: string } | void>
     onClose?: () => void
-    initialState?: FloorPlanState
+    initialState?: FloorPlanState              // legacy — single-floor draft/fallback
+    initialProjectFloorPlan?: ProjectFloorPlan  // new — preferred when present
     initialSceneConfig?: SceneConfig
     isSaving?: boolean
     isSaved?: boolean
 }
-export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialState, initialSceneConfig, isSaving = false, isSaved = false }: Props) {
+
+export default function FloorPlanEditor({
+    projectId,
+    onSave,
+    onClose,
+    initialState,
+    initialProjectFloorPlan,
+    initialSceneConfig,
+    isSaving = false,
+    isSaved = false,
+}: Props) {
     // ─────────────────────────────────────────────────────────────────────────
     // Canvas / viewport
     // ─────────────────────────────────────────────────────────────────────────
@@ -109,12 +128,97 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     // ─────────────────────────────────────────────────────────────────────────
     // Floor plan data + scene config
     // ─────────────────────────────────────────────────────────────────────────
-    const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
-    const fpRef = useRef(fp); fpRef.current = fp
+    // const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
+    // const fpRef = useRef(fp); fpRef.current = fp
+    // const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
     const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
     const sceneConfigRef = useRef(sceneConfig)
     const historyRef = useRef<HistoryEntry[]>([])
     const historyIndexRef = useRef(-1)
+
+    // MULTI FLOOR 
+
+    // New state, alongside the existing fp/setFp/sceneConfig — nothing existing removed.
+    const [floors, setFloors] = useState<Floor[]>(() =>
+        initialProjectFloorPlan?.floors
+        ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).floors
+    )
+    const [activeFloorId, setActiveFloorId] = useState<string>(() =>
+        initialProjectFloorPlan?.activeFloorId
+        ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).activeFloorId
+    )
+    const [viewMode, setViewMode] = useState<'single' | 'stacked' | 'stacked-full'>(
+        initialProjectFloorPlan?.viewMode ?? 'single'
+    )
+    const [roof, setRoof] = useState<RoofConfig>(
+        initialProjectFloorPlan?.roof ?? DEFAULT_ROOF
+    )
+    const [fp, setFp] = useState<FloorPlanState>(() => {
+        const resolvedFloors = initialProjectFloorPlan?.floors
+            ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).floors
+        const resolvedActiveId = initialProjectFloorPlan?.activeFloorId
+            ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).activeFloorId
+        return resolvedFloors.find(f => f.id === resolvedActiveId)?.state ?? DEFAULT_FP
+    })
+    const fpRef = useRef(fp); fpRef.current = fp
+    const [layersOpen, setLayersOpen] = useState(false);
+
+    const [lastSavedSnapshot, setLastSavedSnapshot] = useState<{ fp: FloorPlanState; sceneConfig: SceneConfig } | null>(
+        () => ({ fp, sceneConfig })
+    )
+
+    const switchToFloor = useCallback((newFloorId: string) => {
+        if (newFloorId === activeFloorId) return
+
+        // 1. Fold current fp back into the floors array under the OLD active floor
+        setFloors(prev => prev.map(f => f.id === activeFloorId ? { ...f, state: fpRef.current } : f))
+
+
+        // 2. Load the NEW floor's state into fp
+        setFloors(prev => {
+            const target = prev.find(f => f.id === newFloorId)
+            if (target) setFp(target.state)
+            return prev
+        })
+
+        setActiveFloorId(newFloorId)
+        setSelectedId(null) // clear selection — a selected id from the old floor is meaningless on the new one
+        setSelectedIds([])
+    }, [activeFloorId])
+
+    const addFloor = useCallback((direction: 'above' | 'below' = 'above') => {
+        setFloors(prev => {
+            const withCurrentSaved = prev.map(f =>
+                f.id === activeFloorId ? { ...f, state: fpRef.current } : f
+            )
+            const maxOrder = Math.max(...withCurrentSaved.map(f => f.order))
+            const minOrder = Math.min(...withCurrentSaved.map(f => f.order))
+            const newOrder = direction === 'above' ? maxOrder + 1 : minOrder - 1
+            const label = direction === 'above' ? `Level ${newOrder + 1}` : `Basement ${Math.abs(newOrder)}`
+            const newFloor = createEmptyFloor(label, newOrder, 0) // elevation recomputed below
+            const withNewFloor = [...withCurrentSaved, newFloor]
+            const recomputed = recomputeFloorElevations(withNewFloor)
+            setFp(newFloor.state) // switch editing view onto the new empty floor immediately
+            setActiveFloorId(newFloor.id)
+            return recomputed
+        })
+        setSelectedId(null)
+        setSelectedIds([])
+    }, [activeFloorId])
+
+    const renameFloor = useCallback((floorId: string, newLabel: string) => {
+        setFloors(prev => prev.map(f => f.id === floorId ? { ...f, label: newLabel } : f))
+    }, [])
+
+    const toggleFloorVisible = useCallback((floorId: string) => {
+        setFloors(prev => prev.map(f => f.id === floorId ? { ...f, visible: !f.visible } : f))
+    }, [])
+
+
+    const [showUnderlay, setShowUnderlay] = useState<boolean>(
+        initialProjectFloorPlan?.showUnderlay ?? true
+    )
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // Tool / mode
@@ -565,6 +669,26 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 lastCanvasSizeRef.current = { w: cw, h: ch }
             }
 
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+            // Ghost floors — drawn first, underneath, faded, fully inert
+            for (const { floor, derived } of ghostFloorsDerivedRef.current) {
+                ctx.save()
+                ctx.globalAlpha = 0.25
+                draw2D(
+                    ctx, floor.state, 'select', null, [], null,
+                    null, [],
+                    zoom, pan, null, null, new Set(),
+                    derived.closedPolygons,
+                    derived.openingsByRoom, derived.openingsBySegment,
+                    derived.shapesIndex, null,
+                    derived.nodesById, derived.roomsById
+                )
+                ctx.restore()
+            }
+
+            // Active floor — full opacity, full interactivity, exactly as before
+            ctx.globalAlpha = 1
             draw2D(
                 ctx, fpRef.current, tool, selectedId, selectedIds, hoveredIdRef.current,
                 drawRectRef.current, pencilPointsRef.current,
@@ -572,13 +696,15 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 flat2DRef.current.closedPolygons,
                 openingsIndexRef.current.byRoom, openingsIndexRef.current.bySegment,
                 shapesIndexRef.current, marqueeRectRef.current,
-                nodesByIdRef.current, roomsByIdRef.current   // ← the two params that were missing
+                nodesByIdRef.current, roomsByIdRef.current
             )
         })
     }, [tool, selectedId, selectedIds, zoom, pan, overlappingIds])
 
     useEffect(() => { scheduleRedraw() }, [scheduleRedraw, fp, pencilPoints, preview, hoveredId])
     useEffect(() => () => cancelAnimationFrame(rafIdRef.current), [])
+
+
 
     useEffect(() => {
         const canvas = canvasRef.current
@@ -2825,11 +2951,19 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         const next = Math.min(0.75, Math.max(0.22, drag.startRatio + deltaRatio))
         setSplitRatio(next)
     }, [])
+    const getProjectFloorPlanForSave = useCallback((): ProjectFloorPlan => {
+        const floorsWithCurrent = floors.map(f =>
+            f.id === activeFloorId ? { ...f, state: fpRef.current } : f
+        )
+        return { floors: floorsWithCurrent, activeFloorId, viewMode, showUnderlay, roof }
+    }, [floors, activeFloorId, viewMode, showUnderlay, roof])
 
     const handleSaveWithThumbnail = useCallback(async (fp: FloorPlanState, sceneConfig: SceneConfig) => {
-        const saveResult = await onSave?.(fp, sceneConfig, undefined)
-        const effectiveProjectId = projectId ?? saveResult?.projectId
+        const projectFloorPlan = getProjectFloorPlanForSave() // full floors array, current fp already folded in
 
+        const saveResult = await onSave?.(projectFloorPlan, sceneConfig, undefined)
+        const effectiveProjectId = projectId ?? saveResult?.projectId
+        setLastSavedSnapshot({ fp, sceneConfig })
         if (!effectiveProjectId) {
             console.warn('[FloorPlanEditor] no projectId after save, skipping thumbnail')
             return
@@ -2846,7 +2980,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 if (res.ok) {
                     const body = await res.json() as { thumbnail_url?: string }
                     if (body.thumbnail_url) {
-                        await onSave?.(fp, sceneConfig, body.thumbnail_url)
+                        await onSave?.(projectFloorPlan, sceneConfig, body.thumbnail_url)
                     }
                 } else {
                     console.warn('[FloorPlanEditor] thumbnail upload failed:', await res.text())
@@ -2855,7 +2989,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         } catch (err) {
             console.warn('[FloorPlanEditor] thumbnail capture failed, continuing:', err)
         }
-    }, [onSave, projectId])
+    }, [onSave, projectId, getProjectFloorPlanForSave])
 
     const handleDividerMouseUp = useCallback(() => {
         dragStateRef.current = null
@@ -2876,6 +3010,33 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     }, [splitRatio, handleDividerMouseMove, handleDividerMouseUp])
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
+
+    const activeFloorDerived = useMemo(
+        () => computeDerivedFloorData(fp),
+        [fp]
+    )
+    const ghostFloorsDerivedRef = useRef<{ floor: Floor; derived: ReturnType<typeof computeDerivedFloorData> }[]>([])
+
+    const ghostFloorsDerived = useMemo(() => {
+        if (viewMode === 'single') {
+            // Underlay only — floor directly below active, faded, if enabled
+            if (!showUnderlay) return []
+            const activeFloor = floors.find(f => f.id === activeFloorId)
+            if (!activeFloor) return []
+            const belowFloor = [...floors]
+                .filter(f => f.order < activeFloor.order && f.visible)
+                .sort((a, b) => b.order - a.order)[0]
+            return belowFloor ? [{ floor: belowFloor, derived: computeDerivedFloorData(belowFloor.state) }] : []
+        }
+        return floors
+            .filter(f => f.visible && f.id !== activeFloorId)
+            .map(f => ({ floor: f, derived: computeDerivedFloorData(f.state) }))
+    }, [viewMode, showUnderlay, floors, activeFloorId])
+
+    useEffect(() => {
+        ghostFloorsDerivedRef.current = ghostFloorsDerived
+        scheduleRedraw()
+    }, [ghostFloorsDerived, scheduleRedraw])
 
     return (
         <div
@@ -2900,6 +3061,17 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     onClose={onClose}
                     onSave={handleSaveWithThumbnail}
                     projectId={projectId}
+                    floors={floors}
+                    activeFloorId={activeFloorId}
+                    viewMode={viewMode}
+                    onSelectFloor={switchToFloor}
+                    onAddFloor={addFloor}
+                    onToggleFloorVisible={toggleFloorVisible}
+                    onRenameFloor={renameFloor}
+                    onSetViewMode={setViewMode}
+                    onSetShowUnderlay={setShowUnderlay}
+                    showUnderlay={showUnderlay}
+                    lastSavedSnapshot={lastSavedSnapshot}
                 />
             </div>
             {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -3228,18 +3400,16 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                     <Scene3D
                                         ref={scene3DRef}
                                         exportRootRef={exportRootRef}
-                                        fp={fp3D}
+                                        floors={floors}
+                                        activeFloorId={activeFloorId}
+                                        viewMode={viewMode}
+                                        showUnderlay={showUnderlay}
                                         sceneConfig={sceneConfig}
                                         walkMode={walkMode}
                                         interactiveMode={interactiveMode}
                                         selectedId={selectedId}
                                         onSelect={handleSceneSelect}
-                                        onToggleDoorOpen={(openingId) =>
-                                            setFp(prev => ({
-                                                ...prev,
-                                                openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o)
-                                            }))
-                                        }
+                                        onToggleDoorOpen={(openingId) => setFp(prev => ({ ...prev, openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o) }))}
                                         overlappingIds={overlappingIds}
                                     />
                                 </ResilientCanvas>
@@ -3266,7 +3436,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                     sceneConfig={sceneConfig}
                                     pushHistory={pushHistory}
                                     scene3DRef={scene3DRef}
-                                    onSave={onSave}
+                                    onSave={(fpArg, cfgArg) => { void handleSaveWithThumbnail(fpArg, cfgArg) }}
                                 />
                             ) : null
                         }
@@ -3274,60 +3444,60 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 </div>,
                 document.body
             )}
-            <FloatingDock
-                orientation="horizontal"
-                activeId={sheetOpen ? rightTab : null}
-                items={[
-                    {
-                        id: 'properties',
-                        title: 'Properties',
-                        icon: (
-                            <img className='w-full' src={'/icons/properties.png'} />
 
-                        ),
-                        onClick: () => {
-                            if (sheetOpen && rightTab === 'properties') {
-                                setSheetOpen(false)
-                            } else {
-                                setRightTab('properties')
-                                setSheetOpen(true)
-                            }
+            <div style={{ position: "relative" }} className='flex items-center justify-center'>
+                <FloatingDock
+                    orientation="horizontal"
+                    activeId={sheetOpen ? rightTab : (layersOpen ? 'layers' : null)}
+                    items={[
+                        {
+                            id: 'layers',
+                            title: 'Floor View',
+                            icon: (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-full">
+                                    <path d="M12 2 2 7l10 5 10-5-10-5z" strokeLinejoin="round" />
+                                    <path d="M2 17l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
+                                    <path d="M2 12l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
+                                </svg>
+                            ),
+                            onClick: () => setLayersOpen(v => !v),
                         },
-                    },
-                    {
-                        id: 'scene',
-                        title: 'Scene',
-                        icon: (
-                            <img className='w-full' src={'/icons/scene.png'} />
-
-                        ),
-                        onClick: () => {
-                            if (sheetOpen && rightTab === 'scene') {
-                                setSheetOpen(false)
-                            } else {
-                                setRightTab('scene')
-                                setSheetOpen(true)
-                            }
+                        {
+                            id: 'properties',
+                            title: 'Properties',
+                            icon: <img className='w-full' src={'/icons/properties.png'} />,
+                            onClick: () => {
+                                if (sheetOpen && rightTab === 'properties') setSheetOpen(false)
+                                else { setRightTab('properties'); setSheetOpen(true) }
+                            },
                         },
-                    },
-                    {
-                        id: 'sun',
-                        title: 'Sun & Lighting',
-                        icon: (
-                            <img className='w-full' src={'/icons/light.png'} />
-
-                        ),
-                        onClick: () => {
-                            if (sheetOpen && rightTab === 'sun') {
-                                setSheetOpen(false)
-                            } else {
-                                setRightTab('sun')
-                                setSheetOpen(true)
-                            }
+                        {
+                            id: 'scene',
+                            title: 'Scene',
+                            icon: <img className='w-full' src={'/icons/scene.png'} />,
+                            onClick: () => {
+                                if (sheetOpen && rightTab === 'scene') setSheetOpen(false)
+                                else { setRightTab('scene'); setSheetOpen(true) }
+                            },
                         },
-                    },
-                ]}
-            />
+                        {
+                            id: 'sun',
+                            title: 'Sun & Lighting',
+                            icon: <img className='w-full' src={'/icons/light.png'} />,
+                            onClick: () => {
+                                if (sheetOpen && rightTab === 'sun') setSheetOpen(false)
+                                else { setRightTab('sun'); setSheetOpen(true) }
+                            },
+                        },
+                    ]}
+                />
+                <ViewModeControl
+                    open={layersOpen}
+                    viewMode={viewMode}
+                    onSetViewMode={setViewMode}
+                    onClose={() => setLayersOpen(false)}
+                />
+            </div>
             {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection ? (
                 <div
                     onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}

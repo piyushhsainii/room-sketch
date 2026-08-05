@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { OUTDOOR_FLAT_TYPES, OutdoorObjectType, PlacedOutdoorObject } from '../lib/outdoor-constants'
 import { MATERIAL_REGISTRY } from '../lib/constants';
+import { useEffect, useRef } from 'react';
 
 function ObjectBody({ type, materialId }: { type: OutdoorObjectType; materialId?: string }) {
     switch (type) {
@@ -115,20 +116,49 @@ function ObjectBody({ type, materialId }: { type: OutdoorObjectType; materialId?
     }
 }
 
+
 export function OutdoorObjectMesh({
     obj, selected = false, interactive = false, onSelect,
+    opacity = 1,          // NEW
+    transparent = false,  // NEW
 }: {
     obj: PlacedOutdoorObject
     selected?: boolean
     interactive?: boolean
     onSelect?: () => void
+    opacity?: number       // NEW
+    transparent?: boolean  // NEW
 }) {
     const isFlat = OUTDOOR_FLAT_TYPES.has(obj.type)
     const scale = obj.scale ?? 1
     const fp2 = { crosswalk: { w: 2.0, d: 3.0 }, dustbin: { w: 0.5, d: 0.5 }, bench: { w: 1.6, d: 0.5 }, mailbox: { w: 0.35, d: 0.35 } }[obj.type]
+    const groupRef = useRef<THREE.Group>(null)
+    const itemTransparent = transparent || opacity < 1
+
+    useEffect(() => {
+        const root = groupRef.current
+        if (!root) return
+        root.traverse((o) => {
+            const mesh = o as THREE.Mesh
+            if (!mesh.isMesh) return
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+            for (const mat of mats) {
+                if (mat instanceof THREE.MeshBasicMaterial) continue
+                if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
+                    if (mat.userData.__baseOpacity === undefined) {
+                        mat.userData.__baseOpacity = mat.opacity
+                    }
+                    mat.opacity = mat.userData.__baseOpacity * opacity
+                    mat.transparent = itemTransparent || mat.userData.__baseOpacity < 1
+                    mat.needsUpdate = true
+                }
+            }
+        })
+    }, [opacity, itemTransparent, obj.type, obj.materialId])
 
     return (
         <group
+            ref={groupRef}
             position={[obj.x, isFlat ? 0.003 : 0, obj.z]}
             rotation={[0, obj.rotation, 0]}
             scale={scale}

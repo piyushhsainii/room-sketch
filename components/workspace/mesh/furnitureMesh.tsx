@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
 import { getMaterialsForDomain } from '../texture/materials-registry'
@@ -198,15 +198,23 @@ export function FurnitureMesh({
     f,
     selected = false,
     interactive = false,
-    overlapping = false,        // NEW
+    overlapping = false,
     onSelect,
+    opacity = 1,
+    transparent = false,
 }: {
     f: PlacedFurniture
     selected?: boolean
     interactive?: boolean
-    overlapping?: boolean       // NEW
+    overlapping?: boolean
     onSelect?: (id: string) => void
+    opacity?: number
+    transparent?: boolean
 }) {
+    const itemOpacity = opacity
+    const itemTransparent = transparent || opacity < 1
+    const groupRef = useRef<THREE.Group>(null)
+
     const s = f.scale ?? 1
     const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
     const [hovered, setHovered] = React.useState(false)
@@ -215,7 +223,6 @@ export function FurnitureMesh({
     const fabric = useFabricMaterialProps(2.4, 2.4)
     const fabricTight = useFabricMaterialProps(4, 4) // finer repeat for smaller cushions/chairs
 
-    // per-instance color variation, stable per furniture id (used when no material override is set)
     const sofaColor = hashPick(f.id, SOFA_VARIANTS)
     const cushionColor = hashPick(f.id, CUSHION_VARIANTS)
 
@@ -225,9 +232,6 @@ export function FurnitureMesh({
         2.4, 2.4
     )
     console.log('[FurnitureMesh] materialId=', f.materialId, 'overrideMat=', overrideMat)
-    // Only actually apply the override once we KNOW something — while it's
-    // still loading, keep rendering the default fabric look so nothing flashes
-    // into a flat, texture-less swatch color prematurely.
     const overrideReady = overrideStatus === 'loaded' || overrideStatus === 'failed'
     const useOverride = overrideMat && overrideReady
 
@@ -237,8 +241,6 @@ export function FurnitureMesh({
     const cushionColorResolved = useOverride
         ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch)
         : cushionColor
-    // const bodyMaterialProps = useOverride ? overrideTex : fabric
-    // const cushionMaterialProps = useOverride ? overrideTex : fabricTight
 
     const bodyMaterialProps = normalizeMaterialProps(useOverride ? overrideTex : fabric)
     const cushionMaterialProps = normalizeMaterialProps(useOverride ? overrideTex : fabricTight)
@@ -269,8 +271,34 @@ export function FurnitureMesh({
         : f.type === 'led_strip' || f.type === 'painting' || f.type === 'wall_panel_pvc' || f.type === 'mirror' ? 0
             : 1.0 * s
 
+    useEffect(() => {
+        const root = groupRef.current
+        if (!root) return
+        root.traverse((obj) => {
+            const mesh = obj as THREE.Mesh
+            if (!mesh.isMesh) return
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+            for (const mat of mats) {
+                if (mat instanceof THREE.MeshBasicMaterial) continue // outlines — leave alone
+                if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
+                    // Preserve each material's own authored opacity (e.g. the
+                    // bathtub water plane's 0.85, shower glass's 0.25) by
+                    // capturing it once as a baseline, then multiplying by the
+                    // floor-level ghosting factor on every update.
+                    if (mat.userData.__baseOpacity === undefined) {
+                        mat.userData.__baseOpacity = mat.opacity
+                    }
+                    mat.opacity = mat.userData.__baseOpacity * opacity
+                    mat.transparent = itemTransparent || mat.userData.__baseOpacity < 1
+                    mat.needsUpdate = true
+                }
+            }
+        })
+    }, [opacity, itemTransparent, f.type, f.variant, f.materialId])
+
     return (
         <group
+            ref={groupRef}
             position={[f.x, 0, f.z]}
             rotation={[0, f.rotation, 0]}
             onClick={handleClick}

@@ -5,9 +5,7 @@ import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } 
 import { FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS } from "./lib/furniture-constants";
 
 const labelWidthCache = new Map<string, number>()
-// Hard cap so a long drawing/dragging session can't leak memory — every
-// unique "7.52m" / "7.53m" / ... string minted while dragging would
-// otherwise sit in this map forever.
+
 const LABEL_CACHE_MAX = 500
 
 function measureCached(ctx: CanvasRenderingContext2D, text: string, font: string): number {
@@ -16,9 +14,7 @@ function measureCached(ctx: CanvasRenderingContext2D, text: string, font: string
     if (w === undefined) {
         ctx.font = font
         w = ctx.measureText(text).width
-        // Once we hit the cap, evict the oldest (least-recently-used) entry.
-        // Map preserves insertion order, and re-inserting on hit (below)
-        // keeps hot entries fresh, so `.keys().next()` is a true LRU victim.
+
         if (labelWidthCache.size >= LABEL_CACHE_MAX) {
             const oldestKey = labelWidthCache.keys().next().value
             if (oldestKey !== undefined) labelWidthCache.delete(oldestKey)
@@ -43,6 +39,178 @@ function measureCached(ctx: CanvasRenderingContext2D, text: string, font: string
 function quantizeMeters(m: number, precision = 100): number {
     return Math.round(m * precision) / precision
 }
+
+// ── Label collision avoidance ────────────────────────────────────────────
+// When several objects sit close together (two spotlights on the same
+// wall, a sconce right next to a crosswalk, etc.) their chip labels would
+// otherwise land on the exact same spot and render illegibly on top of
+// each other — which is also what made some objects hard to select, since
+// you couldn't see there were two things there to click. Every chip label
+// this frame gets checked against labels already placed; if it collides,
+// it's nudged down (and, failing that, sideways) until it's clear, with
+// its leader line stretching to show where it really points.
+let placedLabelRects: { x: number; y: number; w: number; h: number }[] = []
+
+function rectsOverlap(
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
+function findClearSpot(w: number, h: number, startX: number, startY: number) {
+    // startX/startY here is the CENTER of the label.
+    const stepY = h + 4
+    const maxAttempts = 12
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        // Alternate below/above the original spot, moving further out
+        // each pass: 0, +1, -1, +2, -2, ...
+        const dir = attempt === 0 ? 0 : (attempt % 2 === 1 ? Math.ceil(attempt / 2) : -Math.ceil(attempt / 2))
+        const cy = startY + dir * stepY
+        const rect = { x: startX - w / 2, y: cy - h / 2, w, h }
+        const collides = placedLabelRects.some(r => rectsOverlap(rect, r))
+        if (!collides) return { x: startX, y: cy }
+    }
+    // Give up avoiding — better to overlap slightly than fly off-plan.
+    return { x: startX, y: startY }
+}
+
+type LabelAnchor = 'center' | 'left'
+
+function drawPlainLabel(
+    ctx: CanvasRenderingContext2D,
+    x: number, y: number, text: string,
+    opts?: { fontSize?: number; weight?: number; color?: string; align?: CanvasTextAlign },
+) {
+    const fontSize = opts?.fontSize ?? 11
+    const weight = opts?.weight ?? 600
+    ctx.save()
+    ctx.font = `${weight} ${fontSize}px system-ui`
+    ctx.textAlign = opts?.align ?? 'center'
+    ctx.textBaseline = 'middle'
+    // Thin white halo so black text stays readable over dark room fills,
+    // wall strokes, and the grid — without needing a solid background box.
+    ctx.lineWidth = 3
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+    ctx.lineJoin = 'round'
+    ctx.strokeText(text, x, y)
+    ctx.fillStyle = opts?.color ?? '#1a1a1a'
+    ctx.fillText(text, x, y)
+    ctx.restore()
+}
+
+interface ChipLabelOpts {
+    x: number
+    y: number
+    text: string
+    dotColor?: string
+    zoom: number
+    selected?: boolean
+    hovered?: boolean
+    anchor?: LabelAnchor
+    // draw a short leader line from the anchor point to the chip, useful
+    // when the chip is offset away from the thing it's labeling.
+    leaderFrom?: { x: number; y: number }
+}
+
+function drawChipLabel(ctx: CanvasRenderingContext2D, opts: ChipLabelOpts) {
+    const { x, y, text, dotColor, zoom, selected, hovered, anchor = 'center', leaderFrom } = opts
+
+    const fontSize = Math.max(9.5, 10.5 * Math.min(zoom, 1.3))
+    const font = `600 ${fontSize}px system-ui`
+
+    ctx.save()
+    ctx.font = font
+    const textW = measureCached(ctx, text, font)
+
+    const padX = 8
+    const dotR = dotColor ? 3 : 0
+    const dotGap = dotColor ? 5 : 0
+    const chipH = Math.max(18, fontSize + 8)
+    const innerW = dotR * 2 + dotGap + textW
+    const chipW = innerW + padX * 2
+
+    // The true anchor point this label is describing — used for the
+    // leader line once we know where the label actually ended up.
+    const anchorPoint = leaderFrom ?? { x, y }
+
+    // Resolve overlap with any label already placed this frame. For
+    // 'center'-anchored labels the intended center is (x, y); for 'left'
+    // anchored ones (e.g. the cursor-tag) it's the box's own center.
+    const intendedCenterX = anchor === 'left' ? x + chipW / 2 : x
+    const resolved = findClearSpot(chipW, chipH, intendedCenterX, y)
+    const finalCenterX = resolved.x
+    const finalCenterY = resolved.y
+
+    const px = finalCenterX - chipW / 2
+    const py = finalCenterY - chipH / 2
+
+    // Always draw a leader line when the label moved away from its
+    // anchor (either because the caller offset it, or because collision
+    // avoidance nudged it) so it's still clear what the label refers to.
+    const moved = Math.abs(finalCenterX - anchorPoint.x) > 1 || Math.abs(finalCenterY - anchorPoint.y) > 1
+    if (leaderFrom || moved) {
+        ctx.strokeStyle = 'rgba(148,163,184,0.55)'
+        ctx.lineWidth = 1
+        ctx.setLineDash([2, 2])
+        ctx.beginPath()
+        ctx.moveTo(anchorPoint.x, anchorPoint.y)
+        ctx.lineTo(finalCenterX, finalCenterY)
+        ctx.stroke()
+        ctx.setLineDash([])
+    }
+
+    ctx.shadowColor = 'rgba(0,0,0,0.18)'
+    ctx.shadowBlur = 3
+    ctx.shadowOffsetY = 1
+
+    ctx.fillStyle = selected ? 'rgba(224,225,255,0.98)' : 'rgba(255,255,255,0.94)'
+    ctx.beginPath()
+    ctx.roundRect(px, py, chipW, chipH, chipH / 2)
+    ctx.fill()
+
+    ctx.shadowColor = 'transparent'
+    ctx.shadowBlur = 0
+    ctx.shadowOffsetY = 0
+
+    ctx.strokeStyle = selected ? '#4F46E5' : hovered ? 'rgba(99,102,241,0.6)' : 'rgba(0,0,0,0.15)'
+    ctx.lineWidth = selected ? 1.5 : 1
+    ctx.beginPath()
+    ctx.roundRect(px + 0.5, py + 0.5, chipW - 1, chipH - 1, chipH / 2)
+    ctx.stroke()
+
+    let cursorX = px + padX
+    const midY = finalCenterY
+
+    if (dotColor) {
+        ctx.beginPath()
+        ctx.arc(cursorX + dotR, midY, dotR, 0, Math.PI * 2)
+        ctx.fillStyle = dotColor
+        ctx.fill()
+        cursorX += dotR * 2 + dotGap
+    }
+
+    ctx.font = font
+    ctx.fillStyle = selected ? '#4F46E5' : '#1a1a1a'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, cursorX, midY)
+
+    ctx.restore()
+
+    placedLabelRects.push({ x: px, y: py, w: chipW, h: chipH })
+
+    return { chipW, chipH, px, py }
+}
+
+// Category accent colors used for the small status dot in each chip label,
+// so at a glance you can tell what kind of element a label refers to
+// without reading the text — decor (tan/brass), lights (amber), outdoor
+// (slate), dimensions (indigo).
+const DOT_DECOR = '#C9A876'
+const DOT_LIGHT = '#EAB308'
+const DOT_OUTDOOR = '#94A3B8'
+const DOT_DIMENSION = '#818CF8'
 
 export function draw2D(
     ctx: CanvasRenderingContext2D,
@@ -70,6 +238,10 @@ export function draw2D(
     const W = ctx.canvas.width
     const H = ctx.canvas.height
     ctx.clearRect(0, 0, W, H)
+    // Fresh collision registry for this frame's chip labels — see
+    // findClearSpot/drawChipLabel above.
+    placedLabelRects = []
+
 
     const scale = PX_PER_M * zoom
     // ── Grid ──────────────────────────────────────────────────────────────────
@@ -107,16 +279,20 @@ export function draw2D(
         ctx.fillRect(rx + rw - wallT, rz, wallT, rd)
         ctx.restore()
 
-        ctx.save()
-        ctx.fillStyle = 'rgba(148,163,184,0.8)'
-        ctx.font = `${Math.max(10, 12 * zoom)}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(room.label, rx + rw / 2, rz + rd / 2 - 8)
-        ctx.font = `${Math.max(9, 10 * zoom)}px system-ui`
-        ctx.fillStyle = 'rgba(100,116,139,0.7)'
-        ctx.fillText(`${room.width.toFixed(1)}m × ${room.depth.toFixed(1)}m`, rx + rw / 2, rz + rd / 2 + 10)
-        ctx.restore()
+        // Room name + dimensions — plain black text with a white halo
+        // (no background chip). Rooms tile the whole plan, so a boxed
+        // label per room reads as visual clutter; the halo alone gives
+        // enough contrast against both light and dark room fills.
+        drawPlainLabel(ctx, rx + rw / 2, rz + rd / 2 - 9, room.label, {
+            fontSize: Math.max(11, 13 * zoom),
+            weight: 700,
+            color: isSel ? '#4F46E5' : '#1a1a1a',
+        })
+        drawPlainLabel(ctx, rx + rw / 2, rz + rd / 2 + 10, `${room.width.toFixed(1)}m × ${room.depth.toFixed(1)}m`, {
+            fontSize: Math.max(9, 10.5 * zoom),
+            weight: 500,
+            color: isSel ? 'rgba(79,70,229,0.75)' : 'rgba(30,30,30,0.65)',
+        })
 
         // ── Room Openings ────────────────────────────────────────────────────
         // was: fp.openings.filter(o => o.roomId === room.id && !o.segmentNodeIds)
@@ -395,28 +571,20 @@ export function draw2D(
         // Label drawn in a SEPARATE, un-rotated-by-wall-angle pass so text is
         // always upright and legible, offset outward on the wall's normal —
         // flipped by `faceDir` so labels for opposite-face items don't
-        // stack on top of each other.
+        // stack on top of each other. Uses the shared pill-badge renderer
+        // (dark pill + brass dot) for consistent contrast against any
+        // background, plus a short leader line back to the fixture.
         const normalX = Math.sin(angle) * faceDir, normalZ = -Math.cos(angle) * faceDir
-        const labelOffset = 14
+        const labelOffset = 20
         const label = WALL_DECOR_LABELS[d.type]
-        ctx.save()
-        const decorFont = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-        ctx.font = decorFont
-        const tw = measureCached(ctx, label, decorFont)
-        const lx = cx(dx) + normalX * labelOffset
-        const ly = cy(dz) + normalZ * labelOffset
-        ctx.fillStyle = isSel ? '#000000' : 'rgba(255,255,255,0.9)'
-        ctx.beginPath()
-        ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
-        ctx.fill()
-        ctx.strokeStyle = isSel ? '#000000' : 'rgba(0,0,0,0.08)'
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.fillStyle = isSel ? '#FFFFFF' : 'rgba(80,60,40,0.9)'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(label, lx, ly)
-        ctx.restore()
+        const anchorX = cx(dx), anchorY = cy(dz)
+        const lx = anchorX + normalX * labelOffset
+        const ly = anchorY + normalZ * labelOffset
+        drawChipLabel(ctx, {
+            x: lx, y: ly, text: label, dotColor: DOT_DECOR, zoom,
+            selected: isSel, hovered: isHov,
+            leaderFrom: { x: anchorX + normalX * (6 * faceDir), y: anchorY + normalZ * (6 * faceDir) },
+        })
     }
     // ── Lights ─────────────────────────────────────────────────────────────
     for (const l of fp.lights ?? []) {
@@ -503,23 +671,12 @@ export function draw2D(
                 ctx.restore()
             }
 
-            const lx = px, ly = pz + (kind === 'wall-strip' ? 14 : 16)
-            ctx.save()
-            const lightFont = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-            ctx.font = lightFont
-            const tw = measureCached(ctx, label, lightFont)
-            ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
-            ctx.beginPath()
-            ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
-            ctx.fill()
-            ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.08)'
-            ctx.lineWidth = 1
-            ctx.stroke()
-            ctx.fillStyle = isSel ? '#FFFFFF' : isHov ? '#4F46E5' : 'rgba(80,60,40,0.9)'
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(label, lx, ly)
-            ctx.restore()
+            const lx = px, ly = pz + (kind === 'wall-strip' ? 20 : 22)
+            drawChipLabel(ctx, {
+                x: lx, y: ly, text: label, dotColor: DOT_LIGHT, zoom,
+                selected: isSel, hovered: isHov,
+                leaderFrom: { x: px, y: pz + 8 },
+            })
             continue
         }
 
@@ -545,23 +702,12 @@ export function draw2D(
         }
         ctx.restore()
 
-        ctx.save()
-        const freeFont = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-        ctx.font = freeFont
-        const tw = measureCached(ctx, label, freeFont)
-        const lx = px, ly = pz + 16
-        ctx.fillStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.9)'
-        ctx.beginPath()
-        ctx.roundRect(lx - tw / 2 - 4, ly - 8, tw + 8, 16, 4)
-        ctx.fill()
-        ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? '#818CF8' : 'rgba(0,0,0,0.08)'
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.fillStyle = isSel ? '#FFFFFF' : isHov ? '#4F46E5' : 'rgba(80,60,40,0.85)'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(label, lx, ly)
-        ctx.restore()
+        const lx = px, ly = pz + 22
+        drawChipLabel(ctx, {
+            x: lx, y: ly, text: label, dotColor: DOT_LIGHT, zoom,
+            selected: isSel, hovered: isHov,
+            leaderFrom: { x: px, y: pz + 9 },
+        })
     }
 
     if (drawRect && Math.abs(drawRect.w) > 0.1 && Math.abs(drawRect.d) > 0.1) {
@@ -577,14 +723,14 @@ export function draw2D(
         ctx.fillRect(rx, rz, rw, rd)
         ctx.strokeRect(rx, rz, rw, rd)
         ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(165,168,255,0.9)'
-        ctx.font = `${11 * zoom}px system-ui`
-        ctx.textAlign = 'center'
         // Quantized to 0.1m so the live label (and its measureCached entry)
         // don't churn on every sub-mm cursor jitter while dragging out a room.
         const wLabel = quantizeMeters(Math.abs(drawRect.w), 10).toFixed(1)
         const dLabel = quantizeMeters(Math.abs(drawRect.d), 10).toFixed(1)
-        ctx.fillText(`${wLabel}m × ${dLabel}m`, rx + rw / 2, rz + rd / 2)
+        drawChipLabel(ctx, {
+            x: rx + rw / 2, y: rz + rd / 2, text: `${wLabel}m × ${dLabel}m`,
+            dotColor: DOT_DIMENSION, zoom, selected: true,
+        })
         ctx.restore()
     }
     // ── Pencil stroke preview ─────────────────────────────────────────────────
@@ -612,13 +758,12 @@ export function draw2D(
             ctx.setLineDash([5, 4])
             ctx.strokeRect(brx, brz, brw, brd)
             ctx.setLineDash([])
-            ctx.fillStyle = 'rgba(165,168,255,0.75)'
-            ctx.font = `${Math.max(9, 11 * zoom)}px system-ui`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
             const bwLabel = quantizeMeters(bw, 10).toFixed(1)
             const bdLabel = quantizeMeters(bd, 10).toFixed(1)
-            ctx.fillText(`${bwLabel}m × ${bdLabel}m`, brx + brw / 2, brz + brd / 2)
+            drawChipLabel(ctx, {
+                x: brx + brw / 2, y: brz + brd / 2, text: `${bwLabel}m × ${bdLabel}m`,
+                dotColor: DOT_DIMENSION, zoom,
+            })
         }
         ctx.restore()
     }
@@ -656,21 +801,20 @@ export function draw2D(
         if (seg.closed) ctx.closePath()
         ctx.stroke()
         ctx.setLineDash([])
-        // Segment length labels
+        // Segment length labels — small pill (no dot, tighter padding via
+        // font choice) so a wall with many short segments doesn't turn into
+        // a wall of oversized badges, while still reading clearly over the
+        // wall stroke and grid.
         for (let i = 0; i < nodes.length - 1; i++) {
             const a = nodes[i]!, b = nodes[i + 1]!
             const lenM = quantizeMeters(Math.hypot(b.x - a.x, b.z - a.z)).toFixed(2)
             const midX = cx((a.x + b.x) / 2), midZ = cy((a.z + b.z) / 2)
             const angle = Math.atan2(cy(b.z) - cy(a.z), cx(b.x) - cx(a.x))
+            const displayAngle = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle
             ctx.save()
             ctx.translate(midX, midZ)
-            const displayAngle = angle > Math.PI / 2 || angle < -Math.PI / 2 ? angle + Math.PI : angle
             ctx.rotate(displayAngle)
-            ctx.fillStyle = 'rgba(165,168,255,0.85)'
-            ctx.font = `${Math.max(9, 10 * zoom)}px system-ui`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'bottom'
-            ctx.fillText(`${lenM}m`, 0, -4)
+            drawPlainLabel(ctx, 0, -12, `${lenM}m`, { fontSize: Math.max(9, 10 * zoom), weight: 600 })
             ctx.restore()
         }
         ctx.restore()
@@ -801,25 +945,16 @@ export function draw2D(
                 ctx.strokeRect(-hw, -wallT / 2, hw * 2, wallT)
             }
             ctx.restore()
+            void nx; void nz
         }
         if (seg.height !== undefined && seg.height !== fp.roomHeight) {
             for (let i = 0; i < nodes.length - 1; i++) {
                 const a = nodes[i]!, b = nodes[i + 1]!
                 const midX = cx((a.x + b.x) / 2), midZ = cy((a.z + b.z) / 2)
-                ctx.save()
-                const heightFont = `600 ${Math.max(8, 9 * zoom)}px system-ui`
-                ctx.font = heightFont
-                const label = `H: ${seg.height.toFixed(2)}m`
-                const tw = measureCached(ctx, label, heightFont)
-                ctx.fillStyle = 'rgba(234,179,8,0.9)'
-                ctx.beginPath()
-                ctx.roundRect(midX - tw / 2 - 4, midZ + 8, tw + 8, 14, 3)
-                ctx.fill()
-                ctx.fillStyle = '#1E1B18'
-                ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillText(label, midX, midZ + 15)
-                ctx.restore()
+                drawChipLabel(ctx, {
+                    x: midX, y: midZ + 16, text: `H: ${seg.height.toFixed(2)}m`,
+                    dotColor: DOT_LIGHT, zoom,
+                })
             }
         }
     }
@@ -843,11 +978,15 @@ export function draw2D(
         ctx.lineWidth = isSel ? 2 : 1
         ctx.setLineDash(isSel ? [] : [4, 3])
         ctx.stroke()
+        ctx.setLineDash([])
         const cx_ = nodes.reduce((s, n) => s + n.x, 0) / nodes.length
         const cz_ = nodes.reduce((s, n) => s + n.z, 0) / nodes.length
-        ctx.setLineDash([]); ctx.fillStyle = 'rgba(165,168,255,0.7)'; ctx.font = `${Math.max(9, 11 * zoom)}px system-ui`
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText(shapeMatch?.label || 'Area', cx(cx_), cy(cz_)); ctx.restore()
+        drawPlainLabel(ctx, cx(cx_), cy(cz_), shapeMatch?.label || 'Area', {
+            fontSize: Math.max(9, 11 * zoom),
+            weight: 700,
+            color: isSel ? '#4F46E5' : '#1a1a1a',
+        })
+        ctx.restore()
     }
     // ── Line nodes ─────────────────────────────────────────────────────────────
     for (const node of fp.lineNodes ?? []) {
@@ -933,13 +1072,19 @@ export function draw2D(
         ctx.fillStyle = 'rgba(255,255,255,0.5)'
         ctx.fill()
 
-        // Label
+        // Label — kept inline on the piece itself (space allowing) with a
+        // text shadow for contrast; falls back visually fine since the
+        // furniture body already has a solid fill.
         const fs = Math.max(8, Math.min(11, (fw / 4)))
         ctx.font = `600 ${fs}px system-ui`
-        ctx.fillStyle = 'rgba(255,255,255,0.95)'
+        ctx.shadowColor = 'rgba(0,0,0,0.5)'
+        ctx.shadowBlur = 3
+        ctx.fillStyle = 'rgba(255,255,255,0.98)'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.fillText(FURNITURE_LABELS[f.type] ?? f.type, 0, 0)
+        ctx.shadowColor = 'transparent'
+        ctx.shadowBlur = 0
 
         // Selection rotation handles
         if (isSel) {
@@ -999,33 +1144,45 @@ export function draw2D(
             }
         }
 
-        ctx.fillStyle = 'rgba(226,232,240,0.75)'
-        ctx.font = `600 ${Math.max(8, 9 * zoom)}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(STAIRS_LABELS[s.type], 0, sd / 2 + 12)
-
         ctx.restore()
+
+        drawChipLabel(ctx, {
+            x: sx, y: sz + sd / 2 + 16, text: STAIRS_LABELS[s.type],
+            dotColor: DOT_OUTDOOR, zoom, selected: isSel, hovered: isHov,
+        })
     }
     // ── Annotations ──────────────────────────────────────────────────────────
     for (const ann of fp.annotations ?? []) {
         if (!ann.text) continue
         const ax = cx(ann.x), az = cy(ann.z)
-        const fontSize = Math.max(10, (ann.fontSize ?? 13) * zoom)
+        const isSel = selectedIds.includes(ann.id)
+        const isHov = hoveredId === ann.id
+        const fontSize = Math.max(11, (ann.fontSize ?? 13) * zoom)
         ctx.save()
-        const annFont = `600 ${fontSize}px system-ui`
+        const annFont = `700 ${fontSize}px system-ui`
         ctx.font = annFont
         const tw = measureCached(ctx, ann.text, annFont)
-        // Background pill
-        ctx.fillStyle = 'rgba(99,102,241,0.18)'
+        const padX = 12, padY = 7
+        // Annotation chip — light background, black text, indigo border
+        // only when selected. User-authored notes still get a background
+        // (unlike room/area labels) since they can sit anywhere, but the
+        // light/black styling keeps it consistent with the rest of the
+        // plan instead of a loud solid-color pill.
+        ctx.shadowColor = 'rgba(0,0,0,0.18)'
+        ctx.shadowBlur = 4
+        ctx.shadowOffsetY = 1
+        ctx.fillStyle = isSel ? 'rgba(224,225,255,0.98)' : 'rgba(255,255,255,0.95)'
         ctx.beginPath()
-        ctx.roundRect(ax - tw / 2 - 8, az - fontSize / 2 - 5, tw + 16, fontSize + 10, 6)
+        ctx.roundRect(ax - tw / 2 - padX, az - fontSize / 2 - padY, tw + padX * 2, fontSize + padY * 2, 8)
         ctx.fill()
-        ctx.strokeStyle = 'rgba(99,102,241,0.4)'
-        ctx.lineWidth = 1
+        ctx.shadowColor = 'transparent'
+        ctx.shadowBlur = 0
+        ctx.shadowOffsetY = 0
+        ctx.strokeStyle = isSel ? '#4F46E5' : isHov ? 'rgba(99,102,241,0.55)' : 'rgba(0,0,0,0.15)'
+        ctx.lineWidth = isSel ? 1.5 : 1
         ctx.stroke()
         // Text
-        ctx.fillStyle = 'rgba(226,232,240,0.9)'
+        ctx.fillStyle = isSel ? '#4F46E5' : '#1a1a1a'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.fillText(ann.text, ax, az)
@@ -1063,13 +1220,10 @@ export function draw2D(
         }
         ctx.restore()
 
-        ctx.save()
-        ctx.font = `600 ${Math.max(8, 8 * zoom)}px system-ui`
-        ctx.fillStyle = 'rgba(80,60,40,0.85)'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(label, cx(o.x), cy(o.z) + (isFlat ? 0 : 14))
-        ctx.restore()
+        drawChipLabel(ctx, {
+            x: cx(o.x), y: cy(o.z) + (isFlat ? 0 : 18), text: label,
+            dotColor: DOT_OUTDOOR, zoom, selected: isSel, hovered: isHov,
+        })
     }
 
     // ── Live measurement rubber band ──────────────────────────────────────────
@@ -1095,19 +1249,9 @@ export function draw2D(
                 // rapid mousemove during drag doesn't mint (and permanently
                 // cache) a fresh string on every single frame.
                 const label = `${quantizeMeters(lenM).toFixed(2)}m`
-                const rubberFont = `bold ${Math.max(10, 11 * zoom)}px system-ui`
-                ctx.font = rubberFont
-                const tw = measureCached(ctx, label, rubberFont)
                 ctx.translate(midX, midZ)
                 ctx.rotate(display)
-                ctx.fillStyle = 'rgba(99,102,241,0.85)'
-                ctx.beginPath()
-                ctx.roundRect(-(tw / 2) - 6, -22, tw + 12, 18, 4)
-                ctx.fill()
-                ctx.fillStyle = 'white'
-                ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillText(label, 0, -13)
+                drawChipLabel(ctx, { x: 0, y: -18, text: label, dotColor: DOT_DIMENSION, zoom, selected: true })
             }
             ctx.restore()
 
@@ -1134,51 +1278,18 @@ export function draw2D(
             // and sits on the segment itself), this tag always stays
             // upright and tracks the cursor tip directly — a small icon
             // chip + live length readout, offset down-right of the cursor
-            // so the pointer itself never covers it.
+            // so the pointer itself never covers it. Uses the same pill
+            // renderer with a "ruler" dot so it visually matches every
+            // other measurement/dimension label on the plan.
             if (lenM > 0.02) {
-                ctx.save()
-                const tagOffsetX = 18, tagOffsetY = 18
-                const anchorX = tx + tagOffsetX, anchorY = tz + tagOffsetY
-
                 const tagLabel = `${quantizeMeters(lenM).toFixed(2)}m`
-                const tagFont = `600 ${Math.max(10, 11 * zoom)}px system-ui`
-                ctx.font = tagFont
-                const tagTw = measureCached(ctx, tagLabel, tagFont)
-
-                const iconR = 9          // icon chip radius
-                const gap = 6            // gap between icon and text pill
-                const padX = 8
-                const pillH = 22
-                const pillW = tagTw + padX * 2
-                const totalW = iconR * 2 + gap + pillW
-
-                // Icon chip (dark rounded square, echoes the tool cursor icon)
-                ctx.fillStyle = 'rgba(30,27,24,0.92)'
-                ctx.beginPath()
-                ctx.roundRect(anchorX, anchorY - iconR, iconR * 2, iconR * 2, 5)
-                ctx.fill()
-                // simple ruler/line glyph inside the chip so it reads as a
-                // "measuring" icon rather than a generic dot
-                ctx.strokeStyle = 'rgba(255,255,255,0.9)'
-                ctx.lineWidth = 1.4
-                ctx.beginPath()
-                ctx.moveTo(anchorX + 4, anchorY + 3)
-                ctx.lineTo(anchorX + iconR * 2 - 4, anchorY - 3)
-                ctx.stroke()
-
-                // Text pill
-                const pillX = anchorX + iconR * 2 + gap
-                ctx.fillStyle = 'rgba(30,27,24,0.92)'
-                ctx.beginPath()
-                ctx.roundRect(pillX, anchorY - pillH / 2, pillW, pillH, 6)
-                ctx.fill()
-                ctx.fillStyle = '#FFFFFF'
-                ctx.textAlign = 'left'
-                ctx.textBaseline = 'middle'
-                ctx.fillText(tagLabel, pillX + padX, anchorY)
-
-                void totalW // reserved for future width-aware repositioning (e.g. flip left near canvas edge)
-                ctx.restore()
+                const tagOffsetX = 26, tagOffsetY = 22
+                drawChipLabel(ctx, {
+                    x: tx + tagOffsetX, y: tz + tagOffsetY, text: tagLabel,
+                    dotColor: DOT_DIMENSION, zoom, selected: true,
+                    anchor: 'left',
+                    leaderFrom: { x: tx, y: tz },
+                })
             }
         }
     }

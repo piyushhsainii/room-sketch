@@ -1,10 +1,10 @@
 import { ArchHeader3D } from "./objects/arch-header";
-import { DoorVariant3D } from "./objects/door-variants";
 import { FloorMat } from "./objects/floormat";
 import { WallDecorMesh } from "./mesh/wall-decor-mesh";
 import { WallMat } from "./objects/wallmat";
 import { WindowVariant3D } from "./objects/window-variant3d";
 import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial } from "./lib/constants";
+import { DoorVariant3D } from "./objects/door-variants";
 
 function Room3D({
     room,
@@ -23,6 +23,8 @@ function Room3D({
     onSelect,
     onToggleDoorOpen,
     roomWallOverrides,   // NEW
+    opacity = 1,          // NEW
+    transparent = false,  // NEW
 
 }: {
     room: EditorRoom;
@@ -41,6 +43,8 @@ function Room3D({
     onSelect?: (id: string | null) => void
     onToggleDoorOpen?: (openingId: string) => void
     roomWallOverrides?: Partial<Record<'north' | 'south' | 'east' | 'west', { color?: string; material?: WallMaterial }>>
+    opacity?: number
+    transparent?: boolean
 
 
 }) {
@@ -74,14 +78,13 @@ function Room3D({
     return (
         <group>
             {/* Floor */}
-            <mesh
-                position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow
+            <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow
                 onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(room.id) } : undefined}
                 onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
                 onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
             >
                 <planeGeometry args={[W - T * 2, D - T * 2]} />
-                <FloorMat mat={floorMat} />
+                <FloorMat mat={floorMat} opacity={opacity} transparent={transparent} />
             </mesh>
 
             {walls.map(wall => {
@@ -104,15 +107,10 @@ function Room3D({
                     return (
                         <mesh key={wall.name} position={wPos} castShadow receiveShadow {...wallClickHandlers}>
                             <boxGeometry args={wallSize(wall.axis)} />
-                            <WallMat
-                                mat={resolvedWallMaterial}
-                                color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
-                                roughness={wallRoughness}
-                                textured={wallTextured}
-                                width={wallRunLength(wall.axis)}
-                                height={wallSize(wall.axis)[1]}
-                                depth={wallSize(wall.axis)[2]}
-                            />
+                            <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
+                                roughness={wallRoughness} textured={wallTextured}
+                                width={wallRunLength(wall.axis)} height={wallSize(wall.axis)[1]} depth={wallSize(wall.axis)[2]}
+                                opacity={opacity} transparent={transparent} />
                         </mesh>
                     )
                 }
@@ -135,15 +133,10 @@ function Room3D({
                         panels.push(
                             <mesh key={`l${i}`} position={pos} castShadow receiveShadow {...wallClickHandlers}>
                                 <boxGeometry args={size} />
-                                <WallMat
-                                    mat={resolvedWallMaterial}
-                                    color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
-                                    roughness={wallRoughness}
-                                    textured={wallTextured}
-                                    width={segLen}
-                                    height={size[1]}
-                                    depth={size[2]}
-                                />
+                                <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
+                                    roughness={wallRoughness} textured={wallTextured}
+                                    width={segLen} height={size[1]} depth={size[2]}
+                                    opacity={opacity} transparent={transparent} />
                             </mesh>
                         )
                     }
@@ -170,6 +163,8 @@ function Room3D({
                                             mat={resolvedWallMaterial}
                                             color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
                                             roughness={wallRoughness}
+                                            opacity={opacity}
+                                            transparent={transparent}
                                         />
                                     </group>
                                 )
@@ -186,11 +181,12 @@ function Room3D({
                                         <WallMat
                                             mat={resolvedWallMaterial}
                                             color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
-                                            roughness={wallRoughness}
-                                            textured={wallTextured}
+                                            roughness={wallRoughness} textured={wallTextured}
                                             width={op.width}
                                             height={hSize[1]}
                                             depth={hSize[2]}
+                                            opacity={opacity}
+                                            transparent={transparent}
                                         />
                                     </mesh>
                                 )
@@ -204,7 +200,15 @@ function Room3D({
                             panels.push(
                                 <mesh key={`s${i}`} position={sPos} castShadow receiveShadow {...wallClickHandlers}>
                                     <boxGeometry args={sSize} />
-                                    <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor} roughness={wallRoughness} textured={wallTextured} width={sSize[0]} height={sSize[1]} depth={sSize[2]} />
+                                    <WallMat
+                                        mat={resolvedWallMaterial}
+                                        color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
+                                        roughness={wallRoughness} textured={wallTextured}
+                                        width={sSize[0]}
+                                        height={sSize[1]}
+                                        depth={sSize[2]}
+                                        opacity={opacity}
+                                        transparent={transparent} />
                                 </mesh>
                             )
                         }
@@ -222,7 +226,7 @@ function Room3D({
                                     onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
                                     onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
                                 >
-                                    <WindowVariant3D key={`g${i}`} op={op} angle={angle} basePos={winBasePos} />
+                                    <WindowVariant3D key={`g${i}`} op={op} angle={angle} basePos={winBasePos} opacity={opacity} transparent={transparent} />
                                 </group>
                             )
                         }
@@ -245,9 +249,8 @@ function Room3D({
                                         op={op}
                                         angle={angle}
                                         basePos={doorBasePos}
-                                        doorStyle={doorStyle}
-                                        onToggleOpen={onToggleDoorOpen}
-                                        interactive={interactive}
+                                        doorStyle={doorStyle} onToggleOpen={onToggleDoorOpen} interactive={interactive}
+                                        opacity={opacity} transparent={transparent}
                                     />
                                 </group>
                             )
@@ -280,7 +283,13 @@ function Room3D({
                         onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
                         onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
                     >
-                        <WallDecorMesh decor={d} angle={angle + (d.rotation ?? 0)} basePos={[dx, d.heightOffset, dz]} />                    </group>
+                        <WallDecorMesh
+                            decor={d}
+                            angle={angle + (d.rotation ?? 0)}
+                            basePos={[dx, d.heightOffset, dz]}
+                            opacity={opacity}
+                            transparent={transparent} />
+                    </group>
                 )
             })}
         </group>

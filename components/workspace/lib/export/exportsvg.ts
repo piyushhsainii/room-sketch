@@ -19,6 +19,7 @@
 // Still reads from the single shared `deriveFlatPlan2D()` (Step 6), so
 // this stays in sync with draw2D and the DXF exporter automatically.
 
+import { ExportProgress, triggerDownload } from "./exportgltfobj";
 import {
   deriveFlatPlan2D,
   FlatPlan2D,
@@ -342,15 +343,16 @@ function escapeXml(s: string): string {
 export function exportSVG(
   fp: FloorPlanState,
   filename = "floor-plan.svg",
+  onProgress?: ExportProgress,
 ): void {
+  onProgress?.("Building SVG", 30);
   const svgString = buildSvgDocument(fp);
-  const blob = new Blob([svgString], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  onProgress?.("Creating file", 80);
+  const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+
+  onProgress?.("Downloading", 95);
+  triggerDownload(blob, filename);
+
+  onProgress?.("Done", 100);
 }

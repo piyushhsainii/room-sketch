@@ -3,10 +3,10 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ResilientCanvas from './ResilientCanvas'
 import { TOOL_CURSORS, Toolbar } from './Tools/ToolBar'
-import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
+import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FurnitureCategory, getFurnitureByCategory, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
 import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import * as THREE from 'three'
-import { SceneGraphPanel } from './objects/scene-graph'
+import * as Icons from 'lucide-react'
 import { ScrollableList } from '../ui/ScrollableList'
 import { matchClosedShape, MaterialsPanel } from './MaterialsPanel'
 import Scene3D, { Scene3DHandle } from './3DScene'
@@ -37,6 +37,10 @@ import { createClient } from '@/lib/supabase/client'
 import { SunScenePanel } from '../ui/SunCompassPanel'
 import { PlacedStairs, StairsType } from './lib/stairs-constants'
 import { checkPlacementValidity, findNearestWallPoint } from './lib/lights-drag-utils'
+import { migrateToMultiFloor, recomputeFloorElevations } from './lib/migrateToMultiFloor'
+import { createEmptyFloor, DEFAULT_ROOF, Floor, ProjectFloorPlan, RoofConfig } from './lib/floor-data'
+import { computeDerivedFloorData } from './computeDerivedFloorData'
+import ViewModeControl from '../ui/ViewModeControl'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -83,14 +87,29 @@ export const THEME = {
 
 type Props = {
     projectId?: string,
-    onSave?: (fp: FloorPlanState, sceneConfig: SceneConfig, thumbnailUrl?: string) => Promise<{ projectId: string } | void>
+    onSave?: (
+        projectFloorPlan: ProjectFloorPlan,
+        sceneConfig: SceneConfig,
+        thumbnailUrl?: string
+    ) => Promise<{ projectId: string } | void>
     onClose?: () => void
-    initialState?: FloorPlanState
+    initialState?: FloorPlanState              // legacy — single-floor draft/fallback
+    initialProjectFloorPlan?: ProjectFloorPlan  // new — preferred when present
     initialSceneConfig?: SceneConfig
     isSaving?: boolean
     isSaved?: boolean
 }
-export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialState, initialSceneConfig, isSaving = false, isSaved = false }: Props) {
+
+export default function FloorPlanEditor({
+    projectId,
+    onSave,
+    onClose,
+    initialState,
+    initialProjectFloorPlan,
+    initialSceneConfig,
+    isSaving = false,
+    isSaved = false,
+}: Props) {
     // ─────────────────────────────────────────────────────────────────────────
     // Canvas / viewport
     // ─────────────────────────────────────────────────────────────────────────
@@ -109,12 +128,89 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     // ─────────────────────────────────────────────────────────────────────────
     // Floor plan data + scene config
     // ─────────────────────────────────────────────────────────────────────────
-    const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
-    const fpRef = useRef(fp); fpRef.current = fp
+    // const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
+    // const fpRef = useRef(fp); fpRef.current = fp
+    // const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
     const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
     const sceneConfigRef = useRef(sceneConfig)
     const historyRef = useRef<HistoryEntry[]>([])
     const historyIndexRef = useRef(-1)
+
+    // MULTI FLOOR 
+
+    // New state, alongside the existing fp/setFp/sceneConfig — nothing existing removed.
+    const [floors, setFloors] = useState<Floor[]>(() =>
+        initialProjectFloorPlan?.floors
+        ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).floors
+    )
+    const [activeFloorId, setActiveFloorId] = useState<string>(() =>
+        initialProjectFloorPlan?.activeFloorId
+        ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).activeFloorId
+    )
+    const [viewMode, setViewMode] = useState<'single' | 'stacked' | 'stacked-full'>(
+        initialProjectFloorPlan?.viewMode ?? 'single'
+    )
+    const [roof, setRoof] = useState<RoofConfig>(
+        initialProjectFloorPlan?.roof ?? DEFAULT_ROOF
+    )
+    const [fp, setFp] = useState<FloorPlanState>(() => {
+        const resolvedFloors = initialProjectFloorPlan?.floors
+            ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).floors
+        const resolvedActiveId = initialProjectFloorPlan?.activeFloorId
+            ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).activeFloorId
+        return resolvedFloors.find(f => f.id === resolvedActiveId)?.state ?? DEFAULT_FP
+    })
+    const fpRef = useRef(fp); fpRef.current = fp
+    const [layersOpen, setLayersOpen] = useState(false);
+
+    const [lastSavedSnapshot, setLastSavedSnapshot] = useState<{ fp: FloorPlanState; sceneConfig: SceneConfig } | null>(
+        () => ({ fp, sceneConfig })
+    )
+
+    const switchToFloor = useCallback((newFloorId: string) => {
+        if (newFloorId === activeFloorId) return
+        const target = floors.find(f => f.id === newFloorId)
+        if (!target) return
+
+        setFloors(prev => prev.map(f => f.id === activeFloorId ? { ...f, state: fpRef.current } : f))
+        setFp(target.state)
+        setActiveFloorId(newFloorId)
+        setSelectedId(null)
+        setSelectedIds([])
+    }, [activeFloorId, floors])
+
+    const addFloor = useCallback((direction: 'above' | 'below' = 'above') => {
+        const maxOrder = Math.max(...floors.map(f => f.order))
+        const minOrder = Math.min(...floors.map(f => f.order))
+        const newOrder = direction === 'above' ? maxOrder + 1 : minOrder - 1
+        const label = direction === 'above' ? `Level ${newOrder + 1}` : `Basement ${Math.abs(newOrder)}`
+        const newFloor = createEmptyFloor(label, newOrder, 0) // elevation recomputed below
+
+        setFloors(prev => {
+            const withCurrentSaved = prev.map(f =>
+                f.id === activeFloorId ? { ...f, state: fpRef.current } : f
+            )
+            return recomputeFloorElevations([...withCurrentSaved, newFloor])
+        })
+        setFp(newFloor.state)
+        setActiveFloorId(newFloor.id)
+        setSelectedId(null)
+        setSelectedIds([])
+    }, [activeFloorId, floors])
+
+    const renameFloor = useCallback((floorId: string, newLabel: string) => {
+        setFloors(prev => prev.map(f => f.id === floorId ? { ...f, label: newLabel } : f))
+    }, [])
+
+    const toggleFloorVisible = useCallback((floorId: string) => {
+        setFloors(prev => prev.map(f => f.id === floorId ? { ...f, visible: !f.visible } : f))
+    }, [])
+
+
+    const [showUnderlay, setShowUnderlay] = useState<boolean>(
+        initialProjectFloorPlan?.showUnderlay ?? true
+    )
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // Tool / mode
@@ -189,53 +285,31 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     const [preview, setPreview] = useState<{ x: number; z: number } | null>(null)
     const pathDraftRef = useRef<string[] | null>(null)
     const pencilPointsRef = useRef<{ x: number, z: number }[]>([])
-    const supabase = createClient()
-
-
-    function commitRoom(rect: { x: number; z: number; w: number; d: number }) {
-        setFp(prev => ({
-            ...prev,
-            rooms: [
-                ...prev.rooms,
-                {
-                    id: uid(),
-                    label: `Room ${prev.rooms.length + 1}`,
-                    x: rect.x,
-                    z: rect.z,
-                    width: rect.w,
-                    depth: rect.d,
-                },
-            ],
-        }))
-    }
-
-    // on pointerup, only THEN sync to state if something downstream needs it
-    function onPointerUpRectTool() {
-        const r = drawRectRef.current
-        if (r && Math.abs(r.w) > 0.1 && Math.abs(r.d) > 0.1) {
-            // Normalize negative width/depth (dragged up-left instead of
-            // down-right) before committing, same convention draw2D already
-            // uses to render the live preview (see its Math.min(drawRect.x, ...)
-            // handling in the drawRect preview block).
-            const normalized = {
-                x: Math.min(r.x, r.x + r.w),
-                z: Math.min(r.z, r.z + r.d),
-                w: Math.abs(r.w),
-                d: Math.abs(r.d),
-            }
-            commitRoom(normalized)
-        }
-        drawRectRef.current = null
-        drawStartRef.current = null
-        scheduleRedraw()
-    } // ─────────────────────────────────────────────────────────────────────────
+    const openingDragRef = useRef<{
+        id: string
+        width: number
+        wall?: 'north' | 'south' | 'east' | 'west'
+        roomId?: string
+        segmentNodeIds?: [string, string]
+    } | null>(null)
     // Furniture placement + collisions
     // ─────────────────────────────────────────────────────────────────────────
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
     const [openFurnitureCats, setOpenFurnitureCats] = useState<Set<string>>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
     const { checkCollisions, overlappingRef, hasChanged, clear } = useFurnitureCollisions()
     const [overlappingIds, setOverlappingIds] = useState<Set<string>>(new Set())
-
+    const furnitureByCategory = useMemo(() => getFurnitureByCategory(), [])
+    const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
+        seating: 'Seating',
+        tables: 'Tables',
+        bedroom: 'Bedroom',
+        kitchen: 'Kitchen',
+        bathroom: 'Bathroom',
+        storage: 'Storage',
+        decor: 'Decor',
+        lighting: 'Lighting',
+        wall: 'Wall',
+    }
     // ─────────────────────────────────────────────────────────────────────────
     // Annotations
     // ─────────────────────────────────────────────────────────────────────────
@@ -587,6 +661,25 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 lastCanvasSizeRef.current = { w: cw, h: ch }
             }
 
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+            for (const { floor, derived } of ghostFloorsDerivedRef.current) {
+                ctx.save()
+                ctx.globalAlpha = 0.25
+                draw2D(
+                    ctx, floor.state, 'select', null, [], null,
+                    null, [],
+                    zoom, pan, null, null, new Set(),
+                    derived.closedPolygons,
+                    derived.openingsByRoom, derived.openingsBySegment,
+                    derived.shapesIndex, null,
+                    derived.nodesById, derived.roomsById
+                )
+                ctx.restore()
+            }
+
+            // Active floor — full opacity, full interactivity, exactly as before
+            ctx.globalAlpha = 1
             draw2D(
                 ctx, fpRef.current, tool, selectedId, selectedIds, hoveredIdRef.current,
                 drawRectRef.current, pencilPointsRef.current,
@@ -594,13 +687,15 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 flat2DRef.current.closedPolygons,
                 openingsIndexRef.current.byRoom, openingsIndexRef.current.bySegment,
                 shapesIndexRef.current, marqueeRectRef.current,
-                nodesByIdRef.current, roomsByIdRef.current   // ← the two params that were missing
+                nodesByIdRef.current, roomsByIdRef.current
             )
         })
     }, [tool, selectedId, selectedIds, zoom, pan, overlappingIds])
 
     useEffect(() => { scheduleRedraw() }, [scheduleRedraw, fp, pencilPoints, preview, hoveredId])
     useEffect(() => () => cancelAnimationFrame(rafIdRef.current), [])
+
+
 
     useEffect(() => {
         const canvas = canvasRef.current
@@ -2324,6 +2419,47 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     }))
                 },
             },
+            {
+                name: 'openingDrag',
+                isActive: () => !!openingDragRef.current,
+                apply: (wx, wz) => {
+                    const od = openingDragRef.current!
+                    if (od.wall) {
+                        const room = fpRef.current.rooms.find(r => r.id === od.roomId)
+                        if (room) {
+                            const isH = od.wall === 'north' || od.wall === 'south'
+                            const wallLen = isH ? room.width : room.depth
+                            const rawPos = isH ? wx - room.x : wz - room.z
+                            setFp(prev => ({
+                                ...prev,
+                                openings: prev.openings.map(o => {
+                                    if (o.id !== od.id) return o
+                                    const clamped = Math.max(o.width / 2, Math.min(wallLen - o.width / 2, rawPos))
+                                    return { ...o, position: parseFloat(clamped.toFixed(2)) }
+                                })
+                            }))
+                        }
+                    } else if (od.segmentNodeIds) {
+                        const a = fpRef.current.lineNodes.find(n => n.id === od.segmentNodeIds![0])
+                        const b = fpRef.current.lineNodes.find(n => n.id === od.segmentNodeIds![1])
+                        if (a && b) {
+                            const dx = b.x - a.x, dz = b.z - a.z
+                            const segLen = Math.hypot(dx, dz)
+                            const rawT = segLen > 0
+                                ? ((wx - a.x) * dx + (wz - a.z) * dz) / (segLen * segLen)
+                                : 0
+                            // Clamp so the door body doesn't hang off the end of the segment,
+                            // same intent as the room-wall branch's position clamp above.
+                            const halfWidthT = segLen > 0 ? (od.width / 2) / segLen : 0
+                            const t = Math.max(halfWidthT, Math.min(1 - halfWidthT, rawT))
+                            setFp(prev => ({
+                                ...prev,
+                                openings: prev.openings.map(o => o.id === od.id ? { ...o, segmentT: t, position: t * segLen } : o)
+                            }))
+                        }
+                    }
+                },
+            },
         ]
 
         const wasActiveDrag = runActiveDrag(dragEntries, dragOriginRef, cx, cy, wx, wz)
@@ -2806,11 +2942,19 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         const next = Math.min(0.75, Math.max(0.22, drag.startRatio + deltaRatio))
         setSplitRatio(next)
     }, [])
+    const getProjectFloorPlanForSave = useCallback((): ProjectFloorPlan => {
+        const floorsWithCurrent = floors.map(f =>
+            f.id === activeFloorId ? { ...f, state: fpRef.current } : f
+        )
+        return { floors: floorsWithCurrent, activeFloorId, viewMode, showUnderlay, roof }
+    }, [floors, activeFloorId, viewMode, showUnderlay, roof])
 
     const handleSaveWithThumbnail = useCallback(async (fp: FloorPlanState, sceneConfig: SceneConfig) => {
-        const saveResult = await onSave?.(fp, sceneConfig, undefined)
-        const effectiveProjectId = projectId ?? saveResult?.projectId
+        const projectFloorPlan = getProjectFloorPlanForSave() // full floors array, current fp already folded in
 
+        const saveResult = await onSave?.(projectFloorPlan, sceneConfig, undefined)
+        const effectiveProjectId = projectId ?? saveResult?.projectId
+        setLastSavedSnapshot({ fp, sceneConfig })
         if (!effectiveProjectId) {
             console.warn('[FloorPlanEditor] no projectId after save, skipping thumbnail')
             return
@@ -2827,7 +2971,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 if (res.ok) {
                     const body = await res.json() as { thumbnail_url?: string }
                     if (body.thumbnail_url) {
-                        await onSave?.(fp, sceneConfig, body.thumbnail_url)
+                        await onSave?.(projectFloorPlan, sceneConfig, body.thumbnail_url)
                     }
                 } else {
                     console.warn('[FloorPlanEditor] thumbnail upload failed:', await res.text())
@@ -2836,7 +2980,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
         } catch (err) {
             console.warn('[FloorPlanEditor] thumbnail capture failed, continuing:', err)
         }
-    }, [onSave, projectId])
+    }, [onSave, projectId, getProjectFloorPlanForSave])
 
     const handleDividerMouseUp = useCallback(() => {
         dragStateRef.current = null
@@ -2857,6 +3001,33 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
     }, [splitRatio, handleDividerMouseMove, handleDividerMouseUp])
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
+
+    const activeFloorDerived = useMemo(
+        () => computeDerivedFloorData(fp),
+        [fp]
+    )
+    const ghostFloorsDerivedRef = useRef<{ floor: Floor; derived: ReturnType<typeof computeDerivedFloorData> }[]>([])
+
+    const ghostFloorsDerived = useMemo(() => {
+        if (viewMode === 'single') {
+            // Underlay only — floor directly below active, faded, if enabled
+            if (!showUnderlay) return []
+            const activeFloor = floors.find(f => f.id === activeFloorId)
+            if (!activeFloor) return []
+            const belowFloor = [...floors]
+                .filter(f => f.order < activeFloor.order && f.visible)
+                .sort((a, b) => b.order - a.order)[0]
+            return belowFloor ? [{ floor: belowFloor, derived: computeDerivedFloorData(belowFloor.state) }] : []
+        }
+        return floors
+            .filter(f => f.visible && f.id !== activeFloorId)
+            .map(f => ({ floor: f, derived: computeDerivedFloorData(f.state) }))
+    }, [viewMode, showUnderlay, floors, activeFloorId])
+
+    useEffect(() => {
+        ghostFloorsDerivedRef.current = ghostFloorsDerived
+        scheduleRedraw()
+    }, [ghostFloorsDerived, scheduleRedraw])
 
     return (
         <div
@@ -2881,6 +3052,17 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                     onClose={onClose}
                     onSave={handleSaveWithThumbnail}
                     projectId={projectId}
+                    floors={floors}
+                    activeFloorId={activeFloorId}
+                    viewMode={viewMode}
+                    onSelectFloor={switchToFloor}
+                    onAddFloor={addFloor}
+                    onToggleFloorVisible={toggleFloorVisible}
+                    onRenameFloor={renameFloor}
+                    onSetViewMode={setViewMode}
+                    onSetShowUnderlay={setShowUnderlay}
+                    showUnderlay={showUnderlay}
+                    lastSavedSnapshot={lastSavedSnapshot}
                 />
             </div>
             {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -2920,7 +3102,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                 background: THEME.bgPanel,
                                 border: `1px solid ${THEME.border}`,
                                 borderRadius: 12,
-                                width: 260,
+                                width: 280,
                                 display: 'flex',
                                 flexDirection: 'column',
                                 boxShadow: THEME.shadowLg,
@@ -2936,71 +3118,108 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                             }}>
                                 FURNITURE
                             </div>
-                            <div style={{ padding: '6px 8px' }}>
-                                <ScrollableList maxHeight={300}>
-                                    {FURNITURE_CATEGORIES.map(cat => {
-                                        const isOpen = openFurnitureCats.has(cat.id)
-                                        return (
-                                            <div key={cat.id}>
-                                                <button
-                                                    onClick={() => setOpenFurnitureCats(prev => {
-                                                        const next = new Set(prev)
-                                                        next.has(cat.id) ? next.delete(cat.id) : next.add(cat.id)
-                                                        return next
-                                                    })}
+                            <div style={{ padding: '8px' }}>
+                                <ScrollableList maxHeight={340}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        {(Object.keys(furnitureByCategory) as FurnitureCategory[]).map(catId => {
+                                            const items = furnitureByCategory[catId]
+                                            if (!items || items.length === 0) return null
+                                            const isOpen = openFurnitureCats.has(catId)
+                                            return (
+                                                <div
+                                                    key={catId}
                                                     style={{
-                                                        width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-                                                        padding: '8px 4px', background: 'transparent', border: 'none',
-                                                        cursor: 'pointer', textAlign: 'left',
+                                                        borderRadius: 10,
+                                                        border: `1px solid ${isOpen ? THEME.accent : THEME.border}`,
+                                                        background: isOpen ? 'rgba(99,102,241,0.06)' : 'transparent',
+                                                        overflow: 'hidden',
+                                                        transition: 'border-color 150ms, background 150ms',
                                                     }}
                                                 >
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
-                                                        style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 120ms', flexShrink: 0 }}>
-                                                        <polyline points="9 18 15 12 9 6" />
-                                                    </svg>
-                                                    <span style={{ fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text }}>{cat.label}</span>
-                                                    <span style={{ fontSize: 11, color: THEME.textFaint }}>{cat.items.length}</span>
-                                                </button>
-                                                {isOpen && (
-                                                    <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: 22 }}>
-                                                        {cat.items.map(id => {
-                                                            const catalogEntry = FURNITURE_CATALOG.find(c => c.type === id)
-                                                            const isNew = catalogEntry ? isFurnitureNew(catalogEntry) : false
-                                                            return (
-                                                                <button
-                                                                    key={id}
-                                                                    onClick={() => setSelectedFurnitureType(id)}
-                                                                    style={{
-                                                                        display: 'flex', alignItems: 'center', gap: 8,
-                                                                        padding: '7px 8px', borderRadius: 6, border: 'none',
-                                                                        background: selectedFurnitureType === id ? 'rgba(99,102,241,0.1)' : 'transparent',
-                                                                        color: selectedFurnitureType === id ? THEME.accent : THEME.text,
-                                                                        fontSize: 12, fontWeight: selectedFurnitureType === id ? 600 : 400,
-                                                                        cursor: 'pointer', textAlign: 'left', width: '100%',
-                                                                    }}
-                                                                >
-                                                                    <span style={{ flex: 1 }}>{FURNITURE_LABELS[id]}</span>
-                                                                    {isNew && (
-                                                                        <span style={{
-                                                                            fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
-                                                                            color: '#fff', background: THEME.accent,
-                                                                            borderRadius: 4, padding: '2px 5px', flexShrink: 0,
-                                                                        }}>
-                                                                            NEW
-                                                                        </span>
-                                                                    )}
-                                                                </button>
-                                                            )
+                                                    <button
+                                                        onClick={() => setOpenFurnitureCats(prev => {
+                                                            const next = new Set(prev)
+                                                            next.has(catId) ? next.delete(catId) : next.add(catId)
+                                                            return next
                                                         })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )
-                                    })}
+                                                        style={{
+                                                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                                            padding: '8px 10px', background: 'transparent', border: 'none',
+                                                            cursor: 'pointer', textAlign: 'left',
+                                                        }}
+                                                    >
+                                                        <span style={{
+                                                            fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text,
+                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                        }}>
+                                                            {CATEGORY_LABELS[catId]}
+                                                        </span>
+                                                        <span style={{
+                                                            fontSize: 10.5, fontWeight: 700, color: THEME.accent,
+                                                            background: 'rgba(99,102,241,0.12)', borderRadius: 999,
+                                                            padding: '1px 7px', flexShrink: 0, minWidth: 18, textAlign: 'center',
+                                                        }}>
+                                                            {items.length}
+                                                        </span>
+                                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
+                                                            style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }}>
+                                                            <polyline points="9 18 15 12 9 6" />
+                                                        </svg>
+                                                    </button>
+
+                                                    {isOpen && (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 8px 8px' }}>
+                                                            {items.map(catalogEntry => {
+                                                                const id = catalogEntry.type
+                                                                const isNew = isFurnitureNew(catalogEntry)
+                                                                const Icon = (Icons as any)[catalogEntry.icon] ?? Icons.Box
+                                                                const selected = selectedFurnitureType === id
+                                                                return (
+                                                                    <button
+                                                                        key={id}
+                                                                        onClick={() => setSelectedFurnitureType(id)}
+                                                                        style={{
+                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                            padding: '6px 8px', borderRadius: 8, border: 'none',
+                                                                            background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
+                                                                            cursor: 'pointer', textAlign: 'left', width: '100%',
+                                                                        }}
+                                                                    >
+                                                                        <div style={{
+                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                            width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                                                                            background: selected ? 'rgba(99,102,241,0.14)' : THEME.bgCanvas,
+                                                                        }}>
+                                                                            <Icon size={14} strokeWidth={1.8} color={selected ? THEME.accent : THEME.textMuted} />
+                                                                        </div>
+                                                                        <span style={{
+                                                                            flex: 1, fontSize: 12, fontWeight: selected ? 600 : 400,
+                                                                            color: selected ? THEME.accent : THEME.text,
+                                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                                        }}>
+                                                                            {catalogEntry.label}
+                                                                        </span>
+                                                                        {isNew && (
+                                                                            <span style={{
+                                                                                fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
+                                                                                color: '#fff', background: THEME.accent,
+                                                                                borderRadius: 4, padding: '2px 5px', flexShrink: 0,
+                                                                            }}>
+                                                                                NEW
+                                                                            </span>
+                                                                        )}
+                                                                    </button>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
                                 </ScrollableList>
                             </div>
-                        </div>
-                        ,
+                        </div>,
                         document.body
                     )}
                     {presetsMounted && presetsAnchorRect && typeof document !== 'undefined' && createPortal(
@@ -3147,6 +3366,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                         >
                             <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#EFEFEC' }}>
                                 <ResilientCanvas
+                                    frameloop='always'
                                     shadows
                                     gl={{
                                         antialias: true,
@@ -3172,18 +3392,17 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                     <Scene3D
                                         ref={scene3DRef}
                                         exportRootRef={exportRootRef}
-                                        fp={fp3D}
+                                        floors={floors}
+                                        activeFloorId={activeFloorId}
+                                        viewMode={viewMode}
+                                        showUnderlay={showUnderlay}
                                         sceneConfig={sceneConfig}
                                         walkMode={walkMode}
+                                        activeFp={fp}
                                         interactiveMode={interactiveMode}
                                         selectedId={selectedId}
                                         onSelect={handleSceneSelect}
-                                        onToggleDoorOpen={(openingId) =>
-                                            setFp(prev => ({
-                                                ...prev,
-                                                openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o)
-                                            }))
-                                        }
+                                        onToggleDoorOpen={(openingId) => setFp(prev => ({ ...prev, openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o) }))}
                                         overlappingIds={overlappingIds}
                                     />
                                 </ResilientCanvas>
@@ -3210,7 +3429,7 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                                     sceneConfig={sceneConfig}
                                     pushHistory={pushHistory}
                                     scene3DRef={scene3DRef}
-                                    onSave={onSave}
+                                    onSave={(fpArg, cfgArg) => { void handleSaveWithThumbnail(fpArg, cfgArg) }}
                                 />
                             ) : null
                         }
@@ -3218,65 +3437,60 @@ export default function <FloorPlanEditor>({ projectId, onSave, onClose, initialS
                 </div>,
                 document.body
             )}
-            <FloatingDock
-                orientation="horizontal"
-                activeId={sheetOpen ? rightTab : null}
-                items={[
-                    {
-                        id: 'properties',
-                        title: 'Properties',
-                        icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
-                            </svg>
-                        ),
-                        onClick: () => {
-                            if (sheetOpen && rightTab === 'properties') {
-                                setSheetOpen(false)
-                            } else {
-                                setRightTab('properties')
-                                setSheetOpen(true)
-                            }
+
+            <div style={{ position: "relative" }} className='flex items-center justify-center'>
+                <FloatingDock
+                    orientation="horizontal"
+                    activeId={sheetOpen ? rightTab : (layersOpen ? 'layers' : null)}
+                    items={[
+                        {
+                            id: 'layers',
+                            title: 'Floor View',
+                            icon: (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-full">
+                                    <path d="M12 2 2 7l10 5 10-5-10-5z" strokeLinejoin="round" />
+                                    <path d="M2 17l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
+                                    <path d="M2 12l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
+                                </svg>
+                            ),
+                            onClick: () => setLayersOpen(v => !v),
                         },
-                    },
-                    {
-                        id: 'scene',
-                        title: 'Scene',
-                        icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M4 4h16v16H4zM4 12h16M12 4v16" />
-                            </svg>
-                        ),
-                        onClick: () => {
-                            if (sheetOpen && rightTab === 'scene') {
-                                setSheetOpen(false)
-                            } else {
-                                setRightTab('scene')
-                                setSheetOpen(true)
-                            }
+                        {
+                            id: 'properties',
+                            title: 'Properties',
+                            icon: <img className='w-full' src={'/icons/properties.png'} />,
+                            onClick: () => {
+                                if (sheetOpen && rightTab === 'properties') setSheetOpen(false)
+                                else { setRightTab('properties'); setSheetOpen(true) }
+                            },
                         },
-                    },
-                    {
-                        id: 'sun',
-                        title: 'Sun & Lighting',
-                        icon: (
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="4" />
-                                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-                            </svg>
-                        ),
-                        onClick: () => {
-                            if (sheetOpen && rightTab === 'sun') {
-                                setSheetOpen(false)
-                            } else {
-                                setRightTab('sun')
-                                setSheetOpen(true)
-                            }
+                        {
+                            id: 'scene',
+                            title: 'Scene',
+                            icon: <img className='w-full' src={'/icons/scene.png'} />,
+                            onClick: () => {
+                                if (sheetOpen && rightTab === 'scene') setSheetOpen(false)
+                                else { setRightTab('scene'); setSheetOpen(true) }
+                            },
                         },
-                    },
-                ]}
-            />
+                        {
+                            id: 'sun',
+                            title: 'Sun & Lighting',
+                            icon: <img className='w-full' src={'/icons/light.png'} />,
+                            onClick: () => {
+                                if (sheetOpen && rightTab === 'sun') setSheetOpen(false)
+                                else { setRightTab('sun'); setSheetOpen(true) }
+                            },
+                        },
+                    ]}
+                />
+                <ViewModeControl
+                    open={layersOpen}
+                    viewMode={viewMode}
+                    onSetViewMode={setViewMode}
+                    onClose={() => setLayersOpen(false)}
+                />
+            </div>
             {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection ? (
                 <div
                     onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}

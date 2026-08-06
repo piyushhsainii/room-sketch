@@ -1,20 +1,15 @@
 import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from "react"
 import { OrbitControls, Sky } from "@react-three/drei"
-import { DEFAULT_SCENE_CONFIG, FloorPlanState } from "./lib/constants"
-import { Room3D } from "./3dRoom"
-import { LineWalls3D } from "./objects/line-walls-3d"
-import { StairsMesh } from "./mesh/stairsMesh"
+import { DEFAULT_SCENE_CONFIG, DEFAULT_FP, FloorPlanState } from "./lib/constants"
 import { WalkModeControls } from "./WalkModeControls"
-import { FurnitureMesh } from "./mesh/furnitureMesh"
 import { SceneConfig } from "./FloorPlanEditor"
-import { LightFixtureMesh } from "./mesh/lights-mesh"
-import { OutdoorObjectMesh } from "./mesh/outdoor-object-mesh"
 import { CameraView } from "./lib/camera"
-import { StringLightsMesh } from "./mesh/string-lights-mesh"
 import { useThree } from "@react-three/fiber"
 import { computeTopDownView } from "@/lib/helpers"
 import * as THREE from "three"
 import { sunIntensity, sunLightColor, sunPosition, sunVectorFromAngles } from "./lib/sunPosition"
+import { Floor } from "./lib/floor-data"
+import { FloorGeometry } from "./FloorGeometry"
 
 export type Scene3DHandle = {
     flyTo: (view: CameraView) => void
@@ -24,7 +19,11 @@ export type Scene3DHandle = {
 
 type Scene3DProps = {
     exportRootRef: any
-    fp: FloorPlanState
+    floors: Floor[]
+    activeFloorId: string
+    activeFp: FloorPlanState
+    viewMode: 'single' | 'stacked' | 'stacked-full'
+    showUnderlay: boolean
     sceneConfig?: SceneConfig
     walkMode?: boolean
     interactiveMode?: boolean
@@ -35,12 +34,30 @@ type Scene3DProps = {
 }
 
 const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
-    { exportRootRef, fp, sceneConfig, walkMode = false, interactiveMode = false, selectedId, onSelect, onToggleDoorOpen, overlappingIds },
+    {
+        exportRootRef,
+        floors,
+        activeFloorId,
+        viewMode,
+        showUnderlay,
+        sceneConfig,
+        walkMode = false,
+        interactiveMode = false,
+        selectedId,
+        onSelect,
+        onToggleDoorOpen,
+        overlappingIds,
+        activeFp: liveFp
+    },
     ref
 ) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
     const controlsRef = useRef<any>(null)
-    const { gl, scene, camera } = useThree()
+    const { gl, scene, camera, invalidate } = useThree()
+
+    const activeFloor = floors.find(f => f.id === activeFloorId)
+    const activeFp: FloorPlanState = liveFp ?? activeFloor?.state ?? DEFAULT_FP
+    const activeElevation = activeFloor?.elevation ?? 0
 
     useImperativeHandle(ref, () => ({
         flyTo: (view: CameraView) => {
@@ -68,7 +85,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             const canvasEl = gl.domElement
             const aspect = canvasEl.width / canvasEl.height
             const fovDegrees = (camera as THREE.PerspectiveCamera).fov ?? 45
-            const topView = computeTopDownView(fp, aspect, fovDegrees)
+            const topView = computeTopDownView(activeFp, aspect, fovDegrees)
 
             const snapCamera = camera.clone() as THREE.PerspectiveCamera
             snapCamera.position.set(...topView.position)
@@ -108,40 +125,50 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 offscreen.toBlob((b) => resolve(b), 'image/jpeg', 0.82)
             })
         },
-    }), [gl])
+    }), [gl, activeFp])
 
     useEffect(() => {
         if (walkMode) return
         const controls = controlsRef.current
         if (!controls) return
 
-        const allX = [
-            ...fp.rooms.flatMap(r => [r.x, r.x + r.width]),
-            ...fp.lineNodes.map(n => n.x),
-        ]
-        const allZ = [
-            ...fp.rooms.flatMap(r => [r.z, r.z + r.depth]),
-            ...fp.lineNodes.map(n => n.z),
-        ]
+        const isStacked = viewMode !== 'single'
+        const relevantFloors = isStacked ? floors.filter(f => f.visible) : (activeFloor ? [activeFloor] : [])
+
+        const allX: number[] = []
+        const allZ: number[] = []
+        let minElev = 0, maxElev = 0
+
+        for (const f of relevantFloors) {
+            const src = f.id === activeFloorId ? activeFp : f.state
+            allX.push(...src.rooms.flatMap(r => [r.x, r.x + r.width]), ...src.lineNodes.map(n => n.x))
+            allZ.push(...src.rooms.flatMap(r => [r.z, r.z + r.depth]), ...src.lineNodes.map(n => n.z))
+            const relElev = f.elevation - activeElevation
+            minElev = Math.min(minElev, relElev)
+            maxElev = Math.max(maxElev, relElev + f.state.roomHeight)
+        }
         if (allX.length === 0) return
 
         const minX = Math.min(...allX), maxX = Math.max(...allX)
         const minZ = Math.min(...allZ), maxZ = Math.max(...allZ)
         const cx = (minX + maxX) / 2
         const cz = (minZ + maxZ) / 2
-        const span = Math.max(maxX - minX, maxZ - minZ, 5)
+        const midY = (minElev + maxElev) / 2
+        const span = Math.max(maxX - minX, maxZ - minZ, maxElev - minElev, 5)
 
-        controls.object.position.set(cx, span * 1.6, cz + 0.01)
-        controls.target.set(cx, 0, cz)
+        controls.object.position.set(cx, midY + span * 1.6, cz + 0.01)
+        controls.target.set(cx, midY, cz)
         controls.update()
-    }, [])
+        invalidate()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeFloorId, viewMode])
 
     const sunTimeOfDay = cfg.sunTimeOfDay ?? 12
     const sunCompassHeading = cfg.sunCompassHeading ?? 180
     const sunEnabled = cfg.sunToolEnabled ?? false
 
-    const sunAllX = [...fp.rooms.flatMap(r => [r.x, r.x + r.width]), ...fp.lineNodes.map(n => n.x)]
-    const sunAllZ = [...fp.rooms.flatMap(r => [r.z, r.z + r.depth]), ...fp.lineNodes.map(n => n.z)]
+    const sunAllX = [...activeFp.rooms.flatMap(r => [r.x, r.x + r.width]), ...activeFp.lineNodes.map((n) => n.x)]
+    const sunAllZ = [...activeFp.rooms.flatMap(r => [r.z, r.z + r.depth]), ...activeFp.lineNodes.map((n) => n.z)]
     const sunCx = sunAllX.length ? (Math.min(...sunAllX) + Math.max(...sunAllX)) / 2 : 0
     const sunCz = sunAllZ.length ? (Math.min(...sunAllZ) + Math.max(...sunAllZ)) / 2 : 0
     const sunSpan = sunAllX.length ? Math.max(Math.max(...sunAllX) - Math.min(...sunAllX), Math.max(...sunAllZ) - Math.min(...sunAllZ), 5) : 10
@@ -156,10 +183,56 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     const sunDirX = Math.cos(sunElRad) * Math.sin(sunAzRad)
     const sunDirY = Math.sin(sunElRad)
     const sunDirZ = -Math.cos(sunElRad) * Math.cos(sunAzRad)
+
+    let floorsToRender: { floor: Floor; opacity: number; renderCap?: boolean }[] = []
+
+    if (viewMode === 'single') {
+        // Only the active floor. Nothing else.
+        floorsToRender = activeFloor ? [{ floor: activeFloor, opacity: 1 }] : []
+    } else if (viewMode === 'stacked') {
+        // Active floor + every floor below it, all full opacity — no fading.
+        floorsToRender = floors
+            .filter(f => f.visible && (f.id === activeFloorId || (activeFloor && f.order < activeFloor.order)))
+            .map(f => ({
+                floor: f,
+                opacity: 1,
+                renderCap: activeFloor ? f.order < activeFloor.order : false,
+            }))
+    } else {
+        // stacked-full — everything, full opacity, regardless of active floor's position
+        floorsToRender = floors.filter(f => f.visible).map(f => ({
+            floor: f,
+            opacity: 1,
+            renderCap: activeFloor ? f.order < activeFloor.order : false,
+        }))
+    }
+    const lowestGroupY = floorsToRender.length > 0
+        ? Math.min(...floorsToRender.map(({ floor }) => floor.elevation - activeElevation))
+        : 0
+    const groundPlaneY = lowestGroupY - 0.02
+
+    useEffect(() => {
+        invalidate()
+    }, [viewMode, floors, showUnderlay, activeFloorId, invalidate])
+
+    console.log('stack debug', {
+        activeFloorId,
+        activeElevation,
+        floors: floorsToRender.map(({ floor }) => ({
+            id: floor.id,
+            rawElevation: floor.elevation,
+            groupY: floor.elevation - activeElevation,
+        })),
+    })
     return (
         <>
             <color attach="background" args={['#FFFFFF']} />
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+            <mesh
+                position={[0, groundPlaneY + 0.01, 0]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                onClick={(e) => { e.stopPropagation(); onSelect?.(null) }}
+                visible={false}
+            >
                 <planeGeometry args={[500, 500]} />
                 <meshStandardMaterial color="#F5F5F3" roughness={0.9} />
             </mesh>
@@ -188,7 +261,9 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             )}
 
             <directionalLight position={[-5, 8, -5]} intensity={sunEnabled ? 0.3 : 0.8} color="#C8D4E8" />
-            {cfg.fogEnabled && !sunEnabled && <fog attach="fog" args={['#F2F2F0', 20, 60]} />}            {interactiveMode && (
+            {cfg.fogEnabled && !sunEnabled && <fog attach="fog" args={['#F2F2F0', 20, 60]} />}
+
+            {interactiveMode && (
                 <mesh
                     position={[0, -0.01, 0]}
                     rotation={[-Math.PI / 2, 0, 0]}
@@ -200,140 +275,23 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 </mesh>
             )}
 
-            <group ref={exportRootRef}>
-                {fp.rooms.map(room => {
-                    const roomCfg = cfg.rooms.find(r => r.roomId === room.id)
-                    return (
-                        <Room3D
-                            key={room.id}
-                            room={room}
-                            openings={fp.openings.filter(o => o.roomId === room.id)}
-                            roomHeight={fp.roomHeight}
-                            wallColor={roomCfg?.wallColor ?? '#FFFFFF'}
-                            wallRoughness={cfg.wallRoughness}
-                            wallTextured={cfg.wallTextured}
-                            floorMat={roomCfg?.floorMaterial ?? cfg.globalFloorMaterial ?? 'plain'}
-                            doorStyle={cfg.doorStyle ?? 'natural'}
-                            wallDecor={fp.wallDecor}
-                            interactive={interactiveMode}
-                            selectedId={selectedId}
-                            onSelect={onSelect}
-                            wallMaterial={roomCfg?.wallMaterial ?? cfg.globalWallMaterial ?? 'paint'}
-                            onSelectRoom={(roomId) => onSelect?.(roomId)}
-                            onToggleDoorOpen={onToggleDoorOpen}
-                            roomWallOverrides={roomCfg?.wallOverrides}
-                        />
-                    )
-                })}
-                {(fp.lights ?? []).filter(l => l.type === 'string_lights').map(l => (
-                    <StringLightsMesh key={l.id} light={l} fp={fp} selected={interactiveMode && selectedId === l.id}
-                        onSelect={interactiveMode ? () => onSelect?.(l.id) : undefined} />
-                ))}
-                {(fp.lights ?? []).filter(l => l.type !== 'string_lights').map(light => {
-                    let pos: [number, number, number]
-                    let rot = 0
-                    const T = 0.15, normalOffset = T / 2 + 0.05
-                    const inward = light.facingInward ?? true
-                    const faceDir = inward ? 1 : -1   // NEW — mirrors WallDecorMesh's faceDir
-
-                    if (light.segmentNodeIds) {
-                        const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
-                        const b = fp.lineNodes.find(n => n.id === light.segmentNodeIds![1])
-                        if (!a || !b) return null
-                        const t = light.segmentT ?? 0
-                        const px = a.x + (b.x - a.x) * t
-                        const pz = a.z + (b.z - a.z) * t
-                        const angle = Math.atan2(b.z - a.z, b.x - a.x)
-                        const nx = Math.sin(angle), nz = -Math.cos(angle)
-                        // NEW — faceDir flips which side of the segment the fixture sits on
-                        pos = [px + nx * normalOffset * faceDir, light.heightOffset, pz + nz * normalOffset * faceDir]
-                        rot = inward ? -angle : -angle + Math.PI   // NEW — flip facing 180° on exterior
-                    } else if (light.roomId && light.wall) {
-                        const room = fp.rooms.find(r => r.id === light.roomId)
-                        if (!room) return null
-                        if (light.wall === 'north') {
-                            pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + normalOffset * faceDir]
-                            rot = inward ? 0 : Math.PI
-                        } else if (light.wall === 'south') {
-                            pos = [room.x + (light.position ?? 0), light.heightOffset, room.z + room.depth - normalOffset * faceDir]
-                            rot = inward ? Math.PI : 0
-                        } else if (light.wall === 'west') {
-                            pos = [room.x + normalOffset * faceDir, light.heightOffset, room.z + (light.position ?? 0)]
-                            rot = inward ? Math.PI / 2 : -Math.PI / 2
-                        } else {
-                            pos = [room.x + room.width - normalOffset * faceDir, light.heightOffset, room.z + (light.position ?? 0)]
-                            rot = inward ? -Math.PI / 2 : Math.PI / 2
-                        }
-                    } else {
-                        pos = [light.x ?? 0, light.heightOffset, light.z ?? 0]
-                    }
-
-                    return (
-                        <LightFixtureMesh
-                            key={light.id}
-                            light={light}
-                            position={pos}
-                            rotation={rot}
-                            selected={interactiveMode && selectedId === light.id}
-                            onSelect={interactiveMode ? () => onSelect?.(light.id) : undefined}
-                        />
-                    )
-                })}
-                {(fp.outdoorObjects ?? []).map(o => (
-                    <OutdoorObjectMesh
-                        key={o.id}
-                        obj={o}
-                        selected={interactiveMode && selectedId === o.id}
-                        interactive={interactiveMode}
-                        onSelect={interactiveMode ? () => onSelect?.(o.id) : undefined}
+            {floorsToRender.map(({ floor, opacity, renderCap }) => (
+                <group key={floor.id} position={[0, floor.elevation - activeElevation, 0]}>
+                    <FloorGeometry
+                        fp={floor.id === activeFloorId ? activeFp : floor.state}
+                        cfg={cfg}
+                        exportRootRef={floor.id === activeFloorId ? exportRootRef : undefined}
+                        interactive={interactiveMode && floor.id === activeFloorId}
+                        selectedId={floor.id === activeFloorId ? selectedId : null}
+                        onSelect={floor.id === activeFloorId ? onSelect : undefined}
+                        onToggleDoorOpen={floor.id === activeFloorId ? onToggleDoorOpen : undefined}
+                        opacity={opacity}
+                        renderCap={renderCap}
+                        overlappingIds={overlappingIds}
                     />
-                ))}
-                <LineWalls3D
-                    fp={fp}
-                    wallRoughness={cfg.wallRoughness}
-                    wallColor="#FFFFFF"
-                    wallMaterial={cfg.globalWallMaterial ?? 'paint'}
-                    floorMaterial={cfg.globalFloorMaterial ?? 'plain'}
-                    doorStyle={cfg.doorStyle ?? 'natural'}
-                    closedShapes={fp.closedShapes}
-                    interactive={interactiveMode}
-                    selectedId={selectedId}
-                    onSelect={onSelect}
-                    onToggleDoorOpen={onToggleDoorOpen}
-                    roomSceneConfigs={cfg.rooms}
-                />
-
-            </group>
-
-
-
-            {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
-                <group
-                    key={f.id}
-                    onClick={interactiveMode ? (e) => { e.stopPropagation(); onSelect?.(f.id) } : undefined}
-                    onPointerOver={interactiveMode ? () => { document.body.style.cursor = 'pointer' } : undefined}
-                    onPointerOut={interactiveMode ? () => { document.body.style.cursor = 'auto' } : undefined}
-                >
-                    <FurnitureMesh f={f} selected={interactiveMode && selectedId === f.id} />
                 </group>
             ))}
-            {cfg.showFurniture !== false && (fp.stairs ?? []).map(s => {
-                const anchorSeg = s.anchorSegmentId
-                    ? fp.lineSegments?.find(seg => seg.id === s.anchorSegmentId)
-                    : undefined
-                const effectiveHeight = anchorSeg?.height ?? fp.roomHeight
 
-                return (
-                    <group
-                        key={s.id}
-                        onClick={interactiveMode ? (e) => { e.stopPropagation(); onSelect?.(s.id) } : undefined}
-                        onPointerOver={interactiveMode ? () => { document.body.style.cursor = 'pointer' } : undefined}
-                        onPointerOut={interactiveMode ? () => { document.body.style.cursor = 'auto' } : undefined}
-                    >
-                        <StairsMesh s={s} roomHeight={effectiveHeight} />
-                    </group>
-                )
-            })}
             {walkMode ? (
                 <WalkModeControls />
             ) : (

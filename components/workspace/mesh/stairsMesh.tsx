@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { PlacedStairs } from '../lib/stairs-constants'
 import { TextureLoadStatus, useTextureMaterialProps } from '../texture/textureLoader'
@@ -74,36 +74,29 @@ function TreadMaterial({ def }: { def?: ResolvedTreadMaterial }) {
         />
     )
 }
-function StairsMeshImpl({ s, roomHeight }: { s: PlacedStairs; roomHeight: number }) {
+
+function StairsMeshImpl({
+    s, roomHeight,
+    opacity = 1,          // NEW
+    transparent = false,  // NEW
+}: {
+    s: PlacedStairs
+    roomHeight: number
+    opacity?: number       // NEW
+    transparent?: boolean  // NEW
+}) {
     const cx = s.x + s.width / 2
     const cz = s.z + s.depth / 2
     const H = s.rise ?? roomHeight
     const railingEnabled = s.railingEnabled ?? true
     const railingColor = s.railingColor ?? RAILING_COLOR
     const railingHeight = s.railingHeight ?? 0.9
-    // NEW — closed/solid spiral style (filled panels between treads),
-    // matching the reference image. Defaults to false (open style,
-    // existing behavior) unless the entity opts in.
     const filledRisers = s.filledRisers ?? false
+    const groupRef = useRef<THREE.Group>(null)
+    const itemTransparent = transparent || opacity < 1
 
-    // treadMaterialDef is derived fresh each render from s.materialId, but
-    // its CONTENTS are stable as long as materialId doesn't change (it's a
-    // plain lookup into MATERIAL_REGISTRY). We memoize on the primitive
-    // fields we actually pass down to the texture loader, so `urls` below
-    // gets a stable object reference across re-renders that don't actually
-    // change which material is selected.
     const treadMaterialDef = resolveTreadMaterialDef(s.materialId)
 
-    // FIX (root cause): previously `urls` was a brand-new object literal
-    // on every render, even when the underlying texture/normal/roughness
-    // URLs hadn't changed. useTextureMaterialProps almost certainly keys
-    // its loading effect off this object by reference (`[urls]` as a
-    // dependency), so a fresh identity every render meant the loader
-    // effect kept re-triggering (or its result kept getting treated as
-    // stale) and `status` never stably settled on 'loaded' before the next
-    // render reset it — which is why NO stair type ever showed a texture,
-    // not just the ones missing the prop entirely. Memoizing on the actual
-    // URL strings fixes this for every stair type at once.
     const urls = useMemo(() => {
         if (!treadMaterialDef?.textureUrl) return null
         return {
@@ -119,14 +112,36 @@ function StairsMeshImpl({ s, roomHeight }: { s: PlacedStairs; roomHeight: number
         [treadMaterialDef, textures, status]
     )
 
+    useEffect(() => {
+        const root = groupRef.current
+        if (!root) return
+        root.traverse((obj) => {
+            const mesh = obj as THREE.Mesh
+            if (!mesh.isMesh) return
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+            for (const mat of mats) {
+                if (mat instanceof THREE.MeshBasicMaterial) continue
+                if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
+                    if (mat.userData.__baseOpacity === undefined) {
+                        mat.userData.__baseOpacity = mat.opacity
+                    }
+                    mat.opacity = mat.userData.__baseOpacity * opacity
+                    mat.transparent = itemTransparent || mat.userData.__baseOpacity < 1
+                    mat.needsUpdate = true
+                }
+            }
+        })
+        // Re-run when the tread material finishes loading (status change
+        // swaps in new materials that need their baseline captured) or when
+        // the stair type/id changes (different sub-component subtree).
+    }, [opacity, itemTransparent, s.id, s.type, status])
+
     return (
-        <group key={`${s.id}-${s.type}`} position={[cx, 0, cz]} rotation={[0, s.rotation, 0]}>
+        <group ref={groupRef} key={`${s.id}-${s.type}`} position={[cx, 0, cz]} rotation={[0, s.rotation, 0]}>
             {s.type === 'stairs-straight' && (
-                <StraightStairs
-                    w={s.width} d={s.depth} h={H} steps={s.steps}
+                <StraightStairs w={s.width} d={s.depth} h={H} steps={s.steps}
                     railingEnabled={railingEnabled} railingColor={railingColor} railingHeight={railingHeight}
-                    treadMaterial={resolvedTreadMaterial}
-                />
+                    treadMaterial={resolvedTreadMaterial} />
             )}
             {s.type === 'stairs-l' && (
                 <LStairs w={s.width} d={s.depth} h={H} treadMaterial={resolvedTreadMaterial} />
@@ -135,12 +150,9 @@ function StairsMeshImpl({ s, roomHeight }: { s: PlacedStairs; roomHeight: number
                 <UStairs w={s.width} d={s.depth} h={H} treadMaterial={resolvedTreadMaterial} />
             )}
             {s.type === 'stairs-spiral' && (
-                <SpiralStairs
-                    w={s.width} d={s.depth} h={H} steps={s.steps}
+                <SpiralStairs w={s.width} d={s.depth} h={H} steps={s.steps}
                     railingEnabled={railingEnabled} railingColor={railingColor} railingHeight={railingHeight}
-                    treadMaterial={resolvedTreadMaterial}
-                    filledRisers={filledRisers}
-                />
+                    treadMaterial={resolvedTreadMaterial} filledRisers={filledRisers} />
             )}
             {s.type === 'stairs-ramp' && (
                 <RampStairs w={s.width} d={s.depth} h={H} treadMaterial={resolvedTreadMaterial} />

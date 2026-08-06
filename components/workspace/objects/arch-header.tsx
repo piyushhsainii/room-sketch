@@ -3,9 +3,13 @@ import * as THREE from 'three'
 import { WallMat } from './wallmat';
 import { WallMaterial } from '../lib/constants';
 
-export function ArchHeader3D({ width, headerH, thickness, angle, mat, color, roughness }: {
+export function ArchHeader3D({
+    width, headerH, thickness, angle, mat, color, roughness,
+    opacity = 1, transparent = false,   // NEW
+}: {
     width: number; headerH: number; thickness: number
     angle: number; mat: WallMaterial; color: string; roughness: number
+    opacity?: number; transparent?: boolean
 }) {
     const geometry = useMemo(() => {
         const hw = width / 2
@@ -26,7 +30,8 @@ export function ArchHeader3D({ width, headerH, thickness, angle, mat, color, rou
 
     return (
         <mesh geometry={geometry} rotation={[0, angle, 0]} castShadow receiveShadow>
-            <WallMat mat={mat} color={color} roughness={roughness} width={width} height={headerH} depth={thickness} />
+            <WallMat mat={mat} color={color} roughness={roughness} width={width} height={headerH} depth={thickness}
+                opacity={opacity} transparent={transparent} />
         </mesh>
     )
 }

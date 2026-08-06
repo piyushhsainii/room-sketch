@@ -15,13 +15,13 @@ const ACTIONS_BY_ENTITY: Record<
     QuickAction[]
 > = {
     room: ['properties', 'move', 'duplicate', 'delete'],
-    wall: ['properties', 'delete'],               // wall resize is edge-drag only, not a free move
+    wall: ['properties', 'delete'],
     segment: ['properties', 'move', 'bend', 'duplicate', 'delete'],
     furniture: ['properties', 'move', 'duplicate', 'delete'],
     stairs: ['properties', 'move', 'duplicate', 'delete'],
     outdoor: ['properties', 'move', 'duplicate', 'delete'],
-    wallDecor: ['properties', 'duplicate', 'delete'],   // wall-anchored — slide-along-wall stays a free drag
-    opening: ['properties', 'duplicate', 'delete'],     // doors/windows — same, slide-along-wall stays free
+    wallDecor: ['properties', 'duplicate', 'delete'],
+    opening: ['properties', 'move', 'duplicate', 'delete'],   // CHANGED — doors/windows now get Move too
     shape: ['properties', 'move', 'duplicate', 'delete'],
     node: ['properties', 'delete'],
     light: ['properties', 'move', 'duplicate', 'delete'],

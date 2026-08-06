@@ -18,52 +18,6 @@
 //    NOT a second independent walk of FloorPlanState. This guarantees
 //    "what you see in 3D is what you get in the file" by construction.
 
-import * as THREE from "three";
-import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
-import { OBJExporter } from "three/examples/jsm/exporters/OBJExporter.js";
-
-export type ExportProgress = (stage: string, pct: number) => void;
-
-/**
- * Recursively force every material in the given scene graph to a
- * base-color-only MeshStandardMaterial (or a clone with maps stripped),
- * per the "flat color for v1" decision above. Returns a *cloned* graph so
- * the live scene's materials (which DO use maps, for the in-app look)
- * are never mutated.
- */
-function buildFlatColorExportGraph(root: THREE.Object3D): THREE.Object3D {
-  const clone = root.clone(true);
-  clone.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const srcMat = Array.isArray(mesh.material)
-      ? mesh.material[0]
-      : mesh.material;
-    const color =
-      srcMat &&
-      "color" in srcMat &&
-      (srcMat as THREE.MeshStandardMaterial).color
-        ? (srcMat as THREE.MeshStandardMaterial).color.clone()
-        : new THREE.Color("#CCCCCC");
-    mesh.material = new THREE.MeshStandardMaterial({
-      color,
-      roughness: 0.8,
-      metalness: 0.05,
-    });
-  });
-  return clone;
-}
-
-/**
- * STEP 3 (dev-time gap detection): walk the graph and warn (dev only) about
- * any object whose userData carries a `__meshType` tag but produced zero
- * exportable geometry underneath it — the export-time equivalent of the
- * "silent null branch" check called out in the plan for mesh files like
- * outdoor-object-mesh.tsx. Mesh components should set
- * `group.userData.__meshType = <type>` at their root (see mesh-patches/
- * for the two-line addition to OutdoorObjectMesh and friends) so this can
- * actually catch a gap instead of just trusting the switch statement.
- */
 function warnOnEmptyTaggedGroups(root: THREE.Object3D) {
   if (process.env.NODE_ENV === "production") return;
   root.traverse((obj) => {
@@ -84,13 +38,82 @@ function warnOnEmptyTaggedGroups(root: THREE.Object3D) {
   });
 }
 
+import * as THREE from "three";
+import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
+import { OBJExporter } from "three/examples/jsm/exporters/OBJExporter.js";
+
+function extractColor(
+  material: THREE.Material | THREE.Material[] | null | undefined,
+): THREE.Color {
+  if (!material) return new THREE.Color(0xcccccc);
+
+  const mat = Array.isArray(material) ? material[0] : material;
+
+  // Only trust real Three.js materials that still have a .color
+  if (
+    mat &&
+    typeof (mat as any).isMaterial === "boolean" &&
+    (mat as any).isMaterial &&
+    (mat as any).color?.isColor
+  ) {
+    return (mat as any).color.clone();
+  }
+
+  return new THREE.Color(0xcccccc);
+}
+
+function buildFlatColorExportGraph(sceneRoot: THREE.Object3D): THREE.Group {
+  const root = new THREE.Group();
+  root.name = "export-root";
+
+  sceneRoot.updateMatrixWorld(true);
+
+  sceneRoot.traverse((obj) => {
+    if (!(obj as THREE.Mesh).isMesh) return;
+
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.geometry) return;
+
+    // Skip empty / invalid geometry
+    const pos = mesh.geometry.attributes.position;
+    if (!pos || pos.count === 0) return;
+
+    const color = extractColor(mesh.material);
+
+    // Always create a brand-new material – never reuse / clone the original
+    const flatMat = new THREE.MeshStandardMaterial({
+      color,
+      side: THREE.DoubleSide,
+      metalness: 0,
+      roughness: 1,
+      // no maps, no event listeners needed
+    });
+
+    const exportMesh = new THREE.Mesh(mesh.geometry.clone(), flatMat);
+    exportMesh.name = mesh.name || "mesh";
+    exportMesh.matrix.copy(mesh.matrixWorld);
+    exportMesh.matrix.decompose(
+      exportMesh.position,
+      exportMesh.quaternion,
+      exportMesh.scale,
+    );
+    exportMesh.matrixAutoUpdate = true;
+
+    root.add(exportMesh);
+  });
+
+  return root;
+}
+
+// Your existing export functions stay almost the same
 export async function exportGLTF(
   sceneRoot: THREE.Object3D,
   filename = "floor-plan.glb",
   onProgress?: ExportProgress,
 ): Promise<void> {
   onProgress?.("Preparing scene", 10);
-  warnOnEmptyTaggedGroups(sceneRoot);
+  warnOnEmptyTaggedGroups?.(sceneRoot);
+
   const exportGraph = buildFlatColorExportGraph(sceneRoot);
 
   onProgress?.("Serializing glTF", 50);
@@ -113,13 +136,19 @@ export async function exportGLTF(
   onProgress?.("Done", 100);
 }
 
+export type ExportProgress = (
+  stage: string,
+  percent: number, // 0–100
+) => void;
+
 export function exportOBJ(
   sceneRoot: THREE.Object3D,
   filename = "floor-plan.obj",
   onProgress?: ExportProgress,
 ): void {
   onProgress?.("Preparing scene", 10);
-  warnOnEmptyTaggedGroups(sceneRoot);
+  warnOnEmptyTaggedGroups?.(sceneRoot);
+
   const exportGraph = buildFlatColorExportGraph(sceneRoot);
 
   onProgress?.("Serializing OBJ", 60);
@@ -132,7 +161,7 @@ export function exportOBJ(
   onProgress?.("Done", 100);
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+export function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

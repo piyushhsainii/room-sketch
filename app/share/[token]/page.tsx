@@ -150,7 +150,16 @@ export default function SharePage({ params }: { params: Promise<{ token: string 
 
   const sceneConfig = converted?.sceneConfig ?? DEFAULT_SCENE_CONFIG
 
-
+  const singleFloor = fp
+    ? {
+      id: 'shared-floor',
+      label: data?.project_name ?? 'Floor',
+      order: 0,
+      elevation: 0,
+      visible: true,
+      state: fp,
+    }
+    : null
 
   useEffect(() => {
 
@@ -355,17 +364,16 @@ export default function SharePage({ params }: { params: Promise<{ token: string 
               <Suspense fallback={null}>
 
                 <Scene3D
-
                   exportRootRef={exportRootRef}
-
                   ref={scene3DRef}
-
-                  fp={fp}
-
+                  activeFp={fp!}
+                  activeFloorId={singleFloor?.id ?? ''}
+                  floors={singleFloor ? [singleFloor] : []}
+                  showUnderlay={false}
+                  viewMode="single"
+                  selectedId={null}
                   sceneConfig={sceneConfig}
-
                   walkMode={walkMode}
-
                   interactiveMode={false}
 
                 />
@@ -381,14 +389,6 @@ export default function SharePage({ params }: { params: Promise<{ token: string 
           <PublicFloorPlan2D fp={fp} />
 
         )}
-
-
-
-        {/* Builder attribution — sourced entirely from the initial
-
-            /api/workspace/share/[token] response (joined server-side),
-
-            no additional fetch or db call here. */}
 
         {data.builder && (data.builder.full_name || data.builder.avatar_url) && (
 

@@ -62,8 +62,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: APP.name,
     description: APP.description,
-    images: ["/og-image.png"],
-    // creator: "@roomsketch", // add your handle if you have one
+    images: ["/room-sketch-hero.jpeg"],
   },
   icons: {
     icon: "/favicon.ico",

@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { Suspense, useMemo, useRef } from 'react'
 import { WALL_MAT_DEFS, WallMaterial, } from '../lib/constants'
 import { useFrame, useLoader } from '@react-three/fiber'
-import { getMaterialsForDomain, MaterialDef, } from '../texture/materials-registry'
+import { MaterialDef, } from '../texture/materials-registry'
 
 interface WallMatProps {
     color?: string
@@ -12,9 +12,10 @@ interface WallMatProps {
     width?: number
     height?: number
     depth?: number
+    opacity?: number       // NEW
+    transparent?: boolean  // NEW
 }
 
-type WallTexInfo = { map: string; normalMap?: string; roughnessMap?: string }
 
 export function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture | null {
     if (mat === 'paint' || mat === 'pvc-panel-groove') return null
@@ -93,7 +94,7 @@ export function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture 
     return tex
 }
 
-function LoadingMaterial() {
+function LoadingMaterial({ opacity = 1, transparent = false }: { opacity?: number; transparent?: boolean }) {
     const ref = useRef<THREE.MeshStandardMaterial>(null)
     useFrame(({ clock }) => {
         if (ref.current) {
@@ -101,10 +102,12 @@ function LoadingMaterial() {
             ref.current.color.setScalar(0.75 + t * 0.1)
         }
     })
-    return <meshStandardMaterial ref={ref} roughness={0.9} />
+    return <meshStandardMaterial ref={ref} roughness={0.9} opacity={opacity} transparent={transparent} />
 }
 
-export function RealTextureWallMat({ width, height, depth, def }: { width: number; height: number; depth: number; def: MaterialDef }) {
+export function RealTextureWallMat({
+    width, height, depth, def, opacity = 1, transparent = false,
+}: { width: number; height: number; depth: number; def: MaterialDef; opacity?: number; transparent?: boolean }) {
     const urls = [def.textureUrl!, def.normalMapUrl, def.roughnessMapUrl].filter(Boolean) as string[]
     const loaded = useLoader(THREE.TextureLoader, urls)
 
@@ -139,25 +142,28 @@ export function RealTextureWallMat({ width, height, depth, def }: { width: numbe
             color="#FFFFFF"
             roughness={def.roughnessMapUrl ? 1 : def.roughness}
             metalness={def.metalness}
+            opacity={opacity}
+            transparent={transparent}
             {...maps}
         />
     )
 }
 
-
-
-export function WallMat({ color, roughness, textured = false, mat = 'paint', width = 1, height = 2.7, depth = 0.15 }: WallMatProps) {
+export function WallMat({
+    color, roughness, textured = false, mat = 'paint',
+    width = 1, height = 2.7, depth = 0.15,
+    opacity = 1, transparent = false,   // NEW
+}: WallMatProps) {
     const def = WALL_MAT_DEFS[mat] || WALL_MAT_DEFS['paint']
     const finalColor = color && color !== '#FFFFFF' ? color : def.color
     const finalRoughness = roughness ?? def.roughness
+    // `transparent` must also be true whenever opacity < 1, even if caller
+    // forgot to pass it explicitly — three.js silently ignores opacity
+    // on a non-transparent material.
+    const finalTransparent = transparent || opacity < 1
 
-    // Hook must run unconditionally, on every render, regardless of which
-    // branch below actually gets returned — moving this after the early
-    // `def.textureUrl` return (as it was before) violates Rules of Hooks:
-    // switching a wall between a textured and procedural/solid material
-    // would change the number of hooks called between renders.
     const texture = useMemo(() => {
-        if (def.textureUrl) return null // real-texture path handles its own loading, this branch unused
+        if (def.textureUrl) return null
         const tex = createProceduralTexture(mat)
         if (tex) {
             tex.repeat.set(width * def.repeatScale, height * def.repeatScale)
@@ -168,26 +174,25 @@ export function WallMat({ color, roughness, textured = false, mat = 'paint', wid
 
     if (def.textureUrl) {
         return (
-            <Suspense fallback={<LoadingMaterial />}>
-                <RealTextureWallMat width={width} height={height} depth={depth} def={def} />
+            <Suspense fallback={<LoadingMaterial opacity={opacity} transparent={finalTransparent} />}>
+                <RealTextureWallMat width={width} height={height} depth={depth} def={def} opacity={opacity} transparent={finalTransparent} />
             </Suspense>
         )
     }
 
-    // PVC Groove Geometry Injection (Generalized across wall width)
     if (mat === 'pvc-panel-groove') {
-        const numGrooves = Math.floor(width / 0.15) // Groove every 15cm
+        const numGrooves = Math.floor(width / 0.15)
         const grooveW = 0.015
         return (
             <>
-                <meshStandardMaterial attach="material" color={finalColor} roughness={finalRoughness} metalness={def.metalness} />
+                <meshStandardMaterial attach="material" color={finalColor} roughness={finalRoughness} metalness={def.metalness} opacity={opacity} transparent={finalTransparent} />
                 <group position={[0, 0, depth / 2 + 0.002]}>
                     {Array.from({ length: numGrooves }).map((_, i) => {
                         const startX = -width / 2 + 0.075
                         return (
                             <mesh key={i} position={[startX + i * 0.15, 0, 0]} castShadow receiveShadow>
                                 <boxGeometry args={[grooveW, height, 0.005]} />
-                                <meshStandardMaterial color={finalColor} roughness={finalRoughness + 0.1} />
+                                <meshStandardMaterial color={finalColor} roughness={finalRoughness + 0.1} opacity={opacity} transparent={finalTransparent} />
                             </mesh>
                         )
                     })}
@@ -198,7 +203,7 @@ export function WallMat({ color, roughness, textured = false, mat = 'paint', wid
                         return (
                             <mesh key={i} position={[startX + i * 0.15, 0, 0]} castShadow receiveShadow>
                                 <boxGeometry args={[grooveW, height, 0.005]} />
-                                <meshStandardMaterial color={finalColor} roughness={finalRoughness + 0.1} />
+                                <meshStandardMaterial color={finalColor} roughness={finalRoughness + 0.1} opacity={opacity} transparent={finalTransparent} />
                             </mesh>
                         )
                     })}
@@ -214,6 +219,8 @@ export function WallMat({ color, roughness, textured = false, mat = 'paint', wid
             roughness={finalRoughness}
             metalness={def.metalness}
             map={texture || undefined}
+            opacity={opacity}
+            transparent={finalTransparent}
         />
     )
 }

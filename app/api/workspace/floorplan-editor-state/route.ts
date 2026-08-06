@@ -2,13 +2,19 @@ import { NextResponse } from "next/server";
 import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
 import type { SceneConfig } from "@/components/workspace/FloorPlanEditor";
-import type { FloorPlanState } from "@/components/workspace/lib/constants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { ProjectFloorPlan } from "@/components/workspace/lib/floor-data";
+import { migrateToMultiFloor } from "@/components/workspace/lib/migrateToMultiFloor";
+import {
+  DEFAULT_FP,
+  FloorPlanState,
+} from "@/components/workspace/lib/constants";
 
 export const runtime = "nodejs";
 
 type FloorplanEditorState = {
-  floorPlanState: FloorPlanState;
+  projectFloorPlan?: ProjectFloorPlan;
+  floorPlanState?: FloorPlanState;
   sceneConfig: SceneConfig;
 };
 
@@ -58,6 +64,7 @@ export async function POST(request: Request) {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
+
     if (authError || !user)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -69,12 +76,15 @@ export async function POST(request: Request) {
 
     if (
       !body.project_id ||
-      !body.state?.floorPlanState ||
-      !body.state?.sceneConfig
+      !body.state?.sceneConfig ||
+      (!body.state.projectFloorPlan && !body.state.floorPlanState)
     ) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
+    // Ownership check now happens via RLS on the update below (using the
+    // user-session client), but we still verify existence explicitly for
+    // a clean 404 vs. a silent no-op update.
     const { data: project } = await supabase
       .from("projects")
       .select("id")
@@ -85,8 +95,15 @@ export async function POST(request: Request) {
     if (!project)
       return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    const projectFloorPlan: ProjectFloorPlan =
+      body.state.projectFloorPlan ??
+      migrateToMultiFloor(body.state.floorPlanState ?? DEFAULT_FP);
+
+    const activeFloor = projectFloorPlan.floors.find(
+      (f) => f.id === projectFloorPlan.activeFloorId,
+    );
     const sceneJSON = floorPlanStateToSceneJSON(
-      body.state.floorPlanState,
+      activeFloor?.state ?? DEFAULT_FP,
       body.state.sceneConfig,
     );
     const workspaceConfig = sceneConfigToWorkspaceConfig(
@@ -94,7 +111,10 @@ export async function POST(request: Request) {
     );
 
     const updatePayload: Record<string, unknown> = {
-      floorplan_editor_state: body.state,
+      floorplan_editor_state: {
+        projectFloorPlan,
+        sceneConfig: body.state.sceneConfig,
+      },
       scene_json: sceneJSON,
       workspace_config: workspaceConfig,
       workspace_enabled: true,

@@ -73,7 +73,7 @@ function createFloorTexture(mat: FloorMaterial, def: MaterialDef): THREE.CanvasT
     return tex
 }
 
-function LoadingFloorMaterial() {
+function LoadingFloorMaterial({ opacity = 1, transparent = false }: { opacity?: number; transparent?: boolean }) {
     const ref = useRef<THREE.MeshStandardMaterial>(null)
     useFrame(({ clock }) => {
         if (ref.current) {
@@ -81,29 +81,23 @@ function LoadingFloorMaterial() {
             ref.current.color.setScalar(0.75 + t * 0.1)
         }
     })
-    return <meshStandardMaterial ref={ref} roughness={0.9} />
+    return <meshStandardMaterial ref={ref} roughness={0.9} opacity={opacity} transparent={transparent} />
 }
 
-function ProceduralFloorMat({ mat, def, width, depth }: { mat: FloorMaterial; def: MaterialDef; width: number; depth: number }) {
+function ProceduralFloorMat({
+    mat, def, width, depth, opacity = 1, transparent = false,
+}: { mat: FloorMaterial; def: MaterialDef; width: number; depth: number; opacity?: number; transparent?: boolean }) {
     const texture = useMemo(() => {
         const tex = createFloorTexture(mat, def)
         if (tex) { tex.repeat.set(width * def.repeatScale, depth * def.repeatScale); tex.needsUpdate = true }
         return tex
     }, [mat, width, depth, def.repeatScale, def.color])
 
-    return <meshStandardMaterial attach="material" color={def.color} roughness={def.roughness} metalness={def.metalness} map={texture || undefined} />
+    return <meshStandardMaterial attach="material" color={def.color} roughness={def.roughness} metalness={def.metalness} map={texture || undefined} opacity={opacity} transparent={transparent} />
 }
-
-// ── Real-texture path — sourced from the registry MaterialDef itself
-// (def.textureUrl / normalMapUrl / roughnessMapUrl), the same way WallMat
-// already does it. This is what was missing: FloorMat previously looked up
-// a SEPARATE, hand-maintained FLOOR_TEXTURE_URLS table instead of the
-// registry def, so any registry-only floor key not manually added to that
-// table (marble-travertine, carpet-plush, wood-floor-herringbone,
-// concrete-polished, every solid-* floor variant, etc.) silently fell back
-// to an untextured/wrong procedural fill — this is why area/room floor
-// overrides using those keys looked like they weren't applying.
-function RealTextureFloorMat({ width, depth, def }: { width: number; depth: number; def: MaterialDef }) {
+function RealTextureFloorMat({
+    width, depth, def, opacity = 1, transparent = false,
+}: { width: number; depth: number; def: MaterialDef; opacity?: number; transparent?: boolean }) {
     const urls = [def.textureUrl!, def.normalMapUrl, def.roughnessMapUrl].filter(Boolean) as string[]
     const loaded = useLoader(THREE.TextureLoader, urls)
 
@@ -134,27 +128,34 @@ function RealTextureFloorMat({ width, depth, def }: { width: number; depth: numb
         <meshStandardMaterial
             attach="material"
             color="#FFFFFF"
-            roughness={def.roughnessMapUrl ? 1 : def.roughness} // roughnessMap drives it when present — flat scalar left at 1 so the map isn't double-applied
+            roughness={def.roughnessMapUrl ? 1 : def.roughness}
             metalness={def.metalness}
+            opacity={opacity}
+            transparent={transparent}
             {...maps}
         />
     )
 }
 
-export function FloorMat({ mat = 'plain', width = 10, depth = 10 }: { mat?: FloorMaterial; width?: number; depth?: number }) {
+export function FloorMat({
+    mat = 'plain', width = 10, depth = 10,
+    opacity = 1, transparent = false,   // NEW
+}: { mat?: FloorMaterial; width?: number; depth?: number; opacity?: number; transparent?: boolean }) {
     const def = FLOOR_MAT_DEFS[mat] || FLOOR_MAT_DEFS['plain']
+    const finalTransparent = transparent || opacity < 1
+
     if (def.textureUrl) {
         return (
-            <Suspense fallback={<LoadingFloorMaterial />}>
-                <RealTextureFloorMat width={width} depth={depth} def={def} />
+            <Suspense fallback={<LoadingFloorMaterial opacity={opacity} transparent={finalTransparent} />}>
+                <RealTextureFloorMat width={width} depth={depth} def={def} opacity={opacity} transparent={finalTransparent} />
             </Suspense>
         )
     }
 
     const isSolid = mat === 'plain' || mat.startsWith('solid-')
     if (isSolid) {
-        return <meshStandardMaterial attach="material" color={def.color} roughness={def.roughness} metalness={def.metalness} />
+        return <meshStandardMaterial attach="material" color={def.color} roughness={def.roughness} metalness={def.metalness} opacity={opacity} transparent={finalTransparent} />
     }
 
-    return <ProceduralFloorMat mat={mat} def={def} width={width} depth={depth} />
+    return <ProceduralFloorMat mat={mat} def={def} width={width} depth={depth} opacity={opacity} transparent={finalTransparent} />
 }

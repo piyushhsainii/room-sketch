@@ -8,6 +8,9 @@ import { ExportPlanDialog } from '../workspace/export/ExportPlanDialog';
 import { exportDXF } from '../workspace/lib/export/exportDxf';
 import { exportGLTF, exportOBJ } from '../workspace/lib/export/exportgltfobj';
 import { exportSVG } from '../workspace/lib/export/exportsvg';
+import FloorSwitcher from './FloorSwitcherUI';
+import { Floor } from '../workspace/lib/floor-data';
+
 
 interface WorkspaceNavProps {
     fp: FloorPlanState;
@@ -24,13 +27,21 @@ interface WorkspaceNavProps {
     onSave?: (fp: FloorPlanState, sceneConfig: any) => void | Promise<void>;
     projectId?: string
     sceneRootRef?: React.RefObject<any>
-    // NEW — the snapshot (fp + sceneConfig) as it was at last successful
-    // save/load, so this component can tell whether there's anything worth
-    // saving. If the parent doesn't track this yet, pass nothing and the
-    // dirty-check simply falls back to "always allow save" (old behavior) —
-    // see isDirty logic below.
     lastSavedSnapshot?: { fp: FloorPlanState; sceneConfig: any } | null
+
+    // NEW — floor switcher, threaded straight through, no logic here
+    floors: Floor[]
+    activeFloorId: string
+    viewMode: 'single' | 'stacked' | 'stacked-full'
+    showUnderlay: boolean
+    onSelectFloor: (floorId: string) => void
+    onAddFloor: (direction: "above" | "below") => void
+    onToggleFloorVisible: (floorId: string) => void
+    onRenameFloor: (floorId: string, newLabel: string) => void
+    onSetViewMode: (mode: "single" | "stacked" | "stacked-full") => void
+    onSetShowUnderlay: (value: boolean) => void
 }
+
 
 function ensureMenuAnimationStyle() {
     if (document.getElementById('wsnav-menu-anim')) return
@@ -87,6 +98,16 @@ const WorkspaceNav = ({
     projectId,
     sceneRootRef,
     lastSavedSnapshot,
+    floors,
+    activeFloorId,
+    viewMode,
+    onSelectFloor,
+    onAddFloor,
+    onToggleFloorVisible,
+    onRenameFloor,
+    onSetViewMode,
+    onSetShowUnderlay,
+    showUnderlay
 }: WorkspaceNavProps) => {
 
     const [shareDialogOpen, setShareDialogOpen] = useState(false)
@@ -257,7 +278,16 @@ const WorkspaceNav = ({
 
     return (
         <div style={{ height: 52, flexShrink: 0, background: THEME.bgPanel, borderBottom: `1px solid ${THEME.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, boxShadow: THEME.shadow }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: THEME.text, letterSpacing: '0.02em' }}>Ground Floor</span>
+            <FloorSwitcher
+                floors={floors}
+                activeFloorId={activeFloorId}
+                viewMode={viewMode}
+                onSelectFloor={onSelectFloor}
+                onAddFloor={onAddFloor}
+                onToggleFloorVisible={onToggleFloorVisible}
+                onRenameFloor={onRenameFloor}
+                onSetViewMode={onSetViewMode}
+            />
             <div style={{ flex: 1 }} />
             <label style={{ fontSize: 11, color: THEME.textMuted }}>Ceiling height</label>
             <input type="number" min={2} max={6} step={0.1} value={fp.roomHeight}
@@ -336,7 +366,6 @@ const WorkspaceNav = ({
                     }}
                 >
                     <MenuSectionLabel>Plan document</MenuSectionLabel>
-                    <MenuItem label="Export Plan…" sub="Image / PDF, with layout options" onClick={handleOpenExportPlanDialog} delay={0} />
                     <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
                     <MenuSectionLabel>3D / 2D model files</MenuSectionLabel>
                     {MODEL_EXPORT_FORMATS.map((opt, i) => (

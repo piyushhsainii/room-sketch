@@ -106,7 +106,8 @@ const WorkspaceNav = ({
     onToggleFloorVisible,
     onRenameFloor,
     onSetViewMode,
-
+    onSetShowUnderlay,
+    showUnderlay
 }: WorkspaceNavProps) => {
 
     const [shareDialogOpen, setShareDialogOpen] = useState(false)
@@ -277,7 +278,6 @@ const WorkspaceNav = ({
 
     return (
         <div style={{ height: 52, flexShrink: 0, background: THEME.bgPanel, borderBottom: `1px solid ${THEME.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, boxShadow: THEME.shadow }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: THEME.text, letterSpacing: '0.02em' }}>Ground Floor</span>
             <FloorSwitcher
                 floors={floors}
                 activeFloorId={activeFloorId}

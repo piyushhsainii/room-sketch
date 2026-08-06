@@ -27,6 +27,7 @@ export function migrateToMultiFloor(
     floors: [groundFloor],
     activeFloorId: groundFloor.id,
     viewMode: "single",
+    showUnderlay: true,
     roof: DEFAULT_ROOF,
   };
 }

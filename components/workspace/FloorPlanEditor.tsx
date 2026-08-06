@@ -169,42 +169,34 @@ export default function FloorPlanEditor({
 
     const switchToFloor = useCallback((newFloorId: string) => {
         if (newFloorId === activeFloorId) return
+        const target = floors.find(f => f.id === newFloorId)
+        if (!target) return
 
-        // 1. Fold current fp back into the floors array under the OLD active floor
         setFloors(prev => prev.map(f => f.id === activeFloorId ? { ...f, state: fpRef.current } : f))
-
-
-        // 2. Load the NEW floor's state into fp
-        setFloors(prev => {
-            const target = prev.find(f => f.id === newFloorId)
-            if (target) setFp(target.state)
-            return prev
-        })
-
+        setFp(target.state)
         setActiveFloorId(newFloorId)
-        setSelectedId(null) // clear selection — a selected id from the old floor is meaningless on the new one
+        setSelectedId(null)
         setSelectedIds([])
-    }, [activeFloorId])
+    }, [activeFloorId, floors])
 
     const addFloor = useCallback((direction: 'above' | 'below' = 'above') => {
+        const maxOrder = Math.max(...floors.map(f => f.order))
+        const minOrder = Math.min(...floors.map(f => f.order))
+        const newOrder = direction === 'above' ? maxOrder + 1 : minOrder - 1
+        const label = direction === 'above' ? `Level ${newOrder + 1}` : `Basement ${Math.abs(newOrder)}`
+        const newFloor = createEmptyFloor(label, newOrder, 0) // elevation recomputed below
+
         setFloors(prev => {
             const withCurrentSaved = prev.map(f =>
                 f.id === activeFloorId ? { ...f, state: fpRef.current } : f
             )
-            const maxOrder = Math.max(...withCurrentSaved.map(f => f.order))
-            const minOrder = Math.min(...withCurrentSaved.map(f => f.order))
-            const newOrder = direction === 'above' ? maxOrder + 1 : minOrder - 1
-            const label = direction === 'above' ? `Level ${newOrder + 1}` : `Basement ${Math.abs(newOrder)}`
-            const newFloor = createEmptyFloor(label, newOrder, 0) // elevation recomputed below
-            const withNewFloor = [...withCurrentSaved, newFloor]
-            const recomputed = recomputeFloorElevations(withNewFloor)
-            setFp(newFloor.state) // switch editing view onto the new empty floor immediately
-            setActiveFloorId(newFloor.id)
-            return recomputed
+            return recomputeFloorElevations([...withCurrentSaved, newFloor])
         })
+        setFp(newFloor.state)
+        setActiveFloorId(newFloor.id)
         setSelectedId(null)
         setSelectedIds([])
-    }, [activeFloorId])
+    }, [activeFloorId, floors])
 
     const renameFloor = useCallback((floorId: string, newLabel: string) => {
         setFloors(prev => prev.map(f => f.id === floorId ? { ...f, label: newLabel } : f))
@@ -671,7 +663,6 @@ export default function FloorPlanEditor({
 
             ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-            // Ghost floors — drawn first, underneath, faded, fully inert
             for (const { floor, derived } of ghostFloorsDerivedRef.current) {
                 ctx.save()
                 ctx.globalAlpha = 0.25
@@ -3375,6 +3366,7 @@ export default function FloorPlanEditor({
                         >
                             <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#EFEFEC' }}>
                                 <ResilientCanvas
+                                    frameloop='always'
                                     shadows
                                     gl={{
                                         antialias: true,
@@ -3406,6 +3398,7 @@ export default function FloorPlanEditor({
                                         showUnderlay={showUnderlay}
                                         sceneConfig={sceneConfig}
                                         walkMode={walkMode}
+                                        activeFp={fp}
                                         interactiveMode={interactiveMode}
                                         selectedId={selectedId}
                                         onSelect={handleSceneSelect}

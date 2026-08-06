@@ -28,27 +28,10 @@ function measureCached(ctx: CanvasRenderingContext2D, text: string, font: string
     return w
 }
 
-// Quantizes a live-dragged length to 1cm precision before it's turned into
-// a label string. This is what keeps the rubber-band / room-draw preview
-// smooth: nearby cursor positions during a drag collapse onto the same
-// cache key instead of minting a brand-new string (and cache entry) on
-// every single mousemove frame. It does NOT delay or throttle the redraw
-// itself — the line still tracks the cursor every frame — it just avoids
-// re-measuring text and growing the cache for sub-cm jitter the eye can't
-// perceive anyway.
 function quantizeMeters(m: number, precision = 100): number {
     return Math.round(m * precision) / precision
 }
 
-// ── Label collision avoidance ────────────────────────────────────────────
-// When several objects sit close together (two spotlights on the same
-// wall, a sconce right next to a crosswalk, etc.) their chip labels would
-// otherwise land on the exact same spot and render illegibly on top of
-// each other — which is also what made some objects hard to select, since
-// you couldn't see there were two things there to click. Every chip label
-// this frame gets checked against labels already placed; if it collides,
-// it's nudged down (and, failing that, sideways) until it's clear, with
-// its leader line stretching to show where it really points.
 let placedLabelRects: { x: number; y: number; w: number; h: number }[] = []
 
 function rectsOverlap(
@@ -237,7 +220,7 @@ export function draw2D(
 ) {
     const W = ctx.canvas.width
     const H = ctx.canvas.height
-    ctx.clearRect(0, 0, W, H)
+    // ctx.clearRect(0, 0, W, H)
     // Fresh collision registry for this frame's chip labels — see
     // findClearSpot/drawChipLabel above.
     placedLabelRects = []

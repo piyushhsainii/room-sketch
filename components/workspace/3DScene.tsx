@@ -21,6 +21,7 @@ type Scene3DProps = {
     exportRootRef: any
     floors: Floor[]
     activeFloorId: string
+    activeFp: FloorPlanState
     viewMode: 'single' | 'stacked' | 'stacked-full'
     showUnderlay: boolean
     sceneConfig?: SceneConfig
@@ -46,19 +47,16 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         onSelect,
         onToggleDoorOpen,
         overlappingIds,
+        activeFp: liveFp
     },
     ref
 ) {
     const cfg = sceneConfig ?? DEFAULT_SCENE_CONFIG
     const controlsRef = useRef<any>(null)
-    const { gl, scene, camera } = useThree()
+    const { gl, scene, camera, invalidate } = useThree()
 
-    // Active floor's state — used anywhere a single FloorPlanState is needed
-    // (camera framing, sun-bounds calc, snapshot framing). These are
-    // inherently single-floor-scoped concerns, unlike the geometry render
-    // below which spans all visible floors.
     const activeFloor = floors.find(f => f.id === activeFloorId)
-    const activeFp: FloorPlanState = activeFloor?.state ?? DEFAULT_FP
+    const activeFp: FloorPlanState = liveFp ?? activeFloor?.state ?? DEFAULT_FP
     const activeElevation = activeFloor?.elevation ?? 0
 
     useImperativeHandle(ref, () => ({
@@ -134,27 +132,36 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         const controls = controlsRef.current
         if (!controls) return
 
-        const allX = [
-            ...activeFp.rooms.flatMap(r => [r.x, r.x + r.width]),
-            ...activeFp.lineNodes.map((n) => n.x),
-        ]
-        const allZ = [
-            ...activeFp.rooms.flatMap(r => [r.z, r.z + r.depth]),
-            ...activeFp.lineNodes.map((n) => n.z),
-        ]
+        const isStacked = viewMode !== 'single'
+        const relevantFloors = isStacked ? floors.filter(f => f.visible) : (activeFloor ? [activeFloor] : [])
+
+        const allX: number[] = []
+        const allZ: number[] = []
+        let minElev = 0, maxElev = 0
+
+        for (const f of relevantFloors) {
+            const src = f.id === activeFloorId ? activeFp : f.state
+            allX.push(...src.rooms.flatMap(r => [r.x, r.x + r.width]), ...src.lineNodes.map(n => n.x))
+            allZ.push(...src.rooms.flatMap(r => [r.z, r.z + r.depth]), ...src.lineNodes.map(n => n.z))
+            const relElev = f.elevation - activeElevation
+            minElev = Math.min(minElev, relElev)
+            maxElev = Math.max(maxElev, relElev + f.state.roomHeight)
+        }
         if (allX.length === 0) return
 
         const minX = Math.min(...allX), maxX = Math.max(...allX)
         const minZ = Math.min(...allZ), maxZ = Math.max(...allZ)
         const cx = (minX + maxX) / 2
         const cz = (minZ + maxZ) / 2
-        const span = Math.max(maxX - minX, maxZ - minZ, 5)
+        const midY = (minElev + maxElev) / 2
+        const span = Math.max(maxX - minX, maxZ - minZ, maxElev - minElev, 5)
 
-        controls.object.position.set(cx, span * 1.6, cz + 0.01)
-        controls.target.set(cx, 0, cz)
+        controls.object.position.set(cx, midY + span * 1.6, cz + 0.01)
+        controls.target.set(cx, midY, cz)
         controls.update()
+        invalidate()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeFloorId])
+    }, [activeFloorId, viewMode])
 
     const sunTimeOfDay = cfg.sunTimeOfDay ?? 12
     const sunCompassHeading = cfg.sunCompassHeading ?? 180
@@ -177,32 +184,55 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     const sunDirY = Math.sin(sunElRad)
     const sunDirZ = -Math.cos(sunElRad) * Math.cos(sunAzRad)
 
-    // ── Determine which floors render, and at what opacity ──────────────
-    let floorsToRender: { floor: Floor; opacity: number }[] = []
+    let floorsToRender: { floor: Floor; opacity: number; renderCap?: boolean }[] = []
 
     if (viewMode === 'single') {
+        // Only the active floor. Nothing else.
         floorsToRender = activeFloor ? [{ floor: activeFloor, opacity: 1 }] : []
-        if (showUnderlay && activeFloor) {
-            const belowFloor = [...floors]
-                .filter(f => f.order < activeFloor.order && f.visible)
-                .sort((a, b) => b.order - a.order)[0]
-            if (belowFloor) {
-                floorsToRender = [{ floor: belowFloor, opacity: 0.25 }, ...floorsToRender]
-            }
-        }
     } else if (viewMode === 'stacked') {
+        // Active floor + every floor below it, all full opacity — no fading.
         floorsToRender = floors
-            .filter(f => f.visible)
-            .map(f => ({ floor: f, opacity: f.id === activeFloorId ? 1 : 0.35 }))
+            .filter(f => f.visible && (f.id === activeFloorId || (activeFloor && f.order < activeFloor.order)))
+            .map(f => ({
+                floor: f,
+                opacity: 1,
+                renderCap: activeFloor ? f.order < activeFloor.order : false,
+            }))
     } else {
-        // stacked-full
-        floorsToRender = floors.filter(f => f.visible).map(f => ({ floor: f, opacity: 1 }))
+        // stacked-full — everything, full opacity, regardless of active floor's position
+        floorsToRender = floors.filter(f => f.visible).map(f => ({
+            floor: f,
+            opacity: 1,
+            renderCap: activeFloor ? f.order < activeFloor.order : false,
+        }))
     }
+    const lowestGroupY = floorsToRender.length > 0
+        ? Math.min(...floorsToRender.map(({ floor }) => floor.elevation - activeElevation))
+        : 0
+    const groundPlaneY = lowestGroupY - 0.02
 
+    useEffect(() => {
+        invalidate()
+    }, [viewMode, floors, showUnderlay, activeFloorId, invalidate])
+
+    console.log('stack debug', {
+        activeFloorId,
+        activeElevation,
+        floors: floorsToRender.map(({ floor }) => ({
+            id: floor.id,
+            rawElevation: floor.elevation,
+            groupY: floor.elevation - activeElevation,
+        })),
+    })
     return (
         <>
             <color attach="background" args={['#FFFFFF']} />
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+            <mesh
+                position={[0, groundPlaneY + 0.01, 0]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                onClick={(e) => { e.stopPropagation(); onSelect?.(null) }}
+                visible={false}
+            >
                 <planeGeometry args={[500, 500]} />
                 <meshStandardMaterial color="#F5F5F3" roughness={0.9} />
             </mesh>
@@ -245,10 +275,10 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 </mesh>
             )}
 
-            {floorsToRender.map(({ floor, opacity }) => (
+            {floorsToRender.map(({ floor, opacity, renderCap }) => (
                 <group key={floor.id} position={[0, floor.elevation - activeElevation, 0]}>
                     <FloorGeometry
-                        fp={floor.state}
+                        fp={floor.id === activeFloorId ? activeFp : floor.state}
                         cfg={cfg}
                         exportRootRef={floor.id === activeFloorId ? exportRootRef : undefined}
                         interactive={interactiveMode && floor.id === activeFloorId}
@@ -256,6 +286,8 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                         onSelect={floor.id === activeFloorId ? onSelect : undefined}
                         onToggleDoorOpen={floor.id === activeFloorId ? onToggleDoorOpen : undefined}
                         opacity={opacity}
+                        renderCap={renderCap}
+                        overlappingIds={overlappingIds}
                     />
                 </group>
             ))}

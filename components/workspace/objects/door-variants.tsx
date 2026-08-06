@@ -405,7 +405,13 @@ export function DoorVariant3D({
         FaceComponent: (p: FaceProps) => React.ReactElement = DoorFace,
         pivotInset = 0,
     ) {
-        const hingeAlong = centerOffset - hingeSign * (panelWidth / 2)
+        // FIX: must match panelLocalX's use of pivotInset inside SwingHinge —
+        // for a normal hinge (pivotInset=0) this is unchanged. For a pivot
+        // door, the rotation axis sits inset from the edge, so the pivot
+        // group's own world position has to be inset by the same amount,
+        // not placed at the full edge.
+        const hingeAlong = centerOffset - hingeSign * (panelWidth / 2 - pivotInset)
+
         return (
             <SwingHinge
                 key={key}
@@ -417,7 +423,7 @@ export function DoorVariant3D({
                 angle={angle}
                 closedRestAngle={closedRestAngle}
                 fullyOpenAngle={fullyOpenAngle}
-                isOpen={isOpen}
+                isOpen={!!op.isOpen}
                 interactive={interactive}
                 onToggleOpen={onToggleOpen ? () => onToggleOpen(op.id) : undefined}
                 pivotInset={pivotInset}

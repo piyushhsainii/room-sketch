@@ -124,6 +124,13 @@ function LineWalls3DImpl({
         segExteriorWallColor.set(seg.id, segCfg?.exteriorWallColor)
     }
 
+    console.log('LineWalls3D debug', {
+        roomHeight: fp.roomHeight,
+        numSegments: fp.lineSegments?.length,
+        numNodes: fp.lineNodes?.length,
+        sampleSegment: fp.lineSegments?.[0],
+    })
+
     return (
         <>
             {(fp.lineSegments ?? []).map(seg => {

@@ -2,50 +2,249 @@ import { useRef } from "react"
 import { useFrame } from "@react-three/fiber"
 import { EditorOpening } from "../lib/constants"
 import * as THREE from 'three'
+import { glassMat, mat } from "../windows/materials"
+import { WindowGlass } from "./windows-glass"
 
-const glassMat = (opacity = 0.32, itemOpacity = 1, transparent = false) => (
-    <meshStandardMaterial
-        color="#A9C9E8"
-        transparent={true /* glass is always transparent for its own tint, but we blend in item-level fade too */}
-        opacity={opacity * itemOpacity}
-        roughness={0.04}
-        metalness={0.1}
-        side={THREE.DoubleSide}
-    />
-)
+const INSTALL_GAP = 0.025
 
-// Any plain (non-glass) material in this file goes through this helper so
-// item-level ghosting (opacity < 1) is applied consistently without having
-// to remember `transparent` at every call site.
-function mat(color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}, itemOpacity = 1, itemTransparent = false) {
-    return (
-        <meshStandardMaterial
-            color={color}
-            {...extra}
-            opacity={itemOpacity}
-            transparent={itemTransparent || !!extra.transparent}
-        />
-    )
+function getFrameDimensions(op: EditorOpening) {
+    const frameWidth = op.width - INSTALL_GAP * 2
+    const frameHeight = op.height - INSTALL_GAP * 2
+
+    return {
+        frameWidth,
+        frameHeight,
+        innerW: frameWidth - frameT * 2,
+        innerH: frameHeight - frameT * 2,
+    }
 }
+
+function getWindowFaceOffset(wallThickness = 0.15) {
+    return wallThickness / 2 + frameDepth / 2
+}
+
+
 
 const frameColor = '#EDE9E0'
 const sillColor = '#DCD5C6'
-const frameT = 0.06
+const frameT = 0.045
 const frameDepth = 0.08
-const mullionT = 0.028
+const mullionT = 0.0
 
-function OuterFrame({ width, height, itemOpacity, itemTransparent }: {
-    width: number; height: number; itemOpacity: number; itemTransparent: boolean
+function OuterFrame({
+    width,
+    height,
+    itemOpacity,
+    itemTransparent,
+}: {
+    width: number
+    height: number
+    itemOpacity: number
+    itemTransparent: boolean
 }) {
+    const t = frameT
+    const d = frameDepth
+
+    const innerWidth = width - t * 2
+    const innerHeight = height - t * 2
+
+    const bead = 0.014
+    const beadDepth = 0.012
+
     return (
         <>
-            <mesh castShadow>
-                <boxGeometry args={[width, height, frameDepth]} />
-                {mat(frameColor, { roughness: 0.55 }, itemOpacity, itemTransparent)}
+            {/* ===========================
+               OUTER FRAME
+            =========================== */}
+
+            {/* Left */}
+            <mesh position={[-width / 2 + t / 2, 0, 0]} castShadow receiveShadow>
+                <boxGeometry args={[t, height, d]} />
+                {mat(frameColor, {
+                    roughness: 0.45,
+                    metalness: 0.12,
+                }, itemOpacity, itemTransparent)}
             </mesh>
-            <mesh position={[0, -height / 2 - 0.015, frameDepth * 0.3]} castShadow>
-                <boxGeometry args={[width + 0.08, 0.03, frameDepth + 0.05]} />
-                {mat(sillColor, { roughness: 0.6 }, itemOpacity, itemTransparent)}
+
+            {/* Right */}
+            <mesh position={[width / 2 - t / 2, 0, 0]} castShadow receiveShadow>
+                <boxGeometry args={[t, height, d]} />
+                {mat(frameColor, {
+                    roughness: 0.45,
+                    metalness: 0.12,
+                }, itemOpacity, itemTransparent)}
+            </mesh>
+
+            {/* Top */}
+            <mesh position={[0, height / 2 - t / 2, 0]} castShadow receiveShadow>
+                <boxGeometry args={[innerWidth, t, d]} />
+                {mat(frameColor, {
+                    roughness: 0.45,
+                    metalness: 0.12,
+                }, itemOpacity, itemTransparent)}
+            </mesh>
+
+            {/* Bottom */}
+            <mesh position={[0, -height / 2 + t / 2, 0]} castShadow receiveShadow>
+                <boxGeometry args={[innerWidth, t, d]} />
+                {mat(frameColor, {
+                    roughness: 0.45,
+                    metalness: 0.12,
+                }, itemOpacity, itemTransparent)}
+            </mesh>
+
+            {/* ===========================
+               INNER GLAZING BEAD
+            =========================== */}
+
+            {/* Left */}
+            <mesh
+                position={[
+                    -innerWidth / 2 + bead / 2,
+                    0,
+                    d / 2 - beadDepth / 2,
+                ]}
+            >
+                <boxGeometry args={[bead, innerHeight, beadDepth]} />
+                {mat(frameColor, {
+                    roughness: 0.38,
+                }, itemOpacity, itemTransparent)}
+            </mesh>
+
+            {/* Right */}
+            <mesh
+                position={[
+                    innerWidth / 2 - bead / 2,
+                    0,
+                    d / 2 - beadDepth / 2,
+                ]}
+            >
+                <boxGeometry args={[bead, innerHeight, beadDepth]} />
+                {mat(frameColor, {
+                    roughness: 0.38,
+                }, itemOpacity, itemTransparent)}
+            </mesh>
+
+            {/* Top */}
+            <mesh
+                position={[
+                    0,
+                    innerHeight / 2 - bead / 2,
+                    d / 2 - beadDepth / 2,
+                ]}
+            >
+                <boxGeometry
+                    args={[
+                        innerWidth - bead * 2,
+                        bead,
+                        beadDepth,
+                    ]}
+                />
+                {mat(frameColor, {
+                    roughness: 0.38,
+                }, itemOpacity, itemTransparent)}
+            </mesh>
+
+            {/* Bottom */}
+            <mesh
+                position={[
+                    0,
+                    -innerHeight / 2 + bead / 2,
+                    d / 2 - beadDepth / 2,
+                ]}
+            >
+                <boxGeometry
+                    args={[
+                        innerWidth - bead * 2,
+                        bead,
+                        beadDepth,
+                    ]}
+                />
+                {mat(frameColor, {
+                    roughness: 0.38,
+                }, itemOpacity, itemTransparent)}
+            </mesh>
+
+            {/* ===========================
+               RUBBER GASKET
+            =========================== */}
+
+            <mesh position={[0, 0, d / 2 - beadDepth - 0.004]}>
+                <boxGeometry
+                    args={[
+                        innerWidth - bead * 2,
+                        innerHeight - bead * 2,
+                        0.003,
+                    ]}
+                />
+                {mat(
+                    "#222222",
+                    {
+                        roughness: 1,
+                    },
+                    itemOpacity,
+                    itemTransparent
+                )}
+            </mesh>
+
+            {/* ===========================
+               EXTERIOR SILL
+            =========================== */}
+
+            <mesh
+                position={[
+                    0,
+                    -height / 2 - 0.02,
+                    d * 0.33,
+                ]}
+                castShadow
+                receiveShadow
+            >
+                <boxGeometry
+                    args={[
+                        width + 0.05,
+                        0.04,
+                        d + 0.03,
+                    ]}
+                />
+                {mat(
+                    sillColor,
+                    {
+                        roughness: 0.7,
+                    },
+                    itemOpacity,
+                    itemTransparent
+                )}
+            </mesh>
+
+            {/* ===========================
+               INTERIOR SILL
+            =========================== */}
+
+            <mesh
+                position={[
+                    0,
+                    -height / 2 + 0.005,
+                    -d * 0.33,
+                ]}
+                castShadow
+                receiveShadow
+            >
+                <boxGeometry
+                    args={[
+                        width - 0.02,
+                        0.012,
+                        d * 0.55,
+                    ]}
+                />
+                {mat(
+                    "#F3F1EC",
+                    {
+                        roughness: 0.6,
+                    },
+                    itemOpacity,
+                    itemTransparent
+                )}
             </mesh>
         </>
     )
@@ -89,10 +288,14 @@ function CasementSash({
                     <boxGeometry args={[width * 0.98, height * 0.98, 0.03]} />
                     {mat(frameColor, { roughness: 0.5 }, itemOpacity, itemTransparent)}
                 </mesh>
-                <mesh position={[0, 0, 0.025]}>
-                    <boxGeometry args={[width * 0.85, height * 0.85, 0.015]} />
-                    {glassMat(1, itemOpacity, itemTransparent)}
-                </mesh>
+                <group position={[0, 0, 0.025]}>
+                    <WindowGlass
+                        width={width * 0.85}
+                        height={height * 0.85}
+                        itemOpacity={itemOpacity}
+                        itemTransparent={itemTransparent}
+                    />
+                </group>
                 <mesh position={[0, 0, 0.033]}>
                     <boxGeometry args={[mullionT, height * 0.9, 0.01]} />
                     {mat(frameColor, {}, itemOpacity, itemTransparent)}
@@ -112,11 +315,12 @@ function CasementSash({
 
 // ── Sliding sash — translates along local X between rest and open. ──
 function SlidingSash({
-    restX, openOffset, y, z, size, isOpen, interactive, onToggleOpen,
+    restX, openOffset, y, z, size, frameColor, isOpen, interactive, onToggleOpen,
     itemOpacity, itemTransparent,
 }: {
     restX: number; openOffset: number; y: number; z: number
     size: [number, number, number]
+    frameColor: string,
     isOpen: boolean
     interactive?: boolean
     onToggleOpen?: () => void
@@ -141,10 +345,34 @@ function SlidingSash({
             onPointerOver={interactive && onToggleOpen ? () => { document.body.style.cursor = 'pointer' } : undefined}
             onPointerOut={interactive && onToggleOpen ? () => { document.body.style.cursor = 'auto' } : undefined}
         >
-            <mesh>
-                <boxGeometry args={size} />
-                {glassMat(0.4, itemOpacity, itemTransparent)}
-            </mesh>
+            <>
+                <mesh>
+                    <boxGeometry
+                        args={[
+                            size[0],
+                            size[1],
+                            0.03,
+                        ]}
+                    />
+                    {mat(
+                        frameColor,
+                        {
+                            roughness: 0.5,
+                        },
+                        itemOpacity,
+                        itemTransparent
+                    )}
+                </mesh>
+
+                <group position={[0, 0, 0.02]}>
+                    <WindowGlass
+                        width={size[0] * 0.84}
+                        height={size[1] * 0.84}
+                        itemOpacity={itemOpacity}
+                        itemTransparent={itemTransparent}
+                    />
+                </group>
+            </>
         </group>
     )
 }
@@ -161,24 +389,36 @@ export function WindowVariant3D({
     opacity?: number
     transparent?: boolean
 }) {
+    const {
+        frameWidth,
+        frameHeight,
+        innerW,
+        innerH,
+    } = getFrameDimensions(op)
     const variant = op.variant ?? 'window-fixed'
     const itemOpacity = opacity
     const itemTransparent = transparent || opacity < 1
-    const frameFrontZ = frameDepth / 2 + 0.01
+    const frameFrontZ = frameDepth * 0.22
     const groupRot: [number, number, number] = [0, -angle, 0]
 
-    const innerW = op.width - frameT * 2
-    const innerH = op.height - frameT * 2
+    const INSTALL_GAP = 0.025
+
 
     switch (variant) {
         case 'window-fixed': {
             return (
                 <group position={basePos} rotation={groupRot}>
-                    <OuterFrame width={op.width} height={op.height} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
-                    <mesh position={[0, 0, frameFrontZ]}>
-                        <boxGeometry args={[innerW, innerH, 0.02]} />
-                        {glassMat(0.32, itemOpacity, itemTransparent)}
-                    </mesh>
+                    <OuterFrame
+                        width={frameWidth}
+                        height={frameHeight} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                    <group position={[0, 0, frameFrontZ]}>
+                        <WindowGlass
+                            width={innerW}
+                            height={innerH}
+                            itemOpacity={itemOpacity}
+                            itemTransparent={itemTransparent}
+                        />
+                    </group>
                 </group>
             )
         }
@@ -186,7 +426,9 @@ export function WindowVariant3D({
         case 'window-casement': {
             return (
                 <group position={basePos} rotation={groupRot}>
-                    <OuterFrame width={op.width} height={op.height} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                    <OuterFrame
+                        width={frameWidth}
+                        height={frameHeight} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
                     <CasementSash
                         width={innerW}
                         height={innerH}
@@ -209,17 +451,23 @@ export function WindowVariant3D({
             const paneSize: [number, number, number] = [paneW, innerH, 0.02]
             return (
                 <group position={basePos} rotation={groupRot}>
-                    <OuterFrame width={op.width} height={op.height} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
-                    <mesh position={[-half / 2, 0, frameFrontZ]}>
-                        <boxGeometry args={paneSize} />
-                        {glassMat(0.28, itemOpacity, itemTransparent)}
-                    </mesh>
+                    <OuterFrame width={frameWidth}
+                        height={frameHeight} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                    <group position={[0, 0, frameFrontZ]}>
+                        <WindowGlass
+                            width={innerW}
+                            height={innerH}
+                            itemOpacity={itemOpacity}
+                            itemTransparent={itemTransparent}
+                        />
+                    </group>
                     <SlidingSash
                         restX={half / 2}
                         openOffset={paneW * 0.85}
                         y={0}
                         z={frameFrontZ + 0.015}
                         size={paneSize}
+                        frameColor={frameColor}
                         isOpen={!!op.isOpen}
                         interactive={interactive}
                         onToggleOpen={onToggleOpen}
@@ -258,10 +506,14 @@ export function WindowVariant3D({
                             <boxGeometry args={segFrameSize} />
                             {mat(frameColor, { roughness: 0.55 }, itemOpacity, itemTransparent)}
                         </mesh>
-                        <mesh position={[0, 0, segFrontZ]}>
-                            <boxGeometry args={segSize} />
-                            {glassMat(0.32, itemOpacity, itemTransparent)}
-                        </mesh>
+                        <group position={[0, 0, frameFrontZ]}>
+                            <WindowGlass
+                                width={innerW}
+                                height={innerH}
+                                itemOpacity={itemOpacity}
+                                itemTransparent={itemTransparent}
+                            />
+                        </group>
                     </group>
                     {[[-1, angleOut], [1, -angleOut]].map(([side, rot], idx) => (
                         <group key={idx} position={[side * segW * 0.9, 0, -depth * 0.42]} rotation={[0, rot, 0]}>
@@ -269,10 +521,14 @@ export function WindowVariant3D({
                                 <boxGeometry args={segFrameSize} />
                                 {mat(frameColor, { roughness: 0.55 }, itemOpacity, itemTransparent)}
                             </mesh>
-                            <mesh position={[0, 0, segFrontZ]}>
-                                <boxGeometry args={segSize} />
-                                {glassMat(0.32, itemOpacity, itemTransparent)}
-                            </mesh>
+                            <group position={[0, 0, frameFrontZ]}>
+                                <WindowGlass
+                                    width={innerW}
+                                    height={innerH}
+                                    itemOpacity={itemOpacity}
+                                    itemTransparent={itemTransparent}
+                                />
+                            </group>
                         </group>
                     ))}
                 </group>
@@ -316,11 +572,16 @@ export function WindowVariant3D({
         default:
             return (
                 <group position={basePos} rotation={groupRot}>
-                    <OuterFrame width={op.width} height={op.height} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
-                    <mesh position={[0, 0, frameFrontZ]}>
-                        <boxGeometry args={[innerW, innerH, 0.02]} />
-                        {glassMat(0.32, itemOpacity, itemTransparent)}
-                    </mesh>
+                    <OuterFrame width={frameWidth}
+                        height={frameHeight} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                    <group position={[0, 0, frameFrontZ]}>
+                        <WindowGlass
+                            width={innerW}
+                            height={innerH}
+                            itemOpacity={itemOpacity}
+                            itemTransparent={itemTransparent}
+                        />
+                    </group>
                 </group>
             )
     }

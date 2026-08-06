@@ -75,6 +75,47 @@ function Room3D({
         return axis === 'x' ? W : D
     }
 
+    function getWindowBasePos(
+        wall: "north" | "south" | "east" | "west",
+        opMid: number,
+        sillHeight: number,
+        openingHeight: number
+    ): [number, number, number] {
+
+        const OFFSET = T / 2 + 0.04
+
+        switch (wall) {
+
+            case "north":
+                return [
+                    room.x + opMid,
+                    sillHeight + openingHeight / 2,
+                    room.z + OFFSET,
+                ]
+
+            case "south":
+                return [
+                    room.x + opMid,
+                    sillHeight + openingHeight / 2,
+                    room.z + D - OFFSET,
+                ]
+
+            case "west":
+                return [
+                    room.x + OFFSET,
+                    sillHeight + openingHeight / 2,
+                    room.z + opMid,
+                ]
+
+            case "east":
+                return [
+                    room.x + W - OFFSET,
+                    sillHeight + openingHeight / 2,
+                    room.z + opMid,
+                ]
+        }
+    }
+
     return (
         <group>
             {/* Floor */}
@@ -215,10 +256,18 @@ function Room3D({
 
                         if (op.type === 'window') {
                             const opMid = op.position
-                            const angle = wall.axis === 'x' ? 0 : Math.PI / 2
-                            const winBasePos: [number, number, number] = wall.axis === 'x'
-                                ? [room.x + opMid, op.sillHeight + op.height / 2, wPos[2]]
-                                : [wPos[0], op.sillHeight + op.height / 2, room.z + opMid]
+                            const angle = wall.axis === "x" ? 0 : Math.PI / 2
+
+                            const winBasePos = getWindowBasePos(
+                                wall.name,
+                                opMid,
+                                op.sillHeight,
+                                op.height
+                            )
+
+                            const WINDOW_FACE_OFFSET = T / 2 + 0.045
+
+
                             panels.push(
                                 <group
                                     key={`g${i}`}

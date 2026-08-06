@@ -12,6 +12,7 @@ import { StringLightsMesh } from "./mesh/string-lights-mesh"
 import type { FloorPlanState } from "./lib/constants"
 import type { SceneConfig } from "./FloorPlanEditor"
 import type { RefObject } from "react"
+import { FloorCap } from "./FloorCap"
 
 type FloorGeometryProps = {
     fp: FloorPlanState
@@ -23,6 +24,8 @@ type FloorGeometryProps = {
     onToggleDoorOpen?: (openingId: string) => void
     opacity: number
     overlappingIds?: Set<string>
+    renderCap?: boolean
+    floorAboveFp?: FloorPlanState
 }
 
 export function FloorGeometry({
@@ -35,11 +38,22 @@ export function FloorGeometry({
     onToggleDoorOpen,
     opacity,
     overlappingIds,   // NEW
+    renderCap,
+    floorAboveFp
+
 }: FloorGeometryProps) {
     const transparent = opacity < 1
 
     return (
         <>
+            {
+                renderCap &&
+                floorAboveFp &&
+                <FloorCap
+                    fp={fp}
+                    height={fp.roomHeight}
+                    floorAbove={floorAboveFp} />
+            }
             <group ref={exportRootRef}>
                 {fp.rooms.map(room => {
                     const roomCfg = cfg.rooms.find(r => r.roomId === room.id)

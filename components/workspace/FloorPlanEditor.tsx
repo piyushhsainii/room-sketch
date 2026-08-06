@@ -86,7 +86,7 @@ export const THEME = {
 }
 
 type Props = {
-    projectId: string,
+    projectId?: string,
     onSave?: (
         projectFloorPlan: ProjectFloorPlan,
         sceneConfig: SceneConfig,

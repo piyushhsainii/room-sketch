@@ -92,16 +92,16 @@ function Sheet({
       className={`reveal relative bg-paper border border-line rounded-[8px] p-6 flex flex-col shadow-sheet ${className}`}
     >
       <div className="flex items-start justify-between mb-5">
-        <span className="font-mono text-[10px] text-muted tracking-[0.06em]">{code}</span>
-        <div className="w-9 h-9 rounded-[6px] bg-blue-soft border border-blue-border flex items-center justify-center text-blue">
+        <span className="font-sans text-[10px] text-black tracking-tight">{code}</span>
+        <div className="w-9 h-9  bg-blue-soft  flex items-center justify-center text-blue">
           {children}
         </div>
       </div>
-      <h3 className="font-display text-[1.25rem] text-ink tracking-[-0.015em] mb-2 leading-tight">{title}</h3>
-      <p className="text-[13px] font-light text-graphite leading-[1.7] tracking-[-0.005em] mb-4 flex-1">{desc}</p>
+      <h3 className="font-sans text-[1.25rem] text-ink tracking-[-0.015em] mb-2 leading-tight">{title}</h3>
+      <p className="text-[14px] font-sans font-normal text-black leading-[1.7] tracking-tight mb-4 flex-1">{desc}</p>
       <div className="flex flex-wrap gap-1.5">
         {tags.map((t, i) => (
-          <span key={i} className="font-mono text-[9.5px] text-blue bg-blue-soft border border-blue-border rounded-[4px] px-2 py-[3px]">
+          <span key={i} className="font-sans text-[9.5px] text-blue bg-blue-soft border border-blue-border rounded-[4px] px-2 py-[3px]">
             {t}
           </span>
         ))}

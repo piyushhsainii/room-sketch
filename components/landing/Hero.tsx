@@ -1,24 +1,21 @@
 import { isWaitlistMode } from "@/lib/flags";
 import WaitlistForm from "./Waitlistform";
+import DotGrid from "./DotGrid";
 
 export default function Hero() {
   return (
-    <section className="border-b border-line bg-paper">
-      <div className="pt-[60px] max-w-[1240px] mx-auto px-6 md:px-10 grid lg:grid-cols-[0.92fr_1.08fr] gap-12 items-center min-h-screen">
+    <section className="relative border-b border-line  overflow-hidden">
+      {/* <DotGrid /> */}
+      <div className="relative z-10 pt-[60px] max-w-[1240px] mx-auto px-6 md:px-10 grid lg:grid-cols-[0.92fr_1.08fr] gap-12 items-center min-h-screen">
         {/* Left */}
         <div className="pt-10 pb-14">
-          <div className="inline-flex items-center gap-2 font-mono text-[10px] font-medium text-blue tracking-[0.08em] uppercase border border-blue-border bg-blue-soft rounded-[4px] px-[10px] py-[4px] mb-6">
-            <span className="w-[5px] h-[5px] rounded-full bg-blue" />
-            Sketch to walkable 3D
-          </div>
-          <h1 className="font-display text-[2.6rem] md:text-[3.6rem] leading-[1.04] tracking-[-0.02em] text-ink mb-5">
-            Draw the plan.
-            <br />
-            Walk the <em className="italic">home</em>
-            <br />
+
+          <h1 className=" text-[2.6rem] font-sans md:text-[3.6rem] leading-[1.04] tracking-[-0.02em] text-ink mb-5">
+            draw the plan. <br></br>
+            walk the home
             before it&apos;s built.
           </h1>
-          <p className="text-[1rem] font-light text-graphite max-w-[420px] mb-9 leading-[1.8] tracking-[-0.01em]">
+          <p className="text-[1.1rem] font-normal text-black max-w-[420px] mb-9 leading-[1.] tracking-tight ">
             RoomSketch turns a floor plan you sketch in the browser into a
             live, walkable 3D model — instantly. Draw walls, place furniture
             and lighting, then walk through the result before anything is
@@ -39,24 +36,20 @@ export default function Hero() {
             </>
           ) : (
             <>
-              <p className="font-mono text-[10.5px] text-muted tracking-[0.01em] mb-4">
-                Sketch and preview in 3D free · Walk Mode is on{" "}
-                <span className="text-blue">Pro</span>
-              </p>
               <div className="flex items-center gap-3 flex-wrap mb-8">
                 <a
                   href="/dashboard"
-                  className="group inline-flex items-center gap-2 bg-ink text-white text-[14px] font-medium px-7 py-3 rounded-[7px] hover:bg-[#0E0E10] transition-colors"
+                  className="group inline-flex items-center gap-2 bg-ink text-white text-[14px] font-normal tracking-tight px-7 py-3 rounded-full hover:bg-[#0E0E10] transition-colors"
                   style={{ backgroundColor: "#12213E" }}
                 >
                   Start sketching free
                   <span className="transition-transform group-hover:translate-x-0.5">→</span>
                 </a>
-                <a href="#how-it-works" className="border border-line-strong text-graphite text-[14px] px-[22px] py-[11px] rounded-[7px] hover:border-ink hover:text-ink transition-colors">
+                <a href="#how-it-works" className="border border-line-strong text-black text-[14px] tracking-tight font-normal bg-[#fafafa] px-[22px] py-[11px] rounded-full transition-colors">
                   See how it works
                 </a>
               </div>
-              <p className="font-mono text-[11.5px] text-muted tracking-[0.01em] mb-9">
+              <p className="font-sans font-light text-[12.5px] text-black tracking-[0.01em] mb-9">
                 Free to try · <span className="text-blue">no credit card</span> · 1 project included
               </p>
             </>

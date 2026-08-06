@@ -17,7 +17,7 @@ export default function BenchStrip() {
             <span className="font-mono text-[1.5rem] md:text-[1.9rem] font-medium text-ink tracking-[-0.04em] leading-none block">
               {it.num}
             </span>
-            <div className="text-[10.5px] md:text-[11px] font-light text-muted mt-1.5 tracking-[-0.005em] leading-snug px-1">
+            <div className="text-[14px]  font-medium text-muted mt-1.5 tracking-tighter  px-1">
               {it.label}
             </div>
           </div>

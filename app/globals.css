@@ -1,8 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap");
 
 @import "tailwindcss";
 
 :root {
+  --font-display: "Switzer", "Inter", sans-serif;
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
   --color-bg: #f8fafc;
   --color-surface: rgba(255, 255, 255, 0.86);
   --color-surface-2: rgba(255, 255, 255, 1);
@@ -191,12 +195,27 @@ body {
     "Segoe UI Emoji";
 }
 
-/* * {
-  scrollbar-width: none;
+.bg-dot-grid {
+  background-color: var(--color-paper, #fafafa);
+  background-image: radial-gradient(
+    circle,
+    rgba(0, 0, 0, 0.35) 1px,
+    transparent 1px
+  );
+  background-size: 28px 28px;
+  background-position: 0 0;
 }
-*::-webkit-scrollbar {
-  display: none;
-} */
+
+.bg-dot-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 240px 240px;
+  pointer-events: none;
+}
 
 @keyframes fadeUp {
   from {

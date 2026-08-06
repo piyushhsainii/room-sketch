@@ -50,11 +50,8 @@ export default function Faq() {
         <section id="faq" className="py-24 px-6 md:px-10 bg-paper border-b border-line">
             <div className="max-w-[760px] mx-auto">
                 <div className="reveal mb-12 text-center">
-                    <span className="font-mono text-[10px] font-medium text-blue uppercase tracking-[0.1em] block mb-3">
-                        FAQ
-                    </span>
                     <h2 className="font-display text-[1.9rem] md:text-[2.6rem] tracking-[-0.025em] text-ink leading-[1.1]">
-                        Questions, <em className="italic">answered.</em>
+                        FAQ
                     </h2>
                 </div>
 
@@ -69,7 +66,7 @@ export default function Faq() {
                                     aria-expanded={isOpen}
                                     className="w-full flex items-center justify-between gap-6 py-5 text-left"
                                 >
-                                    <span className="font-display text-[1.05rem] text-ink tracking-[-0.01em] leading-snug">
+                                    <span className="text-black text-[1.05rem] text-ink tracking-[-0.01em] leading-snug font-normal">
                                         {item.q}
                                     </span>
                                     <span
@@ -86,7 +83,7 @@ export default function Faq() {
                                     style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
                                 >
                                     <div className="overflow-hidden">
-                                        <p className="text-[13.5px] font-light text-graphite leading-[1.75] tracking-[-0.005em] pb-5 pr-12">
+                                        <p className="text-[15px] font-normal tracking-tight text-black leading-[1.75]  pb-5 pr-12">
                                             {item.a}
                                         </p>
                                     </div>

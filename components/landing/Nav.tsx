@@ -24,7 +24,7 @@ export default function Nav() {
         "
       >
         <div className="flex items-center gap-2 font-display text-[19px] tracking-tight text-ink shrink-0">
-          <img src="/room-sketch-logo.jpg" alt="" className="w-10 h-10 select-none mix-blend-multiply rounded-full hover:scale-125 transition-all duration-200 hover:rotate-12" />
+          <img src="/room-sketch-logo-removebg-preview.png" alt="" className="w-10 h-10 select-none mix-blend-multiply rounded-full hover:scale-125 transition-all duration-200 hover:rotate-12" />
           <img src="/room-sketch-text.jpg" alt="" className="w-24 select-none mix-blend-multiply rounded-full" />
         </div>
 
@@ -33,7 +33,7 @@ export default function Nav() {
             <a
               key={link.href}
               href={link.href}
-              className="text-[13.5px] text-graphite hover:text-ink transition-colors whitespace-nowrap"
+              className="text-[14px] font-sans text-black  tracking-tight transition-colors"
             >
               {link.label}
             </a>
@@ -42,7 +42,7 @@ export default function Nav() {
 
         <a
           href="#get-started"
-          className="hidden md:inline-flex items-center whitespace-nowrap text-[13px] font-medium tracking-[0.02em] text-white rounded-full px-5 py-2.5 ml-auto transition-colors hover:bg-[#0E0E10]"
+          className="hidden md:inline-flex items-center whitespace-nowrap text-[13px] font-normal tracking-[0.02em] text-white rounded-full px-5 py-2.5 ml-auto transition-colors hover:bg-[#0E0E10]"
           style={{ backgroundColor: "#12213E" }}
         >
           Get started

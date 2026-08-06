@@ -1,21 +1,28 @@
+import { Smartphone, Box, Home, Share2 } from "lucide-react";
+import DotGrid from "./DotGrid";
+
 const steps = [
   {
     n: "01",
+    icon: Smartphone,
     title: "Sketch the plan",
     desc: "Place rooms, walls, doors, windows and stairs in the browser editor — every wall is set to solid, railing or open.",
   },
   {
     n: "02",
+    icon: Box,
     title: "3D builds as you go",
     desc: "Every wall and opening becomes real geometry the moment you draw it. The preview pane never falls behind your cursor.",
   },
   {
     n: "03",
+    icon: Home,
     title: "Set the finish",
     desc: "Choose flooring, wall colour, door style and lighting per room from Scene Config — changes apply on the spot.",
   },
   {
     n: "04",
+    icon: Share2,
     title: "Send the link",
     desc: "Clients open it on any device and walk through it at eye level with Walk Mode. No plugin.",
   },
@@ -23,27 +30,43 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-24 px-6 md:px-10 bg-paper border-b border-line">
-      <div className="max-w-[1100px] mx-auto">
-        <div className="reveal mb-14">
-          <span className="font-mono text-[10px] font-medium text-blue uppercase tracking-[0.1em] block mb-3">
-            Process
-          </span>
-          <h2 className="font-display text-[1.9rem] md:text-[2.6rem] tracking-[-0.025em] text-ink leading-[1.1]">
-            From blank sheet to <em className="italic">walkable model</em>.
+    <section id="how-it-works" className="relative py-28 px-6 md:px-10 bg-paper border-b border-line overflow-hidden">
+      <div className="relative z-10 max-w-[1200px] mx-auto">
+        <div className=" text-center mb-16">
+          <h2 className=" font-light text-[2.2rem] md:text-[3rem] tracking-tighter text-ink leading-[1.1] mb-4">
+            From blank sheet to <br className="hidden md:block" />
+            walkable model
           </h2>
+          <p className="text-[15px] font-medium text-muted text-black/70 tracking-tighter">
+            Sketch your building and step into the result.
+          </p>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 relative">
-          <div className="hidden md:block absolute top-5 left-[12.5%] right-[12.5%] h-px bg-line" />
-          {steps.map((s, i) => (
-            <div key={i} className={`reveal relative z-10 px-0 md:px-4 ${i === 0 ? "md:pl-0" : ""}`} style={{ transitionDelay: `${i * 80}ms` }}>
-              <div className="w-10 h-10 rounded-full bg-paper border border-line-strong flex items-center justify-center font-mono text-[11px] font-medium text-blue mb-4 shadow-sheet">
-                {s.n}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {steps.map((s, i) => {
+            const Icon = s.icon;
+            return (
+              <div
+                key={i}
+                className="reveal flex flex-col bg-white rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.07)] transition-shadow p-7"
+                style={{ transitionDelay: `${i * 80}ms` }}
+              >
+                <div className="w-11 h-11 rounded-[10px]   flex items-center justify-center mb-6">
+                  <Icon size={30} strokeWidth={1.5} className="text-ink" />
+                </div>
+
+                <span className=" text-[10px] text-muted tracking-[0.08em] uppercase mb-1.5">
+                  Step {s.n}
+                </span>
+                <h3 className="font-display font-medium text-[19px] text-ink tracking-tighter mb-2.5 leading-snug">
+                  {s.title}
+                </h3>
+                <p className="text-[14px] font-medium tracking-tighter text-muted leading-[1.5] tracking-[-0.01em] mb-6">
+                  {s.desc}
+                </p>
               </div>
-              <div className="text-[14px] font-medium text-ink tracking-[-0.015em] mb-2 leading-snug">{s.title}</div>
-              <p className="text-[12.5px] font-light text-muted leading-[1.7] tracking-[-0.01em] pr-2">{s.desc}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

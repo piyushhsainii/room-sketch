@@ -4,9 +4,6 @@ import "./globals.css"
 import { APP } from "@/constants/content";
 import { Analytics } from "@vercel/analytics/next";
 
-// Set NEXT_PUBLIC_SITE_URL in .env(.local) / your host's env settings,
-// e.g. https://roomsketch.com — used to build absolute URLs for OG/Twitter
-// images and the canonical link.
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://roomsketch.com";
 
 export const metadata: Metadata = {
@@ -94,7 +91,16 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className="antialiased">
+      <head>
+        <link rel="preconnect" href="https://api.fontshare.com" />
+        <link
+          href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="antialiased"
+
+      >
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger

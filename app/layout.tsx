@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   creator: APP.name,
   publisher: APP.name,
   alternates: {
-    canonical: "/room-sketch-hero.jpeg",
+    canonical: "/room-sketch-hero.png",
   },
   robots: {
     index: true,
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/room-sketch-hero.jpeg",
+        url: "/room-sketch-hero.png",
         width: 1200,
         height: 630,
         alt: `${APP.name} — sketch a floor plan, walk it in 3D`,
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: APP.name,
     description: APP.description,
-    images: ["/room-sketch-hero.jpeg"],
+    images: ["/room-sketch-hero.png"],
   },
   icons: {
     icon: "/favicon.ico",

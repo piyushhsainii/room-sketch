@@ -1,416 +1,366 @@
-# Floor Plan Editor — Codebase Context
+# Floor Plan Editor — Codebase Context (consolidated)
 
-React/Next.js 2D-drawn + 3D-rendered floor plan editor. `FloorPlanEditor.tsx`
-owns all state (`fp: FloorPlanState`, `sceneConfig: SceneConfig`). Everything
-else is a render helper, dumb display component, or a panel that patches
-state via `(value, onChange)` callbacks — nothing else holds its own copy of
-plan data.
+React/Next.js 2D-drawn + 3D-rendered, multi-floor floor plan editor.
+`FloorPlanEditor.tsx` owns all state. Everything else is a render helper,
+dumb display component, or a panel that patches state via callbacks —
+nothing else holds its own copy of plan data.
 
-**Recurring bug pattern, seen repeatedly across this project's history**:
-fields/types silently renamed, dropped, or duplicated into a second parallel
-source of truth when a file is rewritten wholesale instead of incrementally
-patched. Before editing any file, view its actual current contents — don't
-assume a prior description matches what's live. After editing, re-view to
-confirm the change landed.
+**Recurring bug pattern across this project's history**: fields/types
+silently renamed, dropped, duplicated, or a fix "planned in chat" but never
+actually landed in the file. Before editing any file, view its actual
+current contents — don't assume a doc or a prior message matches what's
+live. After editing, re-view to confirm the change landed.
 
 ---
 
-## 1. File map (current)
+## 1. State model
 
-FloorPlanEditor.tsx // State owner, mouse handlers, layout, split-pane 2D/3D, floating dock/menu wiring
-Tools/2dDraw.tsx // draw2D — imperative canvas render (was inline, now its own file)
-Tools/3dRoom.tsx, 3DScene.tsx // Room3D / Scene3D
-Tools/constants.ts // Types, tool defs, ICONS, FURNITURE_CATEGORIES
-Tools/CameraViewPicker.tsx // Saved camera views UI (embedded in FloatingMenu)
-Tools/FloorPlanEditorModal.tsx, FloorplanMinimap.tsx
-Tools/MaterialPicker.tsx, MaterialsPanel.tsx, PropsPanel.tsx, SceneConfigPanel.tsx
-Tools/QuickActionMenu.tsx // Floating per-object action menu (see §5)
-Tools/ResilientCanvas.tsx // <Canvas> wrapper with WebGL context-loss recovery
-Tools/WalkModeControls.tsx
-Tools/WorkspaceCanvas.tsx, WorkspaceConfigPanel.tsx, WorkspaceContainer.tsx,
-WorkspaceLoader.tsx, WorkspaceToolbar.tsx // AI-extraction flow, separate from manual editor
-Tools/lights-constant.ts // PlacedLight defaults/labels/placement-kind map
-
-hooks/
-useDelayedAmt.ts // ? not yet pasted
-useFurnitureCollisions.ts // Overlap detection — drives 2D draw2D's overlappingIds param (item 10, shipped)
-
-mesh/ // Mesh components split out of objects/
-door-style-migration.ts
-furnitureMesh.tsx // Has its own PRIVATE texture cache/loader — see §4d note on consolidation
-lights-mesh.tsx // Point/wall/free-placed light fixtures
-outdoor-object-mesh.tsx // Crosswalk/dustbin/bench/mailbox etc. — ObjectBody switch, MUST have a case per OutdoorObjectType + explicit default: return null
-stairsMesh.tsx // Straight/L/U/Spiral/Ramp/Elevator — see §4d for full breakdown
-string-lights-mesh.tsx // Path-based light type, separate from point/strip lights — see §4b
-
-objects/
-arch-header.tsx, door-leaf.tsx, door-variants.tsx, doormat.tsx,
-error-boundary.tsx (SceneErrorBoundary — required around any <Canvas> using real textures),
-floormat.tsx, wallmat.tsx, wall-decor-mesh.tsx, window-variant3d.tsx
-line-walls-3d.tsx // Line-wall extrusion, openings, wall decor, floors, wallType branch (§3)
-railing-3d.tsx // Railing/open wall-type geometry, split out of line-walls-3d (§3).
-                // NOTE: stairsMesh.tsx's per-stair railing (baluster posts +
-                // handrail, straight AND spiral/helical) is a SEPARATE,
-                // parallel implementation, not built on this file — see §4d.
-scene-graph.tsx
-
-texture/
-MaterialPicker.tsx, inspector-ui.tsx
-materials-registry.ts, textureCategorize.ts, universalMaterials.ts
-// ⚠️ STILL VERIFY: confirm whether universalMaterials.ts / materials-registry.ts
-// are legacy duplicates of Tools/constants.ts's MATERIAL_REGISTRY or the
-// current canonical source — this ambiguity was flagged before and has not
-// been explicitly resolved/confirmed closed.
-
-lib/
-textureLoader.ts // NEW — shared texture cache/loader/subscriber, extracted from
-                  // furnitureMesh.tsx's private implementation specifically so
-                  // stairsMesh.tsx could reuse it instead of duplicating a second
-                  // cache. furnitureMesh.tsx has NOT yet been migrated to import
-                  // from here — it still has its own private copy. See §4d.
-drag-controller.ts // ? — likely centralizes the various xxxDragRef patterns; verify before assuming shape
-errorMessage.ts // ?
-helpers.ts // deriveClosedPolygons(), toCanvas/toWorld, getSegmentOpeningWorldPos, misc geometry
-outdoor-constants.ts, furniture-constants.ts
-
-three/
-CameraController.tsx, NavigationGizmo.tsx, RoomCeiling.tsx, RoomFloor.tsx,
-RoomFurniture.tsx, RoomGroup.tsx, RoomLabel.tsx, RoomWall.tsx, SceneLighting.tsx
-// Decomposition of what were previously monolithic Room3D/Scene3D pieces —
-// if editing wall/floor/ceiling/furniture 3D rendering, check whether the
-// logic now lives here rather than in 3dRoom.tsx/3DScene.tsx directly.
-// NOTE: floor/ceiling slab generation for a room lives here — this is the
-// file that needs stairwell footprint awareness for "Auto Cutout" to ever
-// actually punch a hole (currently a no-op, see §4d).
-
-../ui/Dock.tsx, ScrollableList.tsx, FloatingDock.tsx, FloatingMenu.tsx
-
-**Files referenced but not yet pasted into this context — treat as unknown,
-verify before editing**: `useDelayedAmt.ts`, `drag-controller.ts`,
-`errorMessage.ts`, `3dRoom.tsx`/`3DScene.tsx` internals, everything under
-`three/` (INCLUDING for the stairs auto-cutout gap specifically — see §4d),
-`texture/inspector-ui.tsx`, `WorkspaceContainer.tsx` and siblings.
-
----
-
-## 2. Core data model
+**Per-floor plan data** — unchanged from the original single-floor design:
 
 ```ts
 FloorPlanState {
   rooms, lineNodes, lineSegments, closedShapes, openings,
   furniture, stairs, wallDecor, lights, outdoorObjects, annotations, roomHeight
 }
-LineSegment { id, nodeIds, thickness, closed, wallType?: 'solid'|'railing'|'open' }  // wallType shipped (§3)
-SceneConfig {
-  ambientIntensity, wallRoughness, wallTextured, showFurniture, showLabels,
-  fogEnabled, doorStyle, globalFloorMaterial, globalWallMaterial,
-  rooms: RoomSceneConfig[]   // ⚠️ field name is `rooms`, NEVER `roomOverrides`
-}
-RoomSceneConfig { roomId, wallColor?, wallMaterial?, floorMaterial?, wallOverrides? }
-ClosedShape { id, nodeIds, label?, floorMaterial?, wallMaterial?, wallOverrides? }
-
-// Stairs/elevator entity — see §4d for full field-by-field breakdown
-PlacedStairs {
-  id, type: StairsType, x, z, width, depth, rotation, anchorSegmentId?,
-  rise?, steps?,
-  railingEnabled?, railingStyle?, railingColor?, railingHeight?,
-  materialId?,
-  openingMode?, autoCutout?, openingOffset?, fromLevel?, toLevel?
-}
 ```
 
-**Two parallel wall systems**, check `segmentNodeIds` presence to know which
-(room-wall `wall`/`position` vs. line-wall `segmentNodeIds`/`segmentT`).
-Openings, wall decor, and lights all use this identical dual pattern.
+`fp`/`setFp`/`fpRef` in `FloorPlanEditor.tsx` = the **currently-edited
+floor's live state**. Every mouse handler, panel, and 2D render reads/writes
+this directly, exactly as before multi-floor existed.
 
-**Room wall synthetic id**: `` `${roomId}::wall::${wall}` ``.
+**Multi-floor wrapper** (`lib/floor-data.ts`):
 
-**⚠️ KNOWN UNRESOLVED BUG — shared/partition wall material override.**
-When a line-wall segment forms the shared boundary between two adjacent
-`ClosedShape`s (e.g. a partition line splitting one drawn area into two),
-the existing `wallOverrides` resolution assumes a segment has exactly ONE
-owning shape. A shared segment's node-pair legitimately belongs to both
-shapes' `nodeIds` sets, so selecting either sub-area and overriding its wall
-material produces ambiguous/order-dependent results on the shared wall
-specifically (non-shared/outer walls of the same shapes are unaffected and
-work correctly — floor material per sub-area also works correctly, this is
-wall-material-only). **Fix requires a genuinely two-sided data model** for
-shared segments — likely keying overrides by `(segmentId, ownerShapeId)`
-rather than `segmentId` alone, detecting shared-segment-ness by checking
-node-pair membership across all shapes, and rendering shared wall panels as
-two independently-materialed faces rather than one uniform box. Scoped, not
-yet implemented — see prior planning message for full breakdown before
-touching `wallOverrides` resolution in `line-walls-3d.tsx`/`railing-3d.tsx`.
+```ts
+Floor { id, label, order, elevation, visible, state: FloorPlanState }
+ProjectFloorPlan { floors: Floor[], activeFloorId, viewMode: 'single'|'stacked'|'stacked-full', showUnderlay, roof }
+```
 
----
+Each floor wraps a normal, unchanged `FloorPlanState`. `floors[]` is the
+saved/at-rest representation; `fp` is a synced-out working copy of
+whichever floor is active. `switchToFloor` folds `fp` back into
+`floors[activeFloorId].state` before loading the new floor's state into
+`fp`. `migrateToMultiFloor()` wraps legacy single-floor saves as one
+"Ground Floor" entry — idempotent, called both client-side (state
+initializers) and server-side (save/load API routes).
 
-## 3. Wall types — solid / railing / open (SHIPPED)
+**Critical gotcha, fixed this cycle, don't regress**: `Scene3D` must
+receive the _live_ `fp` for whichever floor is active, not
+`floors[activeFloorId].state` — the latter is only as fresh as the last
+`switchToFloor`/save, so live edits (dragging furniture, drawing walls)
+would never appear in the 3D pane without this. Fix: `Scene3D` takes a
+`activeFp: FloorPlanState` prop (passed as `activeFp={fp}` from
+`FloorPlanEditor.tsx`), and its floor-render loop substitutes it in only
+for the active floor: `fp={floor.id === activeFloorId ? activeFp : floor.state}`.
 
-`LineSegment.wallType` (`'solid' | 'railing' | 'open'`, defaults to `solid`
-when absent). Set via a control in the segment's `PropsPanel` section
-(alongside its existing wall color/material pickers) — no separate toolbar
-tool, reuses the existing draw-then-select-then-edit flow.
+**`viewMode` semantics**:
 
-- **2D** (`Tools/2dDraw.tsx`): `railing` → dashed stroke, distinct color;
-  `open` → faint/minimal dotted boundary marker; `solid` → unchanged existing
-  appearance.
-- **3D**: `railing` geometry (bottom rail + top handrail + evenly spaced
-  vertical balusters) lives in `objects/railing-3d.tsx`, split out of
-  `line-walls-3d.tsx`. `open` renders no geometry at all. `solid` unchanged
-  full-height box. **Not shared with stairs railings** — see §4d.
-- **Openings** (doors/windows) should be rejected/skipped on `railing`/`open`
-  segments at placement time — verify this guard exists in the relevant
-  `hitLineSegment` placement branches if extending opening tools further.
-- Round-trips through `SceneJSON.line_segments[].wall_type`.
+- `single` — only active floor renders. `showUnderlay` independently shows
+  the floor directly below, faded (0.25 alpha), in both 2D and 3D.
+- `stacked` — all visible floors render; non-active ones at ~0.35 opacity.
+- `stacked-full` — all visible floors render at full opacity.
+  Floors below the active one get a solid ceiling cap (`FloorCap`, see §4)
+  in `stacked`/`stacked-full` only — never in `single`.
 
 ---
 
-## 4. Materials, lighting, outdoor objects, stairs
+## 2. File map (current)
+
+FloorPlanEditor.tsx // State owner (fp + floors[] + viewMode etc), mouse handlers, layout, dock/menu wiring
+3DScene.tsx // Scene3D — loops over floors[], applies elevation/opacity/cap per floor, owns global lighting/camera/controls once
+FloorGeometry.tsx // Per-floor 3D geometry (rooms, walls, lights, furniture, stairs, outdoor objects) — one instance per rendered floor
+FloorCap.tsx // NEW — solid ceiling-cap plane for floors below active, in stacked/stacked-full views (§4)
+Tools/2dDraw.tsx // draw2D — imperative canvas render. Does NOT clear the canvas itself (see §3) — caller owns clearing.
+Tools/constants.ts // Types, tool defs, ICONS, FURNITURE_CATEGORIES, DEFAULT_FP, DEFAULT_SCENE_CONFIG
+Tools/CameraViewPicker.tsx, FloorPlanEditorModal.tsx, FloorplanMinimap.tsx
+Tools/MaterialPicker.tsx, MaterialsPanel.tsx, PropsPanel.tsx, SceneConfigPanel.tsx
+Tools/QuickActionMenu.tsx // Floating per-object action menu (§5)
+Tools/ResilientCanvas.tsx // <Canvas> wrapper, remounts only on CONFIRMED context loss
+Tools/WalkModeControls.tsx
+Tools/WorkspaceCanvas.tsx, WorkspaceConfigPanel.tsx, WorkspaceContainer.tsx,
+WorkspaceLoader.tsx, WorkspaceToolbar.tsx // AI-extraction flow, separate from manual editor, single-floor only
+Tools/lights-constant.ts // PlacedLight defaults/labels/LIGHT_PLACEMENT_KIND map
+
+components/workspace/lib/
+floor-data.ts // Floor / ProjectFloorPlan / RoofConfig types, createEmptyFloor, recomputeFloorElevations
+migrateToMultiFloor.ts // legacy → ProjectFloorPlan wrapper, idempotent
+computeDerivedFloorData.ts // per-floor derived data for 2D ghost rendering (closedPolygons, indices) — see §3
+lights/resolveLightPosition.ts // resolveLightTransform (shared by render + shadow ranking), resolveShadowEligibleLightIds\* (§4b)
+lights/LightsLayer.tsx // renders all non-string lights + string lights for one floor, applies shadow-eligibility cap
+
+hooks/
+useFurnitureCollisions.ts // Overlap detection → overlappingIds → draw2D red dashed outline
+
+mesh/
+door-style-migration.ts
+furnitureMesh.tsx // Single outer <group position={[f.x, f.heightOffset ?? 0, f.z]}> — heightOffset added §4c. STILL has its own private texture cache (not yet migrated to lib/textureLoader.ts — see §7)
+lights-mesh.tsx // LightFixtureMesh — per-fixture-type geometry, castShadow gated by forceCastShadow prop (§4b)
+outdoor-object-mesh.tsx // ObjectBody switch — MUST have a case per OutdoorObjectType + default: return null
+stairsMesh.tsx // Straight/L/U/Spiral/Ramp/Elevator (§4d, unchanged this cycle)
+string-lights-mesh.tsx // Path-based light, separate render path from point/strip lights
+
+objects/
+arch-header.tsx, door-leaf.tsx, door-variants.tsx, doormat.tsx,
+error-boundary.tsx (SceneErrorBoundary — required around any <Canvas> using real textures),
+floormat.tsx, wallmat.tsx, wall-decor-mesh.tsx, window-variant3d.tsx
+line-walls-3d.tsx // Line-wall extrusion, openings, wall decor, floors, wallType branch (§ wall types)
+railing-3d.tsx // Railing/open wall-type geometry — NOT shared with stairs' own railing impl
+
+texture/
+MaterialPicker.tsx, inspector-ui.tsx, materials-registry.ts, textureCategorize.ts, universalMaterials.ts
+// ⚠️ STILL UNCONFIRMED: universalMaterials.ts / materials-registry.ts vs Tools/constants.ts's
+// MATERIAL_REGISTRY — legacy duplicate or canonical? Not resolved, don't assume.
+
+lib/
+textureLoader.ts // Shared texture cache/loader (extracted from furnitureMesh.tsx for stairsMesh.tsx to use). furnitureMesh.tsx NOT yet migrated to it — still has a private duplicate (§7).
+helpers.ts // deriveClosedPolygons(), toCanvas/toWorld, getSegmentOpeningWorldPos, misc geometry
+outdoor-constants.ts, furniture-constants.ts
+
+three/
+CameraController.tsx, NavigationGizmo.tsx, RoomCeiling.tsx (does not yet exist — see §4), RoomFloor.tsx,
+RoomFurniture.tsx, RoomGroup.tsx, RoomLabel.tsx, RoomWall.tsx, SceneLighting.tsx
+
+../ui/Dock.tsx, ScrollableList.tsx, FloatingDock.tsx, FloatingMenu.tsx
+
+**Never pasted/viewed this cycle — treat as unknown, verify before
+editing**: `useDelayedAmt.ts`, `errorMessage.ts`, `three/CameraController.tsx`
+/`NavigationGizmo.tsx`/`RoomGroup.tsx`/`RoomLabel.tsx`/`RoomWall.tsx`/
+`SceneLighting.tsx`, `texture/inspector-ui.tsx`, `WorkspaceContainer.tsx`
+and siblings, `stairsMesh.tsx` internals (unchanged, prior notes still apply).
+
+---
+
+## 3. 2D rendering — ghosting, clearing, drag state
+
+**Canvas clearing is the caller's job, not `draw2D`'s.** `draw2D()` no
+longer calls `ctx.clearRect()` internally — it used to, which meant
+drawing a ghost floor then the active floor wiped the ghost out
+immediately. `scheduleRedraw()` (in `FloorPlanEditor.tsx`) now clears once
+per frame, then draws each ghost floor (`ctx.globalAlpha = 0.25`, no
+interactivity/hit-test data, no selection) followed by the active floor at
+full opacity. Ghost floor list comes from `ghostFloorsDerived`
+(`useMemo`, depends on `viewMode`/`showUnderlay`/`floors`/`activeFloorId`)
+→ synced into `ghostFloorsDerivedRef` via a `useEffect` → read by
+`scheduleRedraw` (which runs in a rAF, reads via refs not deps). Ghosting
+covers full detail — rooms, furniture, labels, lights, stairs, outdoor
+objects — since it's just another `draw2D` call with the same rendering
+code, not a separate simplified path.
+
+**`shapesIndex` keying**: `computeDerivedFloorData.ts` keys it by
+`[...s.nodeIds].sort().join(',')` — must match `2dDraw.tsx`'s lookup key
+exactly (`shapeKey = [...nodeIds].sort().join(',')`), or shape labels
+silently fall back to `'Area'` and selection never resolves for shapes.
+
+**Drag state → `isDraggingSelection`, centralized.** All mouse-drag
+interactions (room, furniture, light, wall decor, node, segment, shape,
+outdoor object, opening) flow through one dispatch table, `dragEntries`,
+each with an `isActive()`/`apply()` pair, consumed by
+`runActiveDrag(dragEntries, ...)` in `handleMouseMove`. `isDraggingSelection`
+(hides `QuickActionMenu` during a drag) is derived in exactly ONE place —
+set `true` when any `dragEntries` member crosses the movement threshold,
+cleared in the single shared `handleMouseUp` cleanup block alongside all
+the `...DragRef.current = null` resets. Do NOT set/unset this flag inside
+individual per-tool mousedown branches — that pattern is what caused the
+original bug (light drags never flipped it, since the light-drag mousedown
+branch was added later and didn't know about this flag).
+
+**Light drag `isFree` must be derived from anchor fields, not a type
+allowlist.** `isFree: !lightHit.wall && !lightHit.segmentNodeIds` — NOT
+`lightHit.type !== 'wall_sconce'` (a hardcoded single-type check that
+silently broke dragging for every other wall/segment-anchored light type:
+shelf_strip, wall-mounted spotlight, track_lighting).
+
+---
+
+## 4. Materials, lighting, floor caps, outdoor objects, stairs
 
 ### 4a. Materials — MATERIAL_REGISTRY is the single source of truth
 
-`getMaterialsForDomain(domain: 'wall'|'floor'|'door'|'furniture'|'outdoor'|'stairs')`,
-`getMaterialsByCategory(domain)`. **`MaterialDomain` now includes `'stairs'`**
-(added alongside the stairs feature — §4d). Legacy `WALL_MAT_DEFS`/
-`FLOOR_MAT_DEFS` derived from the registry. Door material resolution
-(`objects/doormat.tsx`) checks `MATERIAL_REGISTRY[style]` directly FIRST,
-falls back to a legacy 7-value translation map only for old saved data.
+Unchanged from prior notes: `getMaterialsForDomain`/`getMaterialsByCategory`,
+door material resolution checks `MATERIAL_REGISTRY[style]` first with legacy
+fallback, new entities default to flat solid material, swatch pickers must
+conditionally render (not CSS-hide) collapsed categories.
 
-`getMaterialsFor(type)` in `texture/universalMaterials.ts` filters
-`UNIVERSAL_MATERIALS` by `appliesTo.includes(type)`, where `appliesTo` is
-built directly from each registry entry's `domains` array — so a material
-only ever shows up in a given picker if its registry entry explicitly lists
-that domain. `'stairs'` was deliberately added only to wood, marble/stone,
-concrete, tile, and carpet entries (not wallpaper/brick/fabric/wicker/glass)
-so the stairs material picker only offers materials that make sense as tread
-surfaces. If a registry entry is ever added without a `domains` field, it
-silently applies nowhere and logs a dev warning (guarded in `buildCatalog`)
-rather than crashing every picker.
+### 4b. Lighting
 
-**Default material for newly-created entities**: per the "keep sketching
-lightweight" fix, new rooms/walls should start on flat solid (`'paint'`/
-`'plain'`) regardless of the current global default material, so drawing a
-fresh plan doesn't eagerly trigger texture loads. Verify this is still true
-if entity-creation code is touched. **Stairs follow the same convention** —
-`materialId` is optional and unset by default, falling back to the flat
-`STAIR_COLOR` swatch until a user explicitly picks a tread material.
+`LIGHT_PLACEMENT_KIND` maps each type to `'wall-point' | 'wall-strip' |
+'free-point' | 'path'`. **Position fields**: free-point lights use
+`x`/`z`/`heightOffset` (all three now exposed in `PropsPanel` — X pos, Z
+pos, Height); wall/segment-anchored lights use `position` (distance along
+wall/segment) + `heightOffset` (vertical) + `facingInward` (side) —
+`PropsPanel` shows X/Z pos fields ONLY when `!light.wall && !light.segmentNodeIds`,
+and Position/Side fields only when `light.wall || light.segmentNodeIds` —
+these are mutually exclusive now, previously could show both at once for
+the same light, which was confusing/broken.
 
-**Swatch eager-loading**: collapsed material categories must not mount
-`<img>`/background-image elements at all (conditional render, not CSS
-visibility) — confirmed fix pattern, re-check if `MaterialPicker.tsx` /
-`texture/MaterialPicker.tsx` is regenerated wholesale.
+**Shadow budget, scene-wide, not per-floor.** GPU fragment shaders have a
+hard `MAX_TEXTURE_IMAGE_UNITS` ceiling (commonly 16); each shadow-casting
+light consumes one. `resolveShadowEligibleLightIds(fp)` in
+`resolveLightPosition.ts` caps a single floor's shadow-casting lights to
+the nearest `MAX_SHADOW_LIGHTS` (8) by distance to that floor's room
+centroid. **In `stacked`/`stacked-full` view, this must be computed ONCE,
+scene-wide, across all rendered floors** (`resolveShadowEligibleLightIdsAcrossFloors`
+in `Scene3D.tsx`, passed down through `FloorGeometry` → `LightsLayer` as a
+`shadowEligibleIds` prop) — NOT independently per floor, since 2-3 floors
+each independently budgeting 8 shadow lights can blow the global 16-unit
+ceiling even though each floor's local count looks fine. `LightsLayer`
+falls back to its own local computation only if no prop is passed (keeps
+`single`-view callers working unchanged).
 
-### 4b. Lighting (`PlacedLight`, `lights-constant.ts`, `mesh/lights-mesh.tsx`)
+`shelf_strip` (`wall-strip` kind) 2D rendering now draws a small circular
+anchor-point handle in addition to its bar body, matching every other
+light type's visual/hit-target language — the bar alone was too thin a
+target and inconsistent with the rest of the UI.
 
-`LIGHT_PLACEMENT_KIND` maps each `LightFixtureType` to one of: `'wall-point'`,
-`'wall-strip'`, `'free-point'` (ceiling/floor fixtures), or `'path'` (string
-lights specifically — `mesh/string-lights-mesh.tsx`, a distinct render path
-from the other three since it's a chain of many small lights along
-`pathNodeIds`, not a single fixture at one point/wall position). `spotlight`
-type carries an `aimRotation` — rendered as a small direction wedge in 2D.
-2D rendering for all 4 placement kinds lives in `Tools/2dDraw.tsx`'s lights
-section — follow that file's existing per-kind branching pattern if adding
-a new light type rather than bolting another `if` onto one kind's branch.
+### 4c. Furniture
 
-### 4c. Outdoor objects (`mesh/outdoor-object-mesh.tsx`)
+`PlacedFurniture.heightOffset?: number` — new, optional, defaults to `0`
+(floor level) when unset, zero migration impact on existing saves. Applied
+ONCE at the single outer `<group position={[f.x, f.heightOffset ?? 0, f.z]}>`
+in `furnitureMesh.tsx` — additive on top of any per-type hardcoded mount
+height already baked into that type's geometry (e.g. `kitchen_cabinet_wall`'s
+`1.4 * s` default stays as the type's baseline; `heightOffset` nudges up/down
+from there). Every per-type branch's internal geometry is already relative
+to this one outer group, so this required no per-type changes.
 
-`OutdoorObjectType` union, `OUTDOOR_OBJECT_FOOTPRINTS`, `OUTDOOR_OBJECT_LABELS`,
-`OUTDOOR_FLAT_TYPES` (ground-decal, no bounding-box/volume — currently just
-`crosswalk`). **`ObjectBody`'s switch statement must have a case for every
-type in the union, plus a `default: return null`.** History: 3 of 4 types
-(dustbin/bench/mailbox) were silently unimplemented for a period — the
-switch fell through to `undefined`, which renders nothing with zero console
-error, while the SAME objects rendered correctly in 2D (separate `draw2D`
-icon path) — this asymmetry (correct in 2D, blank in 3D, no error) is the
-exact "wall-mounted mesh occlusion" diagnostic pattern from §5, but caused by
-a missing switch case instead of a centerline-offset bug. **Any time a new
-outdoor type is added to the type union, immediately add its `ObjectBody`
-case in the same change** — don't let the type union and the switch drift.
+### 4d. Outdoor objects — unchanged from prior notes (§4c in old doc): `ObjectBody`
 
-### 4d. Stairs / Elevator (`mesh/stairsMesh.tsx`, `PropsPanel.tsx`, `lib/constants.ts`) — NEW
+switch must cover every `OutdoorObjectType` + explicit default.
 
-**Type union**: `StairsType = 'stairs-straight' | 'stairs-l' | 'stairs-u' |
-'stairs-spiral' | 'stairs-ramp' | 'elevator'`. `STAIRS_LABELS` maps each to
-display text. `STAIRS_TYPE_GROUP` maps the full 6-type union down to a
-simplified `'straight' | 'curved' | 'spiral' | 'other'` group **for the
-props-panel Type toggle only** (L and U both present as "Curved" in that UI
-without collapsing the underlying stored type) — this is a UI-presentation
-mapping, not a data model merge; `stairs.type` itself always stays one of
-the 6 real values.
+### 4e. Stairs / Elevator — unchanged this cycle, all prior notes still apply
 
-**`PlacedStairs` fields beyond the original x/z/width/depth/rotation**, all
-optional so pre-existing saved plans keep rendering unchanged:
-- `rise?: number` — total vertical height in meters; falls back to `roomHeight` when unset.
-- `steps?: number` — explicit step count; falls back to stairsMesh's original depth/riser-derived auto-calc when unset. Setting this recomputes per-step riser/run from the explicit count rather than being clamped by the old auto-calc.
-- `railingEnabled?: boolean` — defaults to `true` (matches pre-feature always-on behavior).
-- `railingStyle?: RailingStyle` (`'baluster' | 'glass' | 'cable' | 'solid'`) — **only `'baluster'` is actually implemented in `stairsMesh.tsx`**; `glass`/`cable`/`solid` exist on the type and are selectable but currently silently render as baluster. Flagged, not yet built.
-- `railingColor?: string` — defaults to the module's `RAILING_COLOR` constant.
-- `railingHeight?: number` — defaults to `0.9`, threaded into `Railing3D`-style height clamping.
-- `materialId?: string` — `MATERIAL_REGISTRY` key (domain `'stairs'`) applied to tread surfaces. See texture loading note below.
-- `openingMode?: 'none' | 'destination'`, `autoCutout?: boolean`, `openingOffset?: number` — **currently INERT, see below.**
-- `fromLevel?: string`, `toLevel?: string` — **currently INERT, hard multi-floor dependency, see below.**
+(6-type union, per-type 3D branches, `${id}-${type}` remount key,
+spiral radius/railing fixes, `lib/textureLoader.ts` tread texture
+support, own self-contained railing implementation not shared with
+`objects/railing-3d.tsx`). Still un-started: Auto Cutout, railing styles
+beyond baluster, per-floor From/To Level linking (this last one is now
+UNBLOCKED at the data-model level since `FloorPlanState`/floors exist, but
+the UI wiring itself has not been built — see §7).
 
-**Multi-floor dependency (fromLevel/toLevel) — NOT implemented, blocking.**
-`FloorPlanState` has no floor/level concept at all. The From-Level/To-Level
-dropdowns in `PropsPanel` render disabled with "(coming soon)" placeholder
-text rather than being wired to anything. This cannot be meaningfully built
-until floor/level scaffolding lands in `FloorPlanState` itself — flagged as
-a prerequisite, not a stairs-specific bug.
+### 4f. Floor caps (`FloorCap.tsx`) — NEW
 
-**Auto Cutout — NOT implemented, also currently a no-op despite having a
-working-looking toggle in the panel.** `autoCutout`/`openingMode`/
-`openingOffset` are stored on `PlacedStairs` but nothing reads them.
-Punching an actual hole requires the ROOM FLOOR/CEILING slab generator
-(likely `three/RoomFloor.tsx` / `RoomCeiling.tsx` — not yet pasted into this
-context, unconfirmed) to know about stair footprints and subtract them from
-the floor/ceiling `THREE.Shape` via `.holes.push(...)` before extrusion —
-the same hole-punching technique already used for the spiral tread's
-`ExtrudeGeometry`. This is a separate file from `stairsMesh.tsx` and hasn't
-been touched yet. Do not assume Auto Cutout does anything until this lands.
-
-**2D icon** (`Tools/2dDraw.tsx`, stairs/elevator loop): switched from an
-`if/else if` chain to a `switch (s.type)` specifically because the old chain
-had TWO `else if (s.type === 'stairs-spiral')` branches (one stale
-placeholder arc, one real spoke-pattern icon) — the first consumed the
-narrowing, so TS flagged the second as an impossible comparison. The switch
-form is exhaustive-safe against this recurring mistake; if a 7th stairs type
-is ever added, prefer adding a `default: const _exhaustive: never = s.type`
-guard to catch missed cases at compile time (not yet added, worth doing —
-mirrors the `ObjectBody` "must have a case per type" rule in §4c).
-
-**3D geometry** (`mesh/stairsMesh.tsx`) — per-type branches: `StraightStairs`,
-`LStairs`, `UStairs`, `SpiralStairs`, `RampStairs`, `ElevatorMesh`. Two bugs
-fixed during implementation, both worth remembering as patterns:
-
-1. **Type-switch stale-geometry bug.** Switching a placed stair's `type`
-   (e.g. straight → spiral) could render a mix of both geometries
-   simultaneously, because the outer `<group>` wrapping the per-type branches
-   had no `key`, so React reconciled leftover meshes from the previous type
-   instead of a clean unmount. **Fixed by keying the group on
-   `` `${s.id}-${s.type}` ``**, forcing full remount on type change. General
-   lesson: any component that swaps between structurally-different geometry
-   branches based on a mutable type field needs a type-inclusive key, not
-   just an id key.
-
-2. **Spiral radius/railing bugs.** (a) Radius was `Math.min(w, d) / 2 -
-   0.05`, so increasing `width` alone did nothing once `depth` became the
-   limiting dimension — spiral stairs use `width` as their diameter, `depth`
-   should mirror it. **Fix belongs partly in `PropsPanel.tsx`**: the Width
-   input's `onChange` for stairs now also sets `depth` to match whenever
-   `stairs.type === 'stairs-spiral'`, keeping the footprint square. (b) The
-   railing used a `CatmullRomCurve3` through sampled points, which can bulge
-   between samples since a spline isn't constrained to lie exactly on a
-   circle — visibly misaligned from the actual tread edges. **Fixed with an
-   exact parametric `HelixCurve` (custom `THREE.Curve` subclass)** so every
-   point on the `TubeGeometry`, not just sampled ones, sits exactly on the
-   true radius; posts also now compute position from the same
-   `angleStep`/`radius` values the treads themselves use, rather than an
-   independent even-spacing loop.
-
-**Texture loading — `lib/textureLoader.ts` (NEW shared module).**
-`stairsMesh.tsx`'s tread material needed real image texture support (map/
-normalMap/roughnessMap), not just flat color/roughness/metalness — the
-initial pass only read flat values off `MATERIAL_REGISTRY` entries and
-silently ignored `textureUrl` etc., so photo-textured materials (Marble,
-Tile Ceramic, Brick White...) fell back to a flat swatch color with no
-visible pattern. `furnitureMesh.tsx` already had working texture-loading
-logic (global cache + subscriber/notify pattern, NOT drei's `useTexture`),
-so that logic was extracted into `lib/textureLoader.ts` as
-`useTextureMaterialProps` for stairs to reuse rather than building a second
-independent cache. **`furnitureMesh.tsx` has NOT yet been migrated to import
-from the new shared file** — it still has its own private copy of the same
-cache/loader/subscriber code. Until that migration happens, a texture URL
-referenced by both a furniture item and a stair tread will be loaded/cached
-twice under two separate Maps. Flagged as a follow-up, not yet done.
-
-`TreadMaterial` (component in `stairsMesh.tsx`) mirrors `furnitureMesh.tsx`'s
-override pattern: keep rendering the flat-color material until the texture
-load status is definitively `'loaded'` or `'failed'`, so nothing flashes
-into an untextured white/swatch box mid-load.
-
-**Not shared with `objects/railing-3d.tsx`.** Stairs railings (baluster
-posts + handrail, both straight and spiral/helical variants) are a
-self-contained implementation inside `stairsMesh.tsx`, independent of the
-wall-type railing geometry in `objects/railing-3d.tsx` (§3). They happen to
-produce a visually similar baluster look but do not share code. If unifying
-these two railing implementations is ever desired, that's a real refactor,
-not a rename.
+Renders a solid horizontal plane at `fp.roomHeight` for a floor, acting as
+the visual "roof" of the floor beneath the active one, in `stacked`/
+`stacked-full` view only. Built from `deriveClosedPolygons(fp.lineNodes,
+fp.lineSegments)` (irregular line-drawn areas) UNION `fp.rooms` rects
+(so both wall systems get capped, not just one). `Scene3D.tsx` sets
+`renderCap: f.order < activeFloor.order` per floor in `floorsToRender`,
+threaded through `FloorGeometry`'s `renderCap` prop. Visually confirmed to
+render at the correct elevation; NOT yet confirmed at a proper (non-top-down)
+camera angle that it reads clearly as a distinct surface rather than being
+mistaken for the floor slab beneath it — verify visually before assuming
+this is fully polished.
 
 ---
 
-## 5. Floating UI — Quick Action Menu, Floating Dock, Presets panel
+## 5. Floating UI — unchanged from prior notes
 
-**`QuickActionMenu`** (`Tools/QuickActionMenu.tsx`): appears anchored near a
-selected 2D object (`quickMenuAnchor` state, computed from the selection's
-world position converted to screen coords) offering move/duplicate/delete/
-bend-style quick actions without opening the full properties panel. Visible
-only when `tool === 'select'` and not `isDraggingSelection`. Wired to the
-SAME underlying delete/duplicate logic used elsewhere (the delete handler
-here is textually duplicated across at least 3 places in `FloorPlanEditor.tsx`
-— the keyboard handler, `PropsPanel`'s `onDelete`, and this menu's
-`onDelete` — **all three must stay in sync when a new entity type is added
-to the delete-type-check chain**; this is the same "3 hit-test-order sites"
-risk pattern already documented for hit-testing, now also applies to
-deletion). `onBend`/`handleBendSelectedSegment` and `onMove`/`handleArmMove`
-are new — confirm their implementations before assuming they follow other
-established patterns.
-
-**`FloatingMenu`** (rendered via portal, fixed top-right): houses Walk Mode
-toggle, Interactive Mode toggle, Preview pane show/hide toggle, and an
-embedded `CameraViewPickerV2` slot (camera presets, shipped — see §6).
-
-**`FloatingDock`**: bottom-positioned tab switcher for Properties/Scene
-panels (replaces or sits alongside the older `Dock.tsx` — confirm which is
-actually still in use). Panels themselves are now `position: absolute`
-floating cards (not docked inline), each independently closable.
-
-**Presets tab / `PresetsPanel`**: toolbar flyout (portaled, anchored to the
-toolbar group) offering wall presets and room templates —
-`armedWallPresetId`/`armedTemplateId` state, `armWallPreset`/
-`armRoomTemplate` handlers "arm" a preset for placement (click-then-place
-pattern, consistent with existing tool interaction model, not drag-and-drop).
-This is the asset-library feature — confirm scope (template-based inserts of
-existing entity types vs. genuinely new geometry types like true curved
-walls) before extending further.
-
-**Split-pane 2D/3D layout**: `splitRatio` + `handleDividerMouseDown` — the
-2D/3D panes are now user-resizable via a draggable divider, not a fixed
-percentage. `previewOpen` toggles the entire 3D pane's mount/unmount.
+`QuickActionMenu` visible only when `tool === 'select' && !isDraggingSelection`
+(see §3 for the centralized fix to how that flag is now maintained).
+Delete-handler logic still duplicated across ≥3 sites (keyboard handler,
+`PropsPanel`'s `onDelete`, `QuickActionMenu`'s `onDelete`) — must stay in
+sync when a new entity type is added to the delete-type-check chain.
+`FloatingMenu`, `FloatingDock`, `PresetsPanel`, split-pane 2D/3D layout —
+all unchanged, see old doc if needed.
 
 ---
 
-## 6. Shipped since last update (confirmed, per explicit sign-off)
+## 6. Shipped, confirmed working (this cycle)
 
-- **Wall thickness** — user-editable per-segment property (was hardcoded `T = 0.15`).
-- **Camera view presets** (`CameraViewPickerV2`) — saved viewpoints, embedded in `FloatingMenu`.
-- **Duplicate/copy-paste** (`handleDuplicateSelected`, `handleMirrorSelected`) — rooms and furniture groups.
-- **Real dimension/measurement SVG export** — printable 2D plan with scale, dimension lines, area labels.
-- **Furniture overlap/collision detection** (`useFurnitureCollisions` hook) — feeds `overlappingIds` into `draw2D`, rendered as a dashed red outline on overlapping furniture (see the `overlappingIds.has(f.id)` block in the furniture-drawing loop).
-- **Area/shape custom labels** — persist and render correctly in both 2D and 3D (was broken, now fixed — labels visibly show custom names like "Area 17"/"Area 18" rather than a hardcoded literal).
-- **Railing / partial-wall segments** — see §3.
-- **Texture cache staleness** — confirmed no longer an issue as of this writing.
-- **Stairs: geometry, rise/steps, railing on/off + color/height, tread material picker (domain `'stairs'`), 2D icon (all 6 types), spiral radius/railing alignment fixes** — see §4d. Auto Cutout, railing styles beyond baluster, and level-linking are explicitly NOT part of this — see §7.
+- **Multi-floor support** — add/switch/rename/show-hide floors, ground/
+  upper/basement via order, elevation auto-computed via
+  `recomputeFloorElevations`. Confirmed via low-angle 3D screenshot that
+  floors genuinely stack vertically (earlier "floors render beside each
+  other" reports were a steep top-down camera angle illusion, not a bug).
+- **2D ghost-floor rendering** — full detail (not just outlines), correct
+  clear/redraw ordering.
+- **Active floor's 3D view stays live** during editing, not just after
+  floor-switch/save.
+- **Floor ceiling caps** in stacked views (visual polish pending, see §4f).
+- **Scene-wide shadow-light budget** across stacked floors (was previously
+  blowing the GPU texture-unit limit when 2+ floors were visible together).
+- **Light position controls** — X/Z (free-point) and Position/Side/Height
+  (wall-anchored) properly mutually exclusive in the panel.
+- **Furniture vertical position** (`heightOffset`) — for wall-mounted
+  pieces like `kitchen_cabinet_wall`.
+- **Light + all other entity types drag correctly** and correctly hide
+  `QuickActionMenu` during the drag (centralized `isDraggingSelection`).
 
-## 7. Known open items (not yet done, don't assume otherwise)
-
-- **Shared/partition wall material override** — see §2's detailed writeup. Floor override works correctly for sub-areas split by a partition; wall override does not.
-- **Window variant rendering** — reported as rendering flat/dark with no visible frame or glass distinction across variants; root cause not yet isolated (candidates: `WindowVariant3D` not invoked, wrong/lost `variant` value, glass material issue, or the wall-mounted-centerline-burial bug per §5-of-prior-doc applying to window glass specifically). Not yet fixed — diagnose via the 3-step isolation (mesh invocation → variant data → material) before patching blind.
-- **`universalMaterials.ts` vs `MATERIAL_REGISTRY`** — still unconfirmed whether this is dead/legacy or actively used; do not assume resolved.
-- **2D redraw performance** — `deriveClosedPolygons()` and the `fp.openings.filter(...)` calls inside `draw2D` were identified as running unmemoized every frame/redraw; fix is to precompute these once per `fp` change (`useMemo` in `FloorPlanEditor.tsx`) and pass as params into `draw2D` rather than recomputing inside it. Confirm this landed before assuming 2D pan/drag performance is solved — the deeper "why does mousemove trigger so many redraws" question also depends on `handleMouseMove`/`scheduleRedraw`'s current throttling, which was flagged but not yet reviewed.
-- **Stairs Auto Cutout** — stored fields (`autoCutout`, `openingMode`, `openingOffset`) are inert; requires floor/ceiling slab generator (likely in `three/`) to accept stair footprints and hole-punch around them. Not started.
-- **Stairs From/To Level** — hard-blocked on multi-floor scaffolding not existing in `FloorPlanState` at all. UI stubbed disabled, not wired.
-- **Stairs railing styles** — `railingStyle: 'glass' | 'cable' | 'solid'` are selectable in the type but unimplemented in `stairsMesh.tsx`'s `Railing`/spiral-railing rendering; only `'baluster'` actually renders differently, others silently fall back to it.
-- **`furnitureMesh.tsx` texture-loader duplication** — has its own private texture cache/loader/subscriber implementation that predates and was copied (not migrated) into the new shared `lib/textureLoader.ts` for stairs to use. Should be consolidated so both meshes share one cache; not yet done, so a texture URL used by both furniture and stairs currently double-loads under two separate Maps.
+Everything previously listed as shipped in the pre-multi-floor doc (wall
+thickness, camera presets, duplicate/copy-paste, SVG export, furniture
+overlap detection, area labels, railing/partial-wall segments, stairs
+core feature set) is unaffected and still shipped.
 
 ---
 
-## 8. Standing gotchas (still apply, condensed from prior versions)
+## 7. Known open items (don't assume otherwise)
 
-- `Scene3D` prop contract: takes the whole `fp` object, never decomposed fields.
-- `ResilientCanvas`: only remount on a CONFIRMED-still-lost context after a delay; never remount on every successful `webglcontextrestored`.
-- Persistence: confirm single source of truth (`floorplan_editor_state` as canonical, `scene_json` derived) hasn't regressed to multiple independent writers.
-- Every new draggable/selectable/deletable entity type needs updating in ALL of: 3 hit-test-priority sites, delete-handler chain (now at least 3 sites per §5), `PropsPanel`'s early-return guard, `pushHistory`'s `hadDrag` boolean, save/load round-trip.
-- Wall-mounted mesh centerline-burial bug: offset `basePos` along the wall normal, don't place at raw centerline — check this FIRST for any new mesh type that's invisible in 3D but fine in 2D (see §4c's outdoor-object case for a variant of this same symptom class, caused by a missing switch case rather than centerline burial specifically — both produce "2D correct, 3D blank, no error").
-- Stray debug `console.log`/`console.count` calls have caused false "performance bug" reports before — check for leftover debug statements before assuming a re-render/memoization bug. **`furnitureMesh.tsx` currently has two such leftover `console.log` calls** (`_furnitureMatById` keys dump, and per-render `materialId`/`overrideMat` dump) — worth removing in a cleanup pass, not urgent.
-- `ScrollableList`, not `overflowY: auto`, for any scrollable floating panel content.
-- **Type-switch stale-geometry bug (new, §4d)**: any component whose rendered geometry branches on a mutable `type`-like field needs to key its wrapping group/element on `` `${id}-${type}` ``, not just `id` — otherwise switching type can leave stale meshes from the previous type mixed into the new render. First caught on stairs (straight→spiral), worth checking any other type-branching mesh component for the same risk.
+- **Shared/partition wall material override** — unresolved, same as
+  before: floor override works per sub-area, wall override doesn't for a
+  segment shared by two adjacent `ClosedShape`s. Needs a two-sided
+  `(segmentId, ownerShapeId)` data model. Not started.
+- **Window variant rendering** — reported flat/dark, root cause not
+  isolated. Not fixed.
+- **`universalMaterials.ts` vs `MATERIAL_REGISTRY`** — still unconfirmed
+  legacy-vs-canonical.
+- **2D redraw performance** — `deriveClosedPolygons()`/openings-filter
+  memoization status not re-confirmed this cycle; verify before assuming
+  solved.
+- **Stairs Auto Cutout** — still inert, needs floor/ceiling slab generator
+  (`three/RoomFloor.tsx`/a not-yet-existing `RoomCeiling.tsx`) to accept
+  stair footprints and hole-punch. Not started. Note `FloorCap.tsx` (§4f)
+  is a DIFFERENT thing — a flat cap plane for stacked-floor visualization,
+  not the actual per-room ceiling/floor slab generator stairs would need
+  to cut into.
+- **Stairs From/To Level** — data-model blocker (no floor concept) is now
+  gone since floors exist, but the actual dropdown-wiring/UI work in
+  `PropsPanel.tsx` has not been done. Re-scope as a real task, not just
+  "unblocked."
+- **Stairs railing styles** beyond baluster — still unimplemented.
+- **`furnitureMesh.tsx` texture-loader duplication** — still not migrated
+  to the shared `lib/textureLoader.ts`; double-loads shared texture URLs.
+- **`FloorCap` visual polish** — see §4f, needs a proper-angle screenshot
+  confirmation, not just elevation-correctness confirmation.
+- **`switchToFloor`'s double-`setFloors`-call pattern** — calls `setFp` as
+  a side effect inside a second `setFloors` updater, which isn't
+  guaranteed-once under React's rules. Never confirmed to cause a visible
+  bug, but flagged as fragile — collapse to one `setFloors` call + a
+  `setFp` call outside the updater, reading the target floor's state from
+  the `floors` closure before the fold-back write (safe, since the target
+  floor is a different floor than the one being folded back).
+- **`showUnderlay`** has no dedicated UI toggle yet (only settable via
+  state directly).
+- **Server-side `scene_json` is derived from the active floor only** —
+  share links (`/share/[token]`) and anything consuming `scene_json` will
+  only ever show one floor of a multi-floor project. The share page itself
+  now correctly wraps that single floor into a valid `floors`/`activeFp`
+  shape for `Scene3D`, but the underlying single-floor-only limitation at
+  the API/data layer is unresolved.
+
+---
+
+## 8. Standing gotchas (still apply)
+
+- `Scene3D` now takes `floors`/`activeFloorId`/`viewMode`/`showUnderlay`/
+  `activeFp` — NOT a single `fp` prop directly (that changed with
+  multi-floor; old "takes the whole fp object" note is superseded).
+- `ResilientCanvas`: only remounts on a CONFIRMED-still-lost context after
+  a delay; never on every successful `webglcontextrestored`. Does not
+  memoize children — ruled out as a cause of any stale-render bug.
+- Persistence: `floorplan_editor_state` stores `{ projectFloorPlan,
+sceneConfig }` now (not `{ floorPlanState, sceneConfig }`) — both
+  `ProjectViewerPage` and `NewProjectPage` save/load in this shape via
+  `migrateToMultiFloor()` for legacy rows.
+- Every new draggable/selectable/deletable entity type needs updating in
+  ALL of: hit-test-priority sites, delete-handler chain (≥3 sites),
+  `PropsPanel`'s early-return guard, `pushHistory`'s `hadDrag` boolean,
+  save/load round-trip, AND now the `dragEntries` dispatch table (§3) if
+  it's draggable.
+- Wall-mounted mesh centerline-burial bug: offset along wall normal, don't
+  place at raw centerline — check first for anything invisible in 3D but
+  fine in 2D.
+- Type-switch stale-geometry bug: key wrapping group/element on
+  `${id}-${type}`, not just `id`, for any component whose geometry
+  branches on a mutable type field.
+- `ScrollableList`, not `overflowY: auto`, for scrollable floating panels.
+- Stray debug `console.log`s in `furnitureMesh.tsx` — still present, low
+  priority cleanup.

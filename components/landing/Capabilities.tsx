@@ -1,6 +1,6 @@
 export default function Capabilities() {
   return (
-    <section id="capabilities" className="py-24 px-6 md:px-10 bg-[#F2F0EA] border-b border-line">
+    <section id="capabilities" className="py-24 px-6 md:px-10 bg-[#FBF6EC] border-b border-line">
       <div className="max-w-[1100px] mx-auto">
         <div className="reveal mb-4">
           <span className="font-mono text-[10px] font-medium text-blue uppercase tracking-[0.1em] block mb-3">

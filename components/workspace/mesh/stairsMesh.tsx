@@ -112,6 +112,9 @@ function StairsMeshImpl({
         [treadMaterialDef, textures, status]
     )
 
+    // Ghosting via traversal — StraightStairs/LStairs/UStairs/SpiralStairs/
+    // RampStairs/ElevatorMesh internals aren't visible here, so this covers
+    // whatever materials they create without needing each threaded by hand.
     useEffect(() => {
         const root = groupRef.current
         if (!root) return

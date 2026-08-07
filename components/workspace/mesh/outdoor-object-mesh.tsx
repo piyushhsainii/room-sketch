@@ -117,6 +117,7 @@ function ObjectBody({ type, materialId }: { type: OutdoorObjectType; materialId?
 }
 
 
+
 export function OutdoorObjectMesh({
     obj, selected = false, interactive = false, onSelect,
     opacity = 1,          // NEW

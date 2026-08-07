@@ -1,4 +1,4 @@
-import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from "react"
+import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef } from "react"
 import { OrbitControls, Sky } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, DEFAULT_FP, FloorPlanState } from "./lib/constants"
 import { WalkModeControls } from "./WalkModeControls"
@@ -10,6 +10,7 @@ import * as THREE from "three"
 import { sunIntensity, sunLightColor, sunPosition, sunVectorFromAngles } from "./lib/sunPosition"
 import { Floor } from "./lib/floor-data"
 import { FloorGeometry } from "./FloorGeometry"
+import { resolveShadowEligibleLightIdsAcrossFloors } from "./lib/lights/resolveLightPosition"
 
 export type Scene3DHandle = {
     flyTo: (view: CameraView) => void
@@ -211,6 +212,11 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         : 0
     const groundPlaneY = lowestGroupY - 0.02
 
+    const shadowEligibleIds = useMemo(
+        () => resolveShadowEligibleLightIdsAcrossFloors(floorsToRender.map(f => f.floor.state)),
+        [floorsToRender]
+    )
+
     useEffect(() => {
         invalidate()
     }, [viewMode, floors, showUnderlay, activeFloorId, invalidate])
@@ -288,6 +294,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                         opacity={opacity}
                         renderCap={renderCap}
                         overlappingIds={overlappingIds}
+                        shadowEligibleIds={shadowEligibleIds}
                     />
                 </group>
             ))}

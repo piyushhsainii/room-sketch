@@ -30,14 +30,14 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section id="how-it-works" className="relative py-28 px-6 md:px-10 bg-paper border-b border-line overflow-hidden">
+    <section className="relative py-28 px-6 md:px-10 bg-paper border-b border-line overflow-hidden">
       <div className="relative z-10 max-w-[1200px] mx-auto">
         <div className=" text-center mb-16">
-          <h2 className=" font-light text-[2.2rem] md:text-[3rem] tracking-tighter text-ink leading-[1.1] mb-4">
+          <h2 className=" font-sans text-[3rem] md:text-[4.4rem] leading-[0.9] tracking-tighter text-ink mb-7">
             From blank sheet to <br className="hidden md:block" />
             walkable model
           </h2>
-          <p className="text-[15px] font-medium text-muted text-black/70 tracking-tighter">
+          <p className="text-[20px] font-normal text-muted text-black/70 tracking-tighter">
             Sketch your building and step into the result.
           </p>
         </div>

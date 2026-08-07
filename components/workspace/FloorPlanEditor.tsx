@@ -1295,7 +1295,7 @@ export default function FloorPlanEditor({
                             roomId: lightHit.roomId,
                             wall: lightHit.wall,
                             segmentNodeIds: lightHit.segmentNodeIds,
-                            isFree: lightHit.type !== 'wall_sconce'
+                            isFree: !lightHit.wall && !lightHit.segmentNodeIds
                         };
                     }
                     isMouseDownRef.current = true;
@@ -1350,9 +1350,21 @@ export default function FloorPlanEditor({
 
             const op = hitOpening(wx, wz)
             if (op) {
-                setSelectedId(op.id);
-                dragRoomRef.current = null;
-                isMouseDownRef.current = true;
+                const isGroupDrag = tryArmGroupDrag(op.id)
+                if (!isGroupDrag) setSelectedId(op.id)
+                if (isGroupDrag || moveArmedForId === op.id) {
+                    openingDragRef.current = {
+                        id: op.id,
+                        wall: op.wall,
+                        roomId: op.roomId,
+                        segmentNodeIds: op.segmentNodeIds
+                            ? ([op.segmentNodeIds[0], op.segmentNodeIds[1]] as [string, string])
+                            : undefined,
+                        width: op.width,
+                    }
+                }
+                dragRoomRef.current = null
+                isMouseDownRef.current = true
                 return
             }
 
@@ -2424,7 +2436,28 @@ export default function FloorPlanEditor({
                 isActive: () => !!openingDragRef.current,
                 apply: (wx, wz) => {
                     const od = openingDragRef.current!
-                    if (od.wall) {
+                    // FIX: segmentNodeIds must be checked first. od.wall is
+                    // non-optional on EditorOpening, so it's always truthy even for
+                    // openings placed on a line segment — checking it first meant
+                    // segment-placed doors always fell into the room-wall branch,
+                    // found no matching room, and silently did nothing.
+                    if (od.segmentNodeIds) {
+                        const a = fpRef.current.lineNodes.find(n => n.id === od.segmentNodeIds![0])
+                        const b = fpRef.current.lineNodes.find(n => n.id === od.segmentNodeIds![1])
+                        if (a && b) {
+                            const dx = b.x - a.x, dz = b.z - a.z
+                            const segLen = Math.hypot(dx, dz)
+                            const rawT = segLen > 0
+                                ? ((wx - a.x) * dx + (wz - a.z) * dz) / (segLen * segLen)
+                                : 0
+                            const halfWidthT = segLen > 0 ? (od.width / 2) / segLen : 0
+                            const t = Math.max(halfWidthT, Math.min(1 - halfWidthT, rawT))
+                            setFp(prev => ({
+                                ...prev,
+                                openings: prev.openings.map(o => o.id === od.id ? { ...o, segmentT: t, position: t * segLen } : o)
+                            }))
+                        }
+                    } else if (od.wall) {
                         const room = fpRef.current.rooms.find(r => r.id === od.roomId)
                         if (room) {
                             const isH = od.wall === 'north' || od.wall === 'south'
@@ -2437,24 +2470,6 @@ export default function FloorPlanEditor({
                                     const clamped = Math.max(o.width / 2, Math.min(wallLen - o.width / 2, rawPos))
                                     return { ...o, position: parseFloat(clamped.toFixed(2)) }
                                 })
-                            }))
-                        }
-                    } else if (od.segmentNodeIds) {
-                        const a = fpRef.current.lineNodes.find(n => n.id === od.segmentNodeIds![0])
-                        const b = fpRef.current.lineNodes.find(n => n.id === od.segmentNodeIds![1])
-                        if (a && b) {
-                            const dx = b.x - a.x, dz = b.z - a.z
-                            const segLen = Math.hypot(dx, dz)
-                            const rawT = segLen > 0
-                                ? ((wx - a.x) * dx + (wz - a.z) * dz) / (segLen * segLen)
-                                : 0
-                            // Clamp so the door body doesn't hang off the end of the segment,
-                            // same intent as the room-wall branch's position clamp above.
-                            const halfWidthT = segLen > 0 ? (od.width / 2) / segLen : 0
-                            const t = Math.max(halfWidthT, Math.min(1 - halfWidthT, rawT))
-                            setFp(prev => ({
-                                ...prev,
-                                openings: prev.openings.map(o => o.id === od.id ? { ...o, segmentT: t, position: t * segLen } : o)
                             }))
                         }
                     }
@@ -2842,6 +2857,32 @@ export default function FloorPlanEditor({
             setPresetsAnchorRect(null)
         }
     }, [tool])
+
+    useEffect(() => {
+        if (!moveArmedForId) return
+
+        function clearIfOutside(e: MouseEvent) {
+            const canvas = canvasRef.current
+            if (!canvas) return
+            if (!canvas.contains(e.target as Node)) {
+                setMoveArmedForId(null)
+                openingDragRef.current = null
+                furnitureDragRef.current = null
+                outdoorDragRef.current = null
+                dragRoomRef.current = null
+                segDragRef.current = null
+                shapeDragRef.current = null
+                wallDecorDragRef.current = null
+                if (lightDragRef) (lightDragRef as any).current = null
+            }
+        }
+
+        // Capture phase so this runs before the 3D pane's own click handlers,
+        // and so it fires even if something downstream calls stopPropagation.
+        window.addEventListener('mousedown', clearIfOutside, true)
+        return () => window.removeEventListener('mousedown', clearIfOutside, true)
+    }, [moveArmedForId])
+
 
     useEffect(() => {
         if (tool === 'furniture') {

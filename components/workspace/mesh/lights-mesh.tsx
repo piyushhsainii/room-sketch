@@ -131,6 +131,7 @@ export function LightFixtureMesh({
     onSelect,
     opacity = 1,          // NEW
     transparent = false,  // NEW
+    forceCastShadow
 }: {
     light: PlacedLight
     position: [number, number, number]
@@ -139,6 +140,7 @@ export function LightFixtureMesh({
     onSelect?: () => void
     opacity?: number       // NEW
     transparent?: boolean  // NEW
+    forceCastShadow?: boolean
 }) {
     const bulbPos = bulbLocalPosition(light.type)
     const scale = light.scale ?? 1
@@ -146,14 +148,9 @@ export function LightFixtureMesh({
     const targetRef = useRef(new THREE.Object3D())
     const groupRef = useRef<THREE.Group>(null)
     const itemTransparent = transparent || opacity < 1
+    const effectiveCastShadow = forceCastShadow !== undefined ? forceCastShadow : light.castShadow
 
-    // Ghosting applied uniformly via traversal — same approach as
-    // FurnitureMesh — so FixtureBody's internal materials (unseen here)
-    // ghost correctly without needing their own prop wiring. Skips
-    // meshBasicMaterial (selection wireframes) and leaves emissive bulb
-    // glow/pointLight intensity untouched on purpose: a ghosted floor's
-    // light fixtures should still read as light sources, not vanish along
-    // with their glow — only the fixture BODY should fade.
+
     useEffect(() => {
         const root = groupRef.current
         if (!root) return
@@ -203,7 +200,6 @@ export function LightFixtureMesh({
             </group>
         )
     }
-
     if (light.type === 'spotlight') {
         const aimYaw = light.aimRotation ?? 0
         const aimTilt = light.aimTilt ?? -0.3
@@ -217,7 +213,7 @@ export function LightFixtureMesh({
                     </mesh>
                     <primitive object={targetRef.current} position={[0, -3, 0]} />
                     <spotLight position={bulbPos} target={targetRef.current} color={light.color} intensity={light.intensity}
-                        angle={0.4} penumbra={0.4} distance={8} decay={2} castShadow={light.castShadow} shadow-mapSize={[512, 512]} />
+                        angle={0.4} penumbra={0.4} distance={8} decay={2} castShadow={effectiveCastShadow} shadow-mapSize={[512, 512]} />
                 </group>
                 {selected && (
                     <mesh renderOrder={999}>
@@ -228,7 +224,6 @@ export function LightFixtureMesh({
             </group>
         )
     }
-
     return (
         <group ref={groupRef} position={position} rotation={[0, rotation, 0]} scale={scale} {...clickHandlers}>
             <FixtureBody type={light.type} />
@@ -239,7 +234,7 @@ export function LightFixtureMesh({
             <pointLight
                 position={bulbPos} color={light.color} intensity={light.intensity}
                 distance={light.type === 'chandelier' ? 8 : light.type === 'outdoor_bollard' ? 5 : light.type === 'track_lighting' ? 6.5 : 6}
-                decay={2} castShadow={light.castShadow} shadow-mapSize={[512, 512]} shadow-bias={-0.002} shadow-radius={2}
+                decay={2} castShadow={effectiveCastShadow} shadow-mapSize={[512, 512]} shadow-bias={-0.002} shadow-radius={2}
             />
             {selected && (
                 <mesh position={bulbPos} renderOrder={999}>

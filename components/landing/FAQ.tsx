@@ -66,7 +66,7 @@ export default function Faq() {
                                     aria-expanded={isOpen}
                                     className="w-full flex items-center justify-between gap-6 py-5 text-left"
                                 >
-                                    <span className="text-black text-[1.05rem] text-ink tracking-[-0.01em] leading-snug font-normal">
+                                    <span className="text-black text-[1.1rem] font-sans text-ink tracking-tight leading-snug font-medium ">
                                         {item.q}
                                     </span>
                                     <span
@@ -79,11 +79,11 @@ export default function Faq() {
                                     </span>
                                 </button>
                                 <div
-                                    className="grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out"
+                                    className="grid font-sans  tracking-tight overflow-hidden transition-[grid-template-rows] duration-300 ease-out"
                                     style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
                                 >
                                     <div className="overflow-hidden">
-                                        <p className="text-[15px] font-normal tracking-tight text-black leading-[1.75]  pb-5 pr-12">
+                                        <p className="text-[17px] font-normal font-sans tracking-tighter text-black leading-[1.75]  pb-5 pr-12">
                                             {item.a}
                                         </p>
                                     </div>

@@ -513,6 +513,10 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         <NumInput value={furniture.x} min={-50} max={50} step={0.5}
                             onChange={v => patchFurniture({ x: snapFurniture(v) })} />
                     </PropField>
+                    <PropField label="Height (m)">
+                        <NumInput value={furniture.heightOffset ?? 0} min={0} max={fp.roomHeight} step={0.1}
+                            onChange={v => patchFurniture({ heightOffset: v })} />
+                    </PropField>
                     <PropField label="Z pos (m)">
                         <NumInput value={furniture.z} min={-50} max={50} step={0.5}
                             onChange={v => patchFurniture({ z: snapFurniture(v) })} />
@@ -708,7 +712,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         </span>
                     </PropField>
 
-                    {light.x !== undefined && (
+                    {light.x !== undefined && !light.wall && !light.segmentNodeIds && (
                         <>
                             <PropField label="X pos (m)">
                                 <NumInput value={light.x} min={-50} max={50} step={0.5}

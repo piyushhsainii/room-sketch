@@ -839,6 +839,55 @@ export const FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
         icon: 'Table2',
         category: 'bedroom',
     },
+    {
+        type: 'kitchen_cabinet_base',
+        label: 'Base Cabinet',
+        icon: 'Archive',
+        category: 'kitchen',
+    },
+    {
+        type: 'kitchen_cabinet_wall',
+        label: 'Wall Cabinet',
+        icon: 'PanelTop',
+        category: 'kitchen',
+    },
+    {
+        type: 'kitchen_countertop_slab',
+        label: 'Countertop',
+        icon: 'RectangleHorizontal',
+        category: 'kitchen',
+    },
+    {
+        type: 'kitchen_sink',
+        label: 'Kitchen Sink',
+        icon: 'Droplet',
+        category: 'kitchen',
+    },
+    {
+        type: 'kitchen_fridge',
+        label: 'Fridge',
+        icon: 'Refrigerator',
+        category: 'kitchen',
+    },
+    {
+        type: 'kitchen_island',
+        label: 'Kitchen Island',
+        icon: 'Table',
+        category: 'kitchen',
+    },
+    {
+        type: 'kitchen_dishwasher',
+        label: 'Dishwasher',
+        icon: 'WashingMachine',
+        category: 'kitchen',
+    },
+    {
+        type: 'kitchen_backsplash_panel',
+        label: 'Backsplash',
+        icon: 'Grid3x3',
+        category: 'kitchen',
+    },
+
 ]
 
 export interface FurnitureMaterial {

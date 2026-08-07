@@ -299,7 +299,7 @@ export function FurnitureMesh({
     return (
         <group
             ref={groupRef}
-            position={[f.x, 0, f.z]}
+            position={[f.x, f.heightOffset ?? 0, f.z]}
             rotation={[0, f.rotation, 0]}
             onClick={handleClick}
             onPointerOver={handleOver}
@@ -1480,6 +1480,163 @@ export function FurnitureMesh({
                     )}
                 </group>
             )}
+
+            {/* KITCHEN MESH */}
+
+            {f.type === 'kitchen_cabinet_base' && (
+                <group>
+                    <RoundedBox args={[0.58 * s, 0.85 * s, 0.58 * s]} radius={0.015 * s} smoothness={6} position={[0, 0.425 * s, 0]} castShadow receiveShadow>
+                        <meshStandardMaterial key={`${materialKey}-body`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#E4DDCF"} roughness={0.45} />
+                    </RoundedBox>
+                    {/* Two door fronts, side by side, with slim handles */}
+                    {[-0.14, 0.14].map((x, i) => (
+                        <group key={`door-${i}`}>
+                            <RoundedBox args={[0.26 * s, 0.78 * s, 0.02 * s]} radius={0.008 * s} smoothness={4} position={[x * s, 0.44 * s, 0.30 * s]} castShadow>
+                                <meshStandardMaterial color="#DCD4C4" roughness={0.35} />
+                            </RoundedBox>
+                            <mesh position={[(x + (i === 0 ? 0.1 : -0.1)) * s, 0.44 * s, 0.315 * s]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                                <cylinderGeometry args={[0.006 * s, 0.006 * s, 0.14 * s, 8]} />
+                                <meshStandardMaterial color="#9a9488" metalness={0.6} roughness={0.3} />
+                            </mesh>
+                        </group>
+                    ))}
+                    {/* Toe-kick recess */}
+                    <mesh position={[0, 0.04 * s, 0.27 * s]}>
+                        <boxGeometry args={[0.5 * s, 0.08 * s, 0.06 * s]} />
+                        <meshStandardMaterial color="#2A2622" roughness={0.7} />
+                    </mesh>
+                </group>
+            )}
+
+            {f.type === 'kitchen_cabinet_wall' && (
+                <group position={[0, 1.4 * s, 0]}>
+                    <RoundedBox args={[0.58 * s, 0.7 * s, 0.33 * s]} radius={0.015 * s} smoothness={6} castShadow receiveShadow>
+                        <meshStandardMaterial key={`${materialKey}-body`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#E4DDCF"} roughness={0.45} />
+                    </RoundedBox>
+                    {[-0.14, 0.14].map((x, i) => (
+                        <group key={`door-${i}`}>
+                            <RoundedBox args={[0.26 * s, 0.63 * s, 0.02 * s]} radius={0.008 * s} smoothness={4} position={[x * s, 0, 0.175 * s]} castShadow>
+                                <meshStandardMaterial color="#DCD4C4" roughness={0.35} />
+                            </RoundedBox>
+                            <mesh position={[(x + (i === 0 ? 0.1 : -0.1)) * s, 0, 0.19 * s]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                                <cylinderGeometry args={[0.006 * s, 0.006 * s, 0.12 * s, 8]} />
+                                <meshStandardMaterial color="#9a9488" metalness={0.6} roughness={0.3} />
+                            </mesh>
+                        </group>
+                    ))}
+                </group>
+            )}
+
+            {f.type === 'kitchen_countertop_slab' && (
+                <group>
+                    <RoundedBox args={[1.18 * s, 0.05 * s, 0.6 * s]} radius={0.008 * s} smoothness={8} position={[0, 0.88 * s, 0]} castShadow receiveShadow>
+                        <meshStandardMaterial color="#3A3835" roughness={0.15} metalness={0.05} />
+                    </RoundedBox>
+                    {/* Front lip / edge detail */}
+                    <mesh position={[0, 0.855 * s, 0.29 * s]} castShadow>
+                        <boxGeometry args={[1.18 * s, 0.02 * s, 0.02 * s]} />
+                        <meshStandardMaterial color="#2E2C2A" roughness={0.2} />
+                    </mesh>
+                </group>
+            )}
+
+            {f.type === 'kitchen_sink' && (
+                <group position={[0, 0.86 * s, 0]}>
+                    <RoundedBox args={[0.76 * s, 0.04 * s, 0.5 * s]} radius={0.01 * s} smoothness={8} castShadow receiveShadow>
+                        <meshStandardMaterial color="#C7CBCD" metalness={0.7} roughness={0.25} />
+                    </RoundedBox>
+                    {/* Basin recess */}
+                    <mesh position={[0, -0.09 * s, 0]}>
+                        <boxGeometry args={[0.62 * s, 0.16 * s, 0.36 * s]} />
+                        <meshStandardMaterial color="#8C9194" metalness={0.6} roughness={0.35} />
+                    </mesh>
+                    {/* Faucet */}
+                    <mesh position={[0, 0.15 * s, -0.18 * s]} castShadow>
+                        <cylinderGeometry args={[0.012 * s, 0.012 * s, 0.28 * s, 10]} />
+                        <meshStandardMaterial color="#B9B9B4" metalness={0.7} roughness={0.25} />
+                    </mesh>
+                    <mesh position={[0, 0.28 * s, -0.10 * s]} rotation={[0, 0, Math.PI / 3]} castShadow>
+                        <cylinderGeometry args={[0.01 * s, 0.01 * s, 0.16 * s, 10]} />
+                        <meshStandardMaterial color="#B9B9B4" metalness={0.7} roughness={0.25} />
+                    </mesh>
+                </group>
+            )}
+
+            {f.type === 'kitchen_fridge' && (
+                <group>
+                    <RoundedBox args={[0.72 * s, 1.78 * s, 0.72 * s]} radius={0.02 * s} smoothness={6} position={[0, 0.89 * s, 0]} castShadow receiveShadow>
+                        <meshStandardMaterial key={`${materialKey}-body`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#DADADA"} roughness={0.3} metalness={0.35} />
+                    </RoundedBox>
+                    {/* Freezer/fridge door split line */}
+                    <mesh position={[0, 1.32 * s, 0.365 * s]}>
+                        <boxGeometry args={[0.68 * s, 0.01 * s, 0.005 * s]} />
+                        <meshStandardMaterial color="#9a9a9a" metalness={0.5} roughness={0.4} />
+                    </mesh>
+                    {/* Handles */}
+                    <mesh position={[0.30 * s, 1.55 * s, 0.37 * s]} castShadow>
+                        <boxGeometry args={[0.02 * s, 0.35 * s, 0.03 * s]} />
+                        <meshStandardMaterial color="#8a8a8a" metalness={0.6} roughness={0.3} />
+                    </mesh>
+                    <mesh position={[0.30 * s, 0.75 * s, 0.37 * s]} castShadow>
+                        <boxGeometry args={[0.02 * s, 0.55 * s, 0.03 * s]} />
+                        <meshStandardMaterial color="#8a8a8a" metalness={0.6} roughness={0.3} />
+                    </mesh>
+                </group>
+            )}
+
+            {f.type === 'kitchen_island' && (
+                <group>
+                    <RoundedBox args={[1.55 * s, 0.85 * s, 0.85 * s]} radius={0.02 * s} smoothness={6} position={[0, 0.425 * s, 0]} castShadow receiveShadow>
+                        <meshStandardMaterial key={`${materialKey}-body`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#E4DDCF"} roughness={0.45} />
+                    </RoundedBox>
+                    {/* Countertop overhang, slightly larger than the base */}
+                    <RoundedBox args={[1.65 * s, 0.05 * s, 0.95 * s]} radius={0.01 * s} smoothness={8} position={[0, 0.88 * s, 0]} castShadow receiveShadow>
+                        <meshStandardMaterial color="#3A3835" roughness={0.15} metalness={0.05} />
+                    </RoundedBox>
+                    {/* Cabinet door fronts along the long face */}
+                    {[-0.5, 0, 0.5].map((x, i) => (
+                        <RoundedBox key={i} args={[0.42 * s, 0.78 * s, 0.02 * s]} radius={0.008 * s} smoothness={4} position={[x * s, 0.44 * s, 0.44 * s]} castShadow>
+                            <meshStandardMaterial color="#DCD4C4" roughness={0.35} />
+                        </RoundedBox>
+                    ))}
+                </group>
+            )}
+
+            {f.type === 'kitchen_dishwasher' && (
+                <group>
+                    <RoundedBox args={[0.58 * s, 0.82 * s, 0.58 * s]} radius={0.015 * s} smoothness={6} position={[0, 0.41 * s, 0]} castShadow receiveShadow>
+                        <meshStandardMaterial color="#C7CBCD" metalness={0.5} roughness={0.35} />
+                    </RoundedBox>
+                    {/* Control panel strip near the top */}
+                    <mesh position={[0, 0.74 * s, 0.29 * s]}>
+                        <boxGeometry args={[0.54 * s, 0.06 * s, 0.01 * s]} />
+                        <meshStandardMaterial color="#2A2A2A" roughness={0.4} metalness={0.3} />
+                    </mesh>
+                    {/* Recessed handle */}
+                    <mesh position={[0, 0.68 * s, 0.295 * s]}>
+                        <boxGeometry args={[0.5 * s, 0.02 * s, 0.015 * s]} />
+                        <meshStandardMaterial color="#9a9488" metalness={0.6} roughness={0.3} />
+                    </mesh>
+                </group>
+            )}
+
+            {f.type === 'kitchen_backsplash_panel' && (
+                <group position={[0, 1.15 * s, 0]}>
+                    <mesh castShadow receiveShadow>
+                        <boxGeometry args={[1.0 * s, 0.55 * s, 0.02 * s]} />
+                        <meshStandardMaterial color="#EFEAE0" roughness={0.15} metalness={0.05} />
+                    </mesh>
+                    {/* Subtle grout lines, subway-tile look */}
+                    {Array.from({ length: 4 }, (_, i) => (
+                        <mesh key={`h${i}`} position={[0, -0.2 * s + (0.4 * s / 3) * i, 0.011 * s]}>
+                            <boxGeometry args={[1.0 * s, 0.004 * s, 0.002 * s]} />
+                            <meshStandardMaterial color="#D8D2C4" roughness={0.5} />
+                        </mesh>
+                    ))}
+                </group>
+            )}
+
+
 
             {/* Selection / hover highlight — wireframe box around bounding footprint */}
             {interactive && (selected || hovered) && highlightH > 0 && (

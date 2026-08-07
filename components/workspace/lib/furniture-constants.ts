@@ -27,7 +27,16 @@ export type FurnitureType =
   | "led_strip"
   | "wall_panel_pvc"
   | "painting"
-  | "lounge_recliner";
+  | "lounge_recliner"
+  // NEW — kitchen expansion
+  | "kitchen_cabinet_base"
+  | "kitchen_cabinet_wall"
+  | "kitchen_countertop_slab"
+  | "kitchen_sink"
+  | "kitchen_fridge"
+  | "kitchen_island"
+  | "kitchen_dishwasher"
+  | "kitchen_backsplash_panel";
 
 export type FurnitureVariant = "modern" | "classical";
 
@@ -43,6 +52,7 @@ export type PlacedFurniture = {
   materialId?: string;
   variant?: FurnitureVariant;
   orientation?: FurnitureOrientation;
+  heightOffset?: number;
 };
 
 export const FURNITURE_FOOTPRINTS: Record<
@@ -78,6 +88,14 @@ export const FURNITURE_FOOTPRINTS: Record<
   bed_double: { w: 1.95, d: 2.2 }, // includes classical carved headboard
   bed_bunk: { w: 1.15, d: 2.05 }, // includes ladder projection on open side
   dressing_table: { w: 1.2, d: 0.9 }, // includes stool space in front of table
+  kitchen_cabinet_base: { w: 0.6, d: 0.6 }, // standard base unit width, 60cm depth counters
+  kitchen_cabinet_wall: { w: 0.6, d: 0.35 }, // wall units are shallower
+  kitchen_countertop_slab: { w: 1.2, d: 0.62 }, // spans ~2 base units by default; scale to fit a run
+  kitchen_sink: { w: 0.8, d: 0.55 }, // sits inset into a countertop run
+  kitchen_fridge: { w: 0.75, d: 0.75 },
+  kitchen_island: { w: 1.6, d: 0.9 },
+  kitchen_dishwasher: { w: 0.6, d: 0.6 },
+  kitchen_backsplash_panel: { w: 1.0, d: 0.03 },
 };
 export function getFurnitureFootprint(
   type: FurnitureType,
@@ -123,6 +141,14 @@ export const FURNITURE_LABELS: Record<FurnitureType, string> = {
   bed_double: "D.Bed",
   bed_bunk: "Bunk Bed",
   dressing_table: "Dresser",
+  kitchen_cabinet_base: "Base Cabinet",
+  kitchen_cabinet_wall: "Wall Cabinet",
+  kitchen_countertop_slab: "Countertop",
+  kitchen_sink: "Kitchen Sink",
+  kitchen_fridge: "Fridge",
+  kitchen_island: "Kitchen Island",
+  kitchen_dishwasher: "Dishwasher",
+  kitchen_backsplash_panel: "Backsplash",
 };
 export const FURNITURE_COLORS: Record<FurnitureType, string> = {
   sofa: "rgba(160,148,130,0.88)",
@@ -154,6 +180,15 @@ export const FURNITURE_COLORS: Record<FurnitureType, string> = {
   bed_double: "rgba(128,116,152,0.88)", // near `bed`, slightly deeper
   bed_bunk: "rgba(120,110,148,0.88)", // near `bed`, deepest of the three
   dressing_table: "rgba(150,128,150,0.88)", // desk/mirror hybrid tone
+
+  kitchen_cabinet_base: "rgba(150,120,85,0.88)",
+  kitchen_cabinet_wall: "rgba(165,135,98,0.88)",
+  kitchen_countertop_slab: "rgba(210,205,195,0.9)",
+  kitchen_sink: "rgba(190,195,198,0.9)",
+  kitchen_fridge: "rgba(225,225,222,0.9)",
+  kitchen_island: "rgba(145,115,82,0.88)",
+  kitchen_dishwasher: "rgba(180,180,178,0.88)",
+  kitchen_backsplash_panel: "rgba(220,215,205,0.88)",
 };
 
 export const CATEGORY_LABELS: Record<FurnitureCategory, string> = {

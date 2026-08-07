@@ -129,16 +129,18 @@ export function getSelectionAnchorWorld(
         }
         case 'wallDecor':
         case 'opening': {
-            // Both are wall-anchored via either {roomId, wall, position} (a
-            // rectangle room's wall) or {segmentNodeIds, segmentT} (a
-            // line-drawn wall) — same two shapes used at placement time in
-            // handleMouseDown's door/window/decor branches. Resolve position
-            // along whichever one is present.
             const entity = kind === 'opening'
                 ? fp.openings.find(o => o.id === selectedId)
                 : (fp.wallDecor ?? []).find(d => d.id === selectedId)
             if (!entity) return null
 
+            if (entity.segmentNodeIds) {
+                const a = fp.lineNodes.find(n => n.id === entity.segmentNodeIds![0])
+                const b = fp.lineNodes.find(n => n.id === entity.segmentNodeIds![1])
+                if (!a || !b) return null
+                const t = entity.segmentT ?? 0
+                return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }
+            }
             if (entity.wall && entity.roomId) {
                 const room = fp.rooms.find(r => r.id === entity.roomId)
                 if (!room) return null
@@ -146,13 +148,6 @@ export function getSelectionAnchorWorld(
                 return isH
                     ? { x: room.x + entity.position, z: entity.wall === 'north' ? room.z : room.z + room.depth }
                     : { x: entity.wall === 'west' ? room.x : room.x + room.width, z: room.z + entity.position }
-            }
-            if (entity.segmentNodeIds) {
-                const a = fp.lineNodes.find(n => n.id === entity.segmentNodeIds![0])
-                const b = fp.lineNodes.find(n => n.id === entity.segmentNodeIds![1])
-                if (!a || !b) return null
-                const t = entity.segmentT ?? 0
-                return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }
             }
             return null
         }
@@ -163,7 +158,15 @@ export function getSelectionAnchorWorld(
             if (light.x !== undefined && light.z !== undefined) {
                 return { x: light.x, z: light.z }
             }
-            // Wall-point / wall-strip light — same resolution as opening/wallDecor above
+            // segmentNodeIds checked before wall/roomId — same reasoning as
+            // the opening/wallDecor case above.
+            if (light.segmentNodeIds) {
+                const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
+                const b = fp.lineNodes.find(n => n.id === light.segmentNodeIds![1])
+                if (!a || !b) return null
+                const t = light.segmentT ?? 0
+                return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }
+            }
             if (light.wall && light.roomId) {
                 const room = fp.rooms.find(r => r.id === light.roomId)
                 if (!room) return null
@@ -171,13 +174,6 @@ export function getSelectionAnchorWorld(
                 return isH
                     ? { x: room.x + (light.position ?? 0), z: light.wall === 'north' ? room.z : room.z + room.depth }
                     : { x: light.wall === 'west' ? room.x : room.x + room.width, z: room.z + (light.position ?? 0) }
-            }
-            if (light.segmentNodeIds) {
-                const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
-                const b = fp.lineNodes.find(n => n.id === light.segmentNodeIds![1])
-                if (!a || !b) return null
-                const t = light.segmentT ?? 0
-                return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }
             }
             return null
         }

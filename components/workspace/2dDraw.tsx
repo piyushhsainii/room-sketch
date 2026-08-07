@@ -217,6 +217,8 @@ export function draw2D(
     marqueeRect: { x: number; z: number; w: number; d: number } | null,
     nodesById: Map<string, LineNode>,
     roomsById: Map<string, FloorPlanState['rooms'][number]>,
+    showFurniture: boolean = true,
+    showLabels: boolean = true,
 ) {
     const W = ctx.canvas.width
     const H = ctx.canvas.height
@@ -266,17 +268,20 @@ export function draw2D(
         // (no background chip). Rooms tile the whole plan, so a boxed
         // label per room reads as visual clutter; the halo alone gives
         // enough contrast against both light and dark room fills.
-        drawPlainLabel(ctx, rx + rw / 2, rz + rd / 2 - 9, room.label, {
-            fontSize: Math.max(11, 13 * zoom),
-            weight: 700,
-            color: isSel ? '#4F46E5' : '#1a1a1a',
-        })
-        drawPlainLabel(ctx, rx + rw / 2, rz + rd / 2 + 10, `${room.width.toFixed(1)}m × ${room.depth.toFixed(1)}m`, {
-            fontSize: Math.max(9, 10.5 * zoom),
-            weight: 500,
-            color: isSel ? 'rgba(79,70,229,0.75)' : 'rgba(30,30,30,0.65)',
-        })
+        if (showLabels) {
 
+            drawPlainLabel(ctx, rx + rw / 2, rz + rd / 2 - 9, room.label, {
+                fontSize: Math.max(11, 13 * zoom),
+                weight: 700,
+                color: isSel ? '#4F46E5' : '#1a1a1a',
+            })
+            drawPlainLabel(ctx, rx + rw / 2, rz + rd / 2 + 10, `${room.width.toFixed(1)}m × ${room.depth.toFixed(1)}m`, {
+                fontSize: Math.max(9, 10.5 * zoom),
+                weight: 500,
+                color: isSel ? 'rgba(79,70,229,0.75)' : 'rgba(30,30,30,0.65)',
+            })
+
+        }
         // ── Room Openings ────────────────────────────────────────────────────
         // was: fp.openings.filter(o => o.roomId === room.id && !o.segmentNodeIds)
         // now: O(1) map lookup instead of an O(M) scan per room, every frame
@@ -502,6 +507,7 @@ export function draw2D(
     }
 
     for (const d of fp.wallDecor ?? []) {
+        if (!showFurniture) continue
         let dx: number, dz: number, angle: number
         if (d.segmentNodeIds) {
             const a = nodesById.get(d.segmentNodeIds![0])
@@ -655,11 +661,13 @@ export function draw2D(
             }
 
             const lx = px, ly = pz + (kind === 'wall-strip' ? 20 : 22)
-            drawChipLabel(ctx, {
-                x: lx, y: ly, text: label, dotColor: DOT_LIGHT, zoom,
-                selected: isSel, hovered: isHov,
-                leaderFrom: { x: px, y: pz + 8 },
-            })
+            if (showLabels) {
+                drawChipLabel(ctx, {
+                    x: lx, y: ly, text: label, dotColor: DOT_LIGHT, zoom,
+                    selected: isSel, hovered: isHov,
+                    leaderFrom: { x: px, y: pz + 8 },
+                })
+            }
             continue
         }
 
@@ -934,10 +942,12 @@ export function draw2D(
             for (let i = 0; i < nodes.length - 1; i++) {
                 const a = nodes[i]!, b = nodes[i + 1]!
                 const midX = cx((a.x + b.x) / 2), midZ = cy((a.z + b.z) / 2)
-                drawChipLabel(ctx, {
-                    x: midX, y: midZ + 16, text: `H: ${seg.height.toFixed(2)}m`,
-                    dotColor: DOT_LIGHT, zoom,
-                })
+                if (showLabels) {
+                    drawChipLabel(ctx, {
+                        x: midX, y: midZ + 16, text: `H: ${seg.height.toFixed(2)}m`,
+                        dotColor: DOT_LIGHT, zoom,
+                    })
+                }
             }
         }
     }
@@ -1005,6 +1015,7 @@ export function draw2D(
     }
     // ── Furniture overlays (2D top-down icons) ────────────────────────────────
     for (const f of fp.furniture ?? []) {
+        if (!showFurniture) continue
         const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
         const fw = fp2.w * scale
         const fd = fp2.d * scale
@@ -1058,16 +1069,18 @@ export function draw2D(
         // Label — kept inline on the piece itself (space allowing) with a
         // text shadow for contrast; falls back visually fine since the
         // furniture body already has a solid fill.
-        const fs = Math.max(8, Math.min(11, (fw / 4)))
-        ctx.font = `600 ${fs}px system-ui`
-        ctx.shadowColor = 'rgba(0,0,0,0.5)'
-        ctx.shadowBlur = 3
-        ctx.fillStyle = 'rgba(255,255,255,0.98)'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(FURNITURE_LABELS[f.type] ?? f.type, 0, 0)
-        ctx.shadowColor = 'transparent'
-        ctx.shadowBlur = 0
+        if (showLabels) {
+            const fs = Math.max(8, Math.min(11, (fw / 4)))
+            ctx.font = `600 ${fs}px system-ui`
+            ctx.shadowColor = 'rgba(0,0,0,0.5)'
+            ctx.shadowBlur = 3
+            ctx.fillStyle = 'rgba(255,255,255,0.98)'
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(FURNITURE_LABELS[f.type] ?? f.type, 0, 0)
+            ctx.shadowColor = 'transparent'
+            ctx.shadowBlur = 0
+        }
 
         // Selection rotation handles
         if (isSel) {
@@ -1128,15 +1141,16 @@ export function draw2D(
         }
 
         ctx.restore()
-
-        drawChipLabel(ctx, {
-            x: sx, y: sz + sd / 2 + 16, text: STAIRS_LABELS[s.type],
-            dotColor: DOT_OUTDOOR, zoom, selected: isSel, hovered: isHov,
-        })
+        if (showLabels) {
+            drawChipLabel(ctx, {
+                x: sx, y: sz + sd / 2 + 16, text: STAIRS_LABELS[s.type],
+                dotColor: DOT_OUTDOOR, zoom, selected: isSel, hovered: isHov,
+            })
+        }
     }
     // ── Annotations ──────────────────────────────────────────────────────────
     for (const ann of fp.annotations ?? []) {
-        if (!ann.text) continue
+        if (!ann.text || !showLabels) continue
         const ax = cx(ann.x), az = cy(ann.z)
         const isSel = selectedIds.includes(ann.id)
         const isHov = hoveredId === ann.id
@@ -1202,11 +1216,12 @@ export function draw2D(
             ctx.stroke()
         }
         ctx.restore()
-
-        drawChipLabel(ctx, {
-            x: cx(o.x), y: cy(o.z) + (isFlat ? 0 : 18), text: label,
-            dotColor: DOT_OUTDOOR, zoom, selected: isSel, hovered: isHov,
-        })
+        if (showLabels) {
+            drawChipLabel(ctx, {
+                x: cx(o.x), y: cy(o.z) + (isFlat ? 0 : 18), text: label,
+                dotColor: DOT_OUTDOOR, zoom, selected: isSel, hovered: isHov,
+            })
+        }
     }
 
     // ── Live measurement rubber band ──────────────────────────────────────────

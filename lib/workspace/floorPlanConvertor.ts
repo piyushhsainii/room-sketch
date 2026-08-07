@@ -1,11 +1,39 @@
+// ─────────────────────────────────────────────────────────────────────────
+// `SceneFloorJSON` defined HERE, not just described — a previous version of
+// this file used it as a type annotation without ever declaring it, which
+// doesn't compile ("Cannot find name 'SceneFloorJSON'"). Defining it locally
+// means this file compiles standalone regardless of whether your shared
+// SceneJSON type has been updated yet.
+//
+// Structural typing means this doesn't have to be nominally "the same"
+// type as anything in your types file — as long as the shape matches,
+// TypeScript treats them as compatible. So the ONLY change actually
+// required in your SceneJSON type definition is adding the new optional
+// fields below; you do not need to import this exact type:
+//
+//   export type SceneJSON = {
+//     // ...all existing fields, unchanged...
+//     floors?: SceneFloorJSON[];   // <- if you want to reuse this exact
+//                                  //    type, import it from this file:
+//                                  //    import type { SceneFloorJSON } from '@/lib/workspace/floorPlanConvertor'
+//     active_floor_id?: string;
+//     view_mode?: "single" | "stacked" | "stacked-full";
+//     show_underlay?: boolean;
+//     roof?: RoofConfig;
+//   };
+//
+// Top-level `rooms`/`furniture`/`lights`/etc. stay mandatory on SceneJSON for
+// back-compat with any old reader that doesn't know about `floors` — when we
+// write a multi-floor payload we mirror the active floor's data into those
+// top-level fields too (see `projectFloorPlanToSceneJSON` below).
+// ─────────────────────────────────────────────────────────────────────────
+
+// ADJUST PATH if DEFAULT_ROOF lives elsewhere — this matches where your
+// earlier-shown migrateToMultiFloor.ts appears to reference it from.
 import {
   RoomSceneConfig,
   SceneConfig,
 } from "@/components/workspace/FloorPlanEditor";
-import {
-  PlacedLight,
-  SceneLight,
-} from "@/components/workspace/lights-constant";
 import {
   ClosedShape,
   DoorStyle,
@@ -16,25 +44,80 @@ import {
   LineNode,
   LineSegment,
 } from "@/components/workspace/lib/constants";
-
-import { PlacedOutdoorObject } from "@/components/workspace/lib/outdoor-constants";
-import type {
-  SceneJSON,
-  SceneRoom,
+import {
+  DEFAULT_ROOF,
+  Floor,
+  ProjectFloorPlan,
+} from "@/components/workspace/lib/floor-data";
+import { migrateToMultiFloor } from "@/components/workspace/lib/migrateToMultiFloor";
+import {
+  PlacedLight,
+  SceneLight,
+} from "@/components/workspace/lights-constant";
+import { normalizeDoorMaterialOverride } from "@/components/workspace/mesh/door-style-migration";
+import {
   RoomDoor,
   RoomWindow,
+  SceneJSON,
   SceneOutdoorObject,
+  SceneRoom,
 } from "@/types/workspace";
-import { normalizeDoorMaterialOverride } from "@/components/workspace/mesh/door-style-migration";
+import { uid } from "../helpers";
 import { PlacedFurniture } from "@/components/workspace/lib/furniture-constants";
 import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
+import { PlacedOutdoorObject } from "@/components/workspace/lib/outdoor-constants";
 
-export function floorPlanStateToSceneJSON(
+export type SceneFloorJSON = SceneFloorContent & {
+  id: string;
+  label: string;
+  order: number;
+  elevation: number;
+  visible: boolean;
+};
+
+// Local widened type — lets this file compile even before `SceneJSON`
+// itself has been updated with the `floors`/`active_floor_id`/etc. fields.
+// Once your shared SceneJSON type has them for real, this becomes a no-op
+// and can be removed (or left — it's harmless either way).
+type SceneJSONWithFloors = SceneJSON & {
+  floors?: SceneFloorJSON[];
+  active_floor_id?: string;
+  view_mode?: ProjectFloorPlan["viewMode"];
+  show_underlay?: boolean;
+  roof?: ProjectFloorPlan["roof"];
+};
+
+// What `convertSingleFloorJSON` actually reads — deliberately narrower than
+// full `SceneJSON` so both a legacy top-level payload (SceneJSON) and a
+// single entry from `floors[]` (SceneFloorJSON, which omits extracted_at/
+// floorplan_url/floors/etc.) can both be passed in without a cast.
+type SceneFloorContent = Omit<
+  SceneJSON,
+  | "floors"
+  | "active_floor_id"
+  | "view_mode"
+  | "show_underlay"
+  | "roof"
+  | "extracted_at"
+  | "floorplan_url"
+>;
+
+// ── Shared conversion core, extracted so single-floor and multi-floor ─────
+// serialization can't drift out of sync with each other.
+
+function floorStateToSceneFields(
   fp: FloorPlanState,
-  sceneConfig: SceneConfig,
-): SceneJSON {
-  const cfg = sceneConfig;
-
+  cfg: SceneConfig,
+): Omit<
+  SceneJSON,
+  | "floors"
+  | "active_floor_id"
+  | "view_mode"
+  | "show_underlay"
+  | "roof"
+  | "extracted_at"
+  | "floorplan_url"
+> {
   const roomIdMap = new Map<string, string>();
 
   const rooms: SceneRoom[] = fp.rooms.map((room, idx) => {
@@ -59,12 +142,6 @@ export function floorPlanStateToSceneJSON(
         height: o.height,
         sillHeight: o.sillHeight,
       }));
-    const line_segments = (fp.lineSegments ?? []).map((s) => ({
-      id: s.id,
-      node_ids: s.nodeIds,
-      thickness: s.thickness,
-      height: s.height,
-    }));
 
     const roomCfg = cfg.rooms.find((r) => r.roomId === room.id);
 
@@ -87,8 +164,6 @@ export function floorPlanStateToSceneJSON(
     };
   });
 
-  const lineRooms: SceneRoom[] = [];
-
   const line_nodes = (fp.lineNodes ?? []).map((n) => ({
     id: n.id,
     x: n.x,
@@ -98,6 +173,7 @@ export function floorPlanStateToSceneJSON(
     id: s.id,
     node_ids: s.nodeIds,
     thickness: s.thickness,
+    height: s.height,
   }));
   const closed_shapes = (fp.closedShapes ?? []).map((s) => ({
     id: s.id,
@@ -108,21 +184,28 @@ export function floorPlanStateToSceneJSON(
     wall_overrides: s.wallOverrides,
   }));
 
+  // BUG FIX: was serializing `l.roomId` (the internal editor uid) directly.
+  // On load, `sceneJSONToFloorPlanState`'s `roomIdReverseMap` is keyed by the
+  // *serialized* room id ("room_1", not the uid), so the lookup always
+  // missed and every light silently lost its room association on a
+  // save → share → load round trip. Route it through `roomIdMap` (built
+  // above, from the same rooms this light array belongs to) so the id
+  // written out actually matches what the reverse map expects.
   const lights: SceneLight[] = (fp.lights ?? []).map((l) => ({
     id: l.id,
     type: l.type,
-    room_id: l.roomId,
+    room_id: l.roomId ? roomIdMap.get(l.roomId) : undefined,
     wall: l.wall,
     position: l.position,
     segment_node_ids: l.segmentNodeIds,
     segment_t: l.segmentT,
     x: l.x,
     z: l.z,
-    width: l.width, // NEW — shelf_strip
-    aim_rotation: l.aimRotation, // NEW — spotlight
-    aim_tilt: l.aimTilt, // NEW — spotlight
-    path_node_ids: l.pathNodeIds, // NEW — string_lights
-    bulb_count: l.bulbCount, // NEW — string_lights
+    width: l.width,
+    aim_rotation: l.aimRotation,
+    aim_tilt: l.aimTilt,
+    path_node_ids: l.pathNodeIds,
+    bulb_count: l.bulbCount,
     height_offset: l.heightOffset,
     color: l.color,
     intensity: l.intensity,
@@ -164,8 +247,8 @@ export function floorPlanStateToSceneJSON(
   );
 
   return {
-    rooms: [...rooms, ...lineRooms],
-    furniture: furniture,
+    rooms,
+    furniture,
     stairs: stairs ?? [],
     lights: lights ?? [],
     door_style: cfg.doorStyle ?? ("glass_clear" as DoorStyle),
@@ -174,9 +257,7 @@ export function floorPlanStateToSceneJSON(
     line_nodes,
     line_segments,
     closed_shapes,
-    extracted_at: new Date().toISOString(),
-    floorplan_url: "",
-    outdoor_objects: outdoor_objects,
+    outdoor_objects,
     ground_material: cfg.groundMaterial,
     saved_views: fp.savedViews?.map((v) => ({
       id: v.id,
@@ -187,13 +268,163 @@ export function floorPlanStateToSceneJSON(
   };
 }
 
-function uid() {
-  return Math.random().toString(36).slice(2, 9);
+// ── Single-floor save (legacy path / non-multi-floor projects) ────────────
+
+export function floorPlanStateToSceneJSON(
+  fp: FloorPlanState,
+  sceneConfig: SceneConfig,
+): SceneJSON {
+  return {
+    ...floorStateToSceneFields(fp, sceneConfig),
+    extracted_at: new Date().toISOString(),
+    floorplan_url: "",
+  };
 }
 
+// ── Multi-floor save ────────────────────────────────────────────────────
+// `sceneConfig.rooms`/`sceneConfig.lights` are expected to be the MERGED
+// union across all floors (see `sceneJSONToFloorPlanState` below) — each
+// room/light id is globally unique (uid()'d per floor at load time), so
+// `floorStateToSceneFields` looking them up out of the merged cfg per-floor
+// still resolves correctly without needing to pre-split cfg per floor.
+
+export function projectFloorPlanToSceneJSON(
+  projectFloorPlan: ProjectFloorPlan,
+  sceneConfig: SceneConfig,
+): SceneJSONWithFloors {
+  const sortedFloors = [...projectFloorPlan.floors].sort(
+    (a, b) => a.order - b.order,
+  );
+
+  const floors: SceneFloorJSON[] = sortedFloors.map((floor) => ({
+    id: floor.id,
+    label: floor.label,
+    order: floor.order,
+    elevation: floor.elevation,
+    visible: floor.visible,
+    ...floorStateToSceneFields(floor.state, sceneConfig),
+  }));
+
+  const activeFloor =
+    sortedFloors.find((f) => f.id === projectFloorPlan.activeFloorId) ??
+    sortedFloors[0];
+
+  // Mirror the active floor's fields into the legacy top-level shape too,
+  // so any older reader that doesn't know about `floors` yet still gets a
+  // sane (if single-floor) result instead of an empty scene.
+  const emptyFp: FloorPlanState = {
+    rooms: [],
+    lineNodes: [],
+    lineSegments: [],
+    closedShapes: [],
+    openings: [],
+    furniture: [],
+    stairs: [],
+    annotations: [],
+    roomHeight: 2.7,
+    wallDecor: [],
+    lights: [],
+    outdoorObjects: [],
+    savedViews: [],
+  };
+  const activeFields = floorStateToSceneFields(
+    activeFloor?.state ?? emptyFp,
+    sceneConfig,
+  );
+
+  return {
+    ...activeFields,
+    floors,
+    active_floor_id: projectFloorPlan.activeFloorId,
+    view_mode: projectFloorPlan.viewMode,
+    show_underlay: projectFloorPlan.showUnderlay,
+    roof: projectFloorPlan.roof,
+    extracted_at: new Date().toISOString(),
+    floorplan_url: "",
+  };
+}
+
+// ── Deserialize back into editor state ─────────────────────────────────
+
 export function sceneJSONToFloorPlanState(
-  json: SceneJSON,
+  jsonInput: SceneJSON,
   defaultRoomHeight = 2.7,
+): {
+  fp: FloorPlanState;
+  sceneConfig: SceneConfig;
+  projectFloorPlan: ProjectFloorPlan;
+} {
+  const json = jsonInput as SceneJSONWithFloors;
+
+  // ── Multi-floor payload ──────────────────────────────────────────────
+  if (json.floors && json.floors.length > 0) {
+    const convertedFloors = json.floors
+      .map((floorJson) => ({
+        meta: floorJson,
+        converted: convertSingleFloorJSON(floorJson, defaultRoomHeight),
+      }))
+      .sort((a, b) => a.meta.order - b.meta.order);
+
+    const floors: Floor[] = convertedFloors.map(({ meta, converted }) => ({
+      id: meta.id,
+      label: meta.label,
+      order: meta.order,
+      elevation: meta.elevation,
+      visible: meta.visible ?? true,
+      state: converted.fp,
+    }));
+
+    const projectFloorPlan: ProjectFloorPlan = {
+      floors,
+      activeFloorId: json.active_floor_id ?? floors[0]?.id ?? "",
+      viewMode: json.view_mode ?? "single",
+      showUnderlay: json.show_underlay ?? false,
+      roof: json.roof ?? DEFAULT_ROOF,
+    };
+
+    const activeFloor =
+      floors.find((f) => f.id === projectFloorPlan.activeFloorId) ?? floors[0];
+    const activeConverted = convertedFloors.find(
+      (f) => f.meta.id === activeFloor.id,
+    )!.converted;
+
+    // Merge per-floor sceneConfig.rooms/.lights across ALL floors — see
+    // prior fix note. Each floor's room/light ids are globally unique
+    // (freshly uid()'d per convertSingleFloorJSON call), so this union is
+    // safe and lets Scene3D resolve materials/lights correctly for every
+    // floor, not just whichever one happens to be active.
+    const mergedRoomConfigs: RoomSceneConfig[] = convertedFloors.flatMap(
+      (f) => f.converted.sceneConfig.rooms,
+    );
+    const mergedLights: PlacedLight[] = convertedFloors.flatMap(
+      (f) => f.converted.sceneConfig.lights,
+    );
+
+    const sceneConfig: SceneConfig = {
+      ...activeConverted.sceneConfig,
+      rooms: mergedRoomConfigs,
+      lights: mergedLights,
+    };
+
+    return {
+      fp: activeFloor.state,
+      sceneConfig,
+      projectFloorPlan,
+    };
+  }
+
+  // ── Legacy single-floor payload ──────────────────────────────────────
+  const { fp, sceneConfig } = convertSingleFloorJSON(json, defaultRoomHeight);
+  const projectFloorPlan = migrateToMultiFloor(fp);
+
+  return { fp, sceneConfig, projectFloorPlan };
+}
+
+// Per-floor conversion, unchanged logic from before — used for both the
+// legacy single-floor payload and each entry in a multi-floor `floors[]`.
+function convertSingleFloorJSON(
+  json: SceneFloorContent,
+  defaultRoomHeight: number,
 ): { fp: FloorPlanState; sceneConfig: SceneConfig } {
   const rooms: EditorRoom[] = [];
   const roomConfigs: RoomSceneConfig[] = [];
@@ -281,6 +512,9 @@ export function sceneJSONToFloorPlanState(
   const lights: PlacedLight[] = (json.lights ?? []).map((l) => ({
     id: l.id,
     type: l.type,
+    // Now correctly resolves — see the matching fix in
+    // `floorStateToSceneFields` that routes room_id through `roomIdMap`
+    // instead of writing out the raw internal uid.
     roomId: l.room_id ? roomIdReverseMap.get(l.room_id) : undefined,
     wall: l.wall,
     position: l.position,
@@ -288,11 +522,11 @@ export function sceneJSONToFloorPlanState(
     segmentT: l.segment_t,
     x: l.x,
     z: l.z,
-    width: l.width, // NEW
-    aimRotation: l.aim_rotation, // NEW
-    aimTilt: l.aim_tilt, // NEW
-    pathNodeIds: l.path_node_ids, // NEW
-    bulbCount: l.bulb_count, // NEW
+    width: l.width,
+    aimRotation: l.aim_rotation,
+    aimTilt: l.aim_tilt,
+    pathNodeIds: l.path_node_ids,
+    bulbCount: l.bulb_count,
     heightOffset: l.height_offset,
     color: l.color,
     intensity: l.intensity,
@@ -365,7 +599,7 @@ export function sceneJSONToFloorPlanState(
     globalFloorMaterial: (json.global_floor_material ??
       "plain") as FloorMaterial,
     globalWallMaterial: json.global_wall_material ?? "paint",
-    groundMaterial: json.ground_material, // NEW
+    groundMaterial: json.ground_material,
     rooms: roomConfigs,
     lights,
   };

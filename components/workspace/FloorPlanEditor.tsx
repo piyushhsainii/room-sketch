@@ -65,7 +65,6 @@ export type SceneConfig = {
     groundMaterial?: string
     rooms: RoomSceneConfig[]
     lights: PlacedLight[]
-    // NEW — sun/time/compass tool
     sunToolEnabled?: boolean
     sunTimeOfDay?: number      // 0–24, default 12
     sunCompassHeading?: number // 0–360°, default 180
@@ -673,7 +672,8 @@ export default function FloorPlanEditor({
                     derived.closedPolygons,
                     derived.openingsByRoom, derived.openingsBySegment,
                     derived.shapesIndex, null,
-                    derived.nodesById, derived.roomsById
+                    derived.nodesById, derived.roomsById,
+                    sceneConfig.showFurniture, sceneConfig.showLabels
                 )
                 ctx.restore()
             }
@@ -687,10 +687,11 @@ export default function FloorPlanEditor({
                 flat2DRef.current.closedPolygons,
                 openingsIndexRef.current.byRoom, openingsIndexRef.current.bySegment,
                 shapesIndexRef.current, marqueeRectRef.current,
-                nodesByIdRef.current, roomsByIdRef.current
+                nodesByIdRef.current, roomsByIdRef.current,
+                sceneConfig.showFurniture, sceneConfig.showLabels
             )
         })
-    }, [tool, selectedId, selectedIds, zoom, pan, overlappingIds])
+    }, [tool, selectedId, selectedIds, zoom, pan, overlappingIds, sceneConfig.showFurniture, sceneConfig.showLabels])
 
     useEffect(() => { scheduleRedraw() }, [scheduleRedraw, fp, pencilPoints, preview, hoveredId])
     useEffect(() => () => cancelAnimationFrame(rafIdRef.current), [])
@@ -3459,6 +3460,14 @@ export default function FloorPlanEditor({
                         onToggleWalkMode={() => setWalkMode(w => !w)}
                         interactiveMode={interactiveMode}
                         onToggleInteractive={handleToggleInteractive}
+                        showFurniture={sceneConfig.showFurniture}
+                        onToggleShowFurniture={() =>
+                            setSceneConfig(c => ({ ...c, showFurniture: !c.showFurniture }))
+                        }
+                        showLabels={sceneConfig.showLabels}
+                        onToggleShowLabels={() =>
+                            setSceneConfig(c => ({ ...c, showLabels: !c.showLabels }))
+                        }
                         previewOpen={previewOpen}
                         onTogglePreview={() => setPreviewOpen(o => !o)}
                         cameraViewPickerSlot={
@@ -3478,7 +3487,6 @@ export default function FloorPlanEditor({
                 </div>,
                 document.body
             )}
-
             <div style={{ position: "relative" }} className='flex items-center justify-center'>
                 <FloatingDock
                     orientation="horizontal"

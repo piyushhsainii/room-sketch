@@ -10,6 +10,7 @@ import { exportGLTF, exportOBJ } from '../workspace/lib/export/exportgltfobj';
 import { exportSVG } from '../workspace/lib/export/exportsvg';
 import FloorSwitcher from './FloorSwitcherUI';
 import { Floor } from '../workspace/lib/floor-data';
+import { ExportMenuCard, ExportMenuSection, FormatIcon } from './MenuCard';
 
 
 interface WorkspaceNavProps {
@@ -356,27 +357,45 @@ const WorkspaceNav = ({
                     style={{
                         position: 'fixed',
                         top: exportMenuAnchorRect.bottom + 8,
-                        left: exportMenuAnchorRect.right - 200,
-                        minWidth: 200,
-                        background: '#FFFFFF', borderRadius: 8,
-                        border: `1px solid ${THEME.borderStrong}`,
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                        left: exportMenuAnchorRect.right - 260,
+                        width: 260,
+                        background: '#FFFFFF', borderRadius: 12,
+                        border: `1px solid ${THEME.border}`,
+                        boxShadow: THEME.shadowLg,
                         overflow: 'hidden', zIndex: 5000,
                         animation: 'wsnavMenuIn 140ms ease-out',
                     }}
                 >
-                    <MenuSectionLabel>Plan document</MenuSectionLabel>
-                    <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
-                    <MenuSectionLabel>3D / 2D model files</MenuSectionLabel>
-                    {MODEL_EXPORT_FORMATS.map((opt, i) => (
-                        <MenuItem
-                            key={opt.format}
-                            label={opt.label}
-                            sub={opt.sub}
-                            onClick={() => handlePickModelFormat(opt.format)}
-                            delay={40 + i * 40}
+                    <ExportMenuSection label="Plan document">
+                        <ExportMenuCard
+                            icon={
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                                    <path d="M8 12h8M8 16h5M8 8h3" />
+                                </svg>
+                            }
+                            label="Export Plan…"
+                            sub="SVG, PNG, PDF · pick floors, format & layers"
+                            onClick={handleOpenExportPlanDialog}
+                            delay={0}
+                            highlight
                         />
-                    ))}
+                    </ExportMenuSection>
+
+                    <div style={{ height: 1, background: THEME.border, margin: '2px 0' }} />
+
+                    <ExportMenuSection label="3D / 2D model files">
+                        {MODEL_EXPORT_FORMATS.map((opt, i) => (
+                            <ExportMenuCard
+                                key={opt.format}
+                                icon={<FormatIcon format={opt.format} />}
+                                label={opt.label}
+                                sub={opt.sub}
+                                onClick={() => handlePickModelFormat(opt.format)}
+                                delay={60 + i * 40}
+                            />
+                        ))}
+                    </ExportMenuSection>
                 </div>,
                 document.body
             )}
@@ -448,6 +467,8 @@ const WorkspaceNav = ({
                     fp={fp}
                     sceneConfig={sceneConfig}
                     projectId={projectId}
+                    floors={floors}
+                    activeFloorId={activeFloorId}
                     onClose={() => setExportPlanOpen(false)}
                     onOpenShare={() => { setExportPlanOpen(false); setShareDialogOpen(true) }}
                 />

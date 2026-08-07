@@ -2,6 +2,9 @@
 import React from 'react'
 import { FloorPlanState, LineNode } from '../lib/constants'
 import { deriveClosedPolygons, getSegmentOpeningWorldPos, polygonAreaM2 } from '@/lib/helpers'
+import { OUTDOOR_OBJECT_LABELS } from '../lib/outdoor-constants'
+import { STAIRS_LABELS } from '../lib/stairs-constants'
+import { FURNITURE_FOOTPRINTS, FURNITURE_LABELS } from '../lib/furniture-constants'
 
 
 // Standard architectural print scales — denominator is "1 unit on paper = N
@@ -22,6 +25,8 @@ interface Props {
     scale: PrintScale
     paperSize: 'A4' | 'A3' | 'Letter'
     projectName?: string
+    showFurniture?: boolean   // NEW
+    showLabels?: boolean      // NEW
 }
 
 // Picks the smallest of the standard scales that fits the plan's bounding
@@ -42,6 +47,9 @@ function computeBoundsM(fp: FloorPlanState) {
     const xs: number[] = [], zs: number[] = []
     for (const r of fp.rooms) { xs.push(r.x, r.x + r.width); zs.push(r.z, r.z + r.depth) }
     for (const n of fp.lineNodes ?? []) { xs.push(n.x); zs.push(n.z) }
+    for (const f of fp.furniture ?? []) { xs.push(f.x); zs.push(f.z) }
+    for (const s of fp.stairs ?? []) { xs.push(s.x, s.x + s.width); zs.push(s.z, s.z + s.depth) }
+    for (const o of fp.outdoorObjects ?? []) { xs.push(o.x); zs.push(o.z) }
     if (xs.length === 0) return { minX: 0, minZ: 0, w: 1, d: 1 }
     const minX = Math.min(...xs), maxX = Math.max(...xs)
     const minZ = Math.min(...zs), maxZ = Math.max(...zs)
@@ -57,7 +65,7 @@ function mmPerM(scale: PrintScale) { return 1000 / scale }
  * from `fp` and the chosen scale, per the plan's requirement that this be a
  * separate rendering target rather than a stripped-down draw2D.
  */
-export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName }: Props) {
+export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName, showFurniture = true, showLabels = true }: Props) {
     const bounds = computeBoundsM(fp)
     const mmPerMeter = mmPerM(scale)
     const margin = 20 // mm
@@ -181,7 +189,64 @@ export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName }: Prop
                 const x2 = px(pos.wx + nx * hw), y2 = py(pos.wz + nz * hw)
                 return <line key={op.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFFFFF" strokeWidth={wallStrokeMm + 0.4} />
             })}
+            {/* ── Furniture ─────────────────────────────────────────────── */}
+            {showFurniture && (fp.furniture ?? []).map(f => {
+                const fpDef = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                const wMm = fpDef.w * mmPerMeter, dMm = fpDef.d * mmPerMeter
+                const cxMm = px(f.x), cyMm = py(f.z)
+                const angleDeg = (f.rotation * 180) / Math.PI
+                return (
+                    <g key={f.id} transform={`translate(${cxMm},${cyMm}) rotate(${angleDeg})`}>
+                        <rect x={-wMm / 2} y={-dMm / 2} width={wMm} height={dMm}
+                            fill="none" stroke="#000" strokeWidth={0.2} />
+                        {showLabels && (
+                            <text textAnchor="middle" dominantBaseline="middle" fontSize={2}
+                                fontFamily="system-ui" fill="#000">
+                                {FURNITURE_LABELS[f.type] ?? f.type}
+                            </text>
+                        )}
+                    </g>
+                )
+            })}
 
+            {/* ── Stairs ────────────────────────────────────────────────── */}
+            {showFurniture && (fp.stairs ?? []).map(s => {
+                const x = px(s.x), y = py(s.z), wMm = s.width * mmPerMeter, dMm = s.depth * mmPerMeter
+                const angleDeg = (s.rotation * 180) / Math.PI
+                return (
+                    <g key={s.id} transform={`translate(${x + wMm / 2},${y + dMm / 2}) rotate(${angleDeg})`}>
+                        <rect x={-wMm / 2} y={-dMm / 2} width={wMm} height={dMm} fill="none" stroke="#000" strokeWidth={0.2} />
+                        {showLabels && (
+                            <text y={dMm / 2 + 4} textAnchor="middle" fontSize={2} fontFamily="system-ui" fill="#000">
+                                {STAIRS_LABELS[s.type]}
+                            </text>
+                        )}
+                    </g>
+                )
+            })}
+
+            {/* ── Outdoor objects ───────────────────────────────────────── */}
+            {showFurniture && (fp.outdoorObjects ?? []).map(o => {
+                const x = px(o.x), y = py(o.z)
+                return (
+                    <g key={o.id}>
+                        <circle cx={x} cy={y} r={1.5} fill="none" stroke="#000" strokeWidth={0.2} />
+                        {showLabels && (
+                            <text x={x} y={y + 5} textAnchor="middle" fontSize={2} fontFamily="system-ui" fill="#000">
+                                {OUTDOOR_OBJECT_LABELS[o.type]}
+                            </text>
+                        )}
+                    </g>
+                )
+            })}
+
+            {/* ── Annotations ───────────────────────────────────────────── */}
+            {showLabels && (fp.annotations ?? []).map(ann => ann.text && (
+                <text key={ann.id} x={px(ann.x)} y={py(ann.z)} textAnchor="middle"
+                    fontSize={2.4} fontFamily="system-ui" fill="#000">
+                    {ann.text}
+                </text>
+            ))}
             {/* ── North arrow (fixed orientation, no real compass logic) ── */}
             <g transform={`translate(${widthMm - margin - 8}, ${margin + 8})`}>
                 <line x1={0} y1={6} x2={0} y2={-6} stroke="#000" strokeWidth={0.4} />

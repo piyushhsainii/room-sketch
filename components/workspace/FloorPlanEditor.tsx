@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import ResilientCanvas from './ResilientCanvas'
 import { TOOL_CURSORS, Toolbar } from './Tools/ToolBar'
 import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FurnitureCategory, getFurnitureByCategory, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
-import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
+import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getFloorContentBounds, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import * as THREE from 'three'
 import * as Icons from 'lucide-react'
 import { ScrollableList } from '../ui/ScrollableList'
@@ -117,7 +117,7 @@ export default function FloorPlanEditor({
     const editorRef = useRef<HTMLDivElement>(null)
     const [zoom, setZoom] = useState(1)
     const zoomRef = useRef(zoom)
-    const [pan, setPan] = useState({ x: 60, y: 60 })
+    const [pan, setPan] = useState({ x: 30, y: 30 })
     const panRef = useRef(pan)
     const [canvasCursor, setCanvasCursor] = useState('default')
     const [midPan, setMidPan] = useState<{ sx: number; sy: number; px: number; py: number } | null>(null)
@@ -269,7 +269,7 @@ export default function FloorPlanEditor({
     const outdoorDragRef = useRef<{ id: string; ox: number; oz: number } | null>(null)
     const wallDecorDragRef = useRef<{ id: string; roomId: string; wall?: 'north' | 'south' | 'east' | 'west'; segmentNodeIds?: string[] } | null>(null)
     const lightDragRef = useRef<{ id: string; roomId?: string; wall?: 'north' | 'south' | 'east' | 'west'; segmentNodeIds?: string[]; isFree: boolean } | null>(null)
-
+    const toolbarRef = useRef<HTMLDivElement | null>(null)
     // ─────────────────────────────────────────────────────────────────────────
     // Drawing tools (room-rect, pencil, line/bend)
     // ─────────────────────────────────────────────────────────────────────────
@@ -324,6 +324,9 @@ export default function FloorPlanEditor({
     const [rightTab, setRightTab] = useState<'properties' | 'scene' | 'materials' | 'sun'>('properties')
     const [hoverTooltip, setHoverTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
     const [moveArmedForId, setMoveArmedForId] = useState<string | null>(null)  // QuickActionMenu click-to-relocate, unrelated to marquee
+
+    const [showRecenterPrompt, setShowRecenterPrompt] = useState(false)
+    const recenterPromptShownRef = useRef(false)
 
     const handleToggleInteractive = () => {
         justToggledRef.current = true
@@ -490,6 +493,50 @@ export default function FloorPlanEditor({
         return null
     }, [])
 
+    const PAN_FIT_PADDING = 0.8 // leave ~20% margin around content
+
+    function computeCenteredView(fp: FloorPlanState, canvasEl: HTMLCanvasElement): { pan: { x: number; y: number }; zoom: number } {
+        const bounds = getFloorContentBounds(fp)
+        const cw = canvasEl.offsetWidth
+        const ch = canvasEl.offsetHeight
+
+        if (!bounds) {
+            // blank floor — just put world origin at canvas center, no scale guessing
+            return { pan: { x: cw / 2, y: ch / 2 }, zoom: 1 }
+        }
+
+        const { minX, maxX, minZ, maxZ } = bounds
+        const contentW = Math.max(maxX - minX, 0.1)
+        const contentH = Math.max(maxZ - minZ, 0.1)
+
+        // zoom such that content fits inside canvas * padding, in px-per-meter terms
+        const fitZoom = Math.min(
+            (cw * PAN_FIT_PADDING) / (contentW * PX_PER_M),
+            (ch * PAN_FIT_PADDING) / (contentH * PX_PER_M)
+        )
+        const zoom = Math.max(0.1, Math.min(fitZoom, 3))
+
+        const worldCx = (minX + maxX) / 2
+        const worldCz = (minZ + maxZ) / 2
+
+        // solve toCanvas(worldC, pan, zoom) = canvasCenter  →  pan = canvasCenter - worldC * PX_PER_M * zoom
+        const pan = {
+            x: cw / 2 - worldCx * PX_PER_M * zoom,
+            y: ch / 2 - worldCz * PX_PER_M * zoom,
+        }
+
+        return { pan, zoom }
+    }
+
+    function centerOnContent(fp: FloorPlanState, canvasEl: HTMLCanvasElement | null) {
+        if (!canvasEl) return
+        const { pan: newPan, zoom: newZoom } = computeCenteredView(fp, canvasEl)
+        panRef.current = newPan
+        setPan(newPan)
+        zoomRef.current = newZoom
+        setZoom(newZoom)
+    }
+
     const deleteClosedShape = useCallback((shapeId: string) => {
         const nodeIds = getShapeNodeIds(shapeId)
         if (!nodeIds) return false
@@ -601,6 +648,25 @@ export default function FloorPlanEditor({
         return next
     }
 
+    function zoomAtPoint(cursorCanvasX: number, cursorCanvasY: number, newZoom: number) {
+        // world point currently under the cursor, at the OLD zoom/pan
+        const worldX = toWorld(cursorCanvasX, panRef.current.x, zoomRef.current)
+        const worldY = toWorld(cursorCanvasY, panRef.current.y, zoomRef.current)
+
+        const clampedZoom = Math.max(0.1, Math.min(newZoom, 3))
+
+        // solve for the new pan so that worldX/worldY still lands under the cursor at the NEW zoom
+        const newPan = {
+            x: cursorCanvasX - worldX * PX_PER_M * clampedZoom,
+            y: cursorCanvasY - worldY * PX_PER_M * clampedZoom,
+        }
+
+        panRef.current = newPan
+        setPan(newPan)
+        zoomRef.current = clampedZoom
+        setZoom(clampedZoom)
+    }
+
     function getShapesIndex(fp: FloorPlanState) {
         const cache = shapesIndexCacheRef.current
         if (cache && cache.shapes === fp.closedShapes) return cache.map
@@ -654,6 +720,28 @@ export default function FloorPlanEditor({
             if (!ctx) return
 
             const cw = canvas.offsetWidth, ch = canvas.offsetHeight
+
+            const bounds = getFloorContentBounds(fpRef.current)
+            if (bounds) {
+                const worldCx = (bounds.minX + bounds.maxX) / 2
+                const worldCz = (bounds.minZ + bounds.maxZ) / 2
+                const contentCanvasX = toCanvas(worldCx, panRef.current.x, zoomRef.current)
+                const contentCanvasY = toCanvas(worldCz, panRef.current.y, zoomRef.current)
+                const dx = contentCanvasX - cw / 2
+                const dy = contentCanvasY - ch / 2
+                const dist = Math.sqrt(dx * dx + dy * dy)
+                const diagonal = Math.sqrt(cw * cw + ch * ch)
+
+                const isFar = dist > diagonal * 1.2
+                if (isFar && !recenterPromptShownRef.current) {
+                    recenterPromptShownRef.current = true
+                    setShowRecenterPrompt(true)
+                } else if (!isFar && recenterPromptShownRef.current) {
+                    recenterPromptShownRef.current = false
+                    setShowRecenterPrompt(false)
+                }
+            }
+
             if (lastCanvasSizeRef.current.w !== cw || lastCanvasSizeRef.current.h !== ch) {
                 canvas.width = cw
                 canvas.height = ch
@@ -1143,6 +1231,23 @@ export default function FloorPlanEditor({
         }
     }, [pushHistory])
 
+    const clearAllDragArm = useCallback(() => {
+        shapeResizeRef.current = null
+        resizeHandleRef.current = null
+        wallDragRef.current = null
+        outdoorDragRef.current = null
+        furnitureDragRef.current = null
+        wallDecorDragRef.current = null
+        dragRoomRef.current = null
+        segDragRef.current = null
+        shapeDragRef.current = null
+        openingDragRef.current = null
+        spacePanRef.current = null
+        panToolRef.current = null
+        if (lightDragRef) (lightDragRef as any).current = null
+        setMoveArmedForId(null)
+    }, [])
+
     const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         isMouseDownRef.current = true
         const { wx, wz, cx, cy } = evWorld(e)
@@ -1505,10 +1610,7 @@ export default function FloorPlanEditor({
             }
             // 8. FALLBACK (Deselect everything if empty canvas clicked)
             setSelectedId(null);
-            dragRoomRef.current = null;
-            if (lightDragRef) (lightDragRef as any).current = null;
-            if (wallDecorDragRef) wallDecorDragRef.current = null;
-            outdoorDragRef.current = null;
+            clearAllDragArm()
         }
         // ── Room tool ─────────────────────────────────────────────────────────
         if (tool === 'room') {
@@ -2616,19 +2718,20 @@ export default function FloorPlanEditor({
         isMouseDownRef.current = false
         const hadDrag = dragConfirmedRef.current
 
-        shapeResizeRef.current = null
-        furnitureDragRef.current = null
         setMidPan(null)
-        dragRoomRef.current = null
-        spacePanRef.current = null
-        panToolRef.current = null
-        segDragRef.current = null
-        shapeDragRef.current = null
-        wallDecorDragRef.current = null
-        resizeHandleRef.current = null
-        wallDragRef.current = null
-        outdoorDragRef.current = null
-        furnitureDragRef.current = null
+        // shapeResizeRef.current = null
+        // furnitureDragRef.current = null
+        // dragRoomRef.current = null
+        // spacePanRef.current = null
+        // panToolRef.current = null
+        // segDragRef.current = null
+        // shapeDragRef.current = null
+        // wallDecorDragRef.current = null
+        // resizeHandleRef.current = null
+        // wallDragRef.current = null
+        // outdoorDragRef.current = null
+        // furnitureDragRef.current = null
+        clearAllDragArm()
         clear()
         setOverlappingIds(new Set())
         if (lightDragRef) (lightDragRef as any).current = null
@@ -2840,7 +2943,13 @@ export default function FloorPlanEditor({
         setArmedTemplateId(template.id)
         pendingWallPresetRef.current = null
         setArmedWallPresetId(null)
+
         setTool('template-place')
+    }, [])
+
+    useEffect(() => {
+        if (canvasRef.current) centerOnContent(fpRef.current, canvasRef.current)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     useEffect(() => {
@@ -2859,30 +2968,36 @@ export default function FloorPlanEditor({
         }
     }, [tool])
 
-    useEffect(() => {
-        if (!moveArmedForId) return
+    // useEffect(() => {
+    //     if (!moveArmedForId) return
 
-        function clearIfOutside(e: MouseEvent) {
-            const canvas = canvasRef.current
-            if (!canvas) return
-            if (!canvas.contains(e.target as Node)) {
-                setMoveArmedForId(null)
-                openingDragRef.current = null
-                furnitureDragRef.current = null
-                outdoorDragRef.current = null
-                dragRoomRef.current = null
-                segDragRef.current = null
-                shapeDragRef.current = null
-                wallDecorDragRef.current = null
-                if (lightDragRef) (lightDragRef as any).current = null
-            }
-        }
+    //     function clearIfInside2DButOutsideToolbar(e: MouseEvent) {
+    //         const canvas = canvasRef.current
+    //         if (!canvas) return
 
-        // Capture phase so this runs before the 3D pane's own click handlers,
-        // and so it fires even if something downstream calls stopPropagation.
-        window.addEventListener('mousedown', clearIfOutside, true)
-        return () => window.removeEventListener('mousedown', clearIfOutside, true)
-    }, [moveArmedForId])
+    //         const target = e.target as Node
+
+    //         // Only react to clicks that land inside the 2D editor canvas.
+    //         // Clicks in the 3D scene, the toolbar itself, or anywhere else
+    //         // (side panels, other UI) should NOT disarm/deselect.
+    //         if (!canvas.contains(target)) return
+
+    //         // Ignore clicks on the floating toolbar (move/duplicate/delete pill) —
+    //         // those are handled by their own onClick handlers, not this listener.
+    //         if (toolbarRef.current?.contains(target)) return
+
+    //         setMoveArmedForId(null)
+    //         setSelectedId(null)
+    //         clearAllDragArm()
+    //         if (lightDragRef) (lightDragRef as any).current = null
+    //     }
+
+    //     // Capture phase so this runs before the 2D canvas's own mousedown
+    //     // handler decides what was hit, avoiding a stale arm/selection racing
+    //     // against the new click's hit-test.
+    //     window.addEventListener('mousedown', clearIfInside2DButOutsideToolbar, true)
+    //     return () => window.removeEventListener('mousedown', clearIfInside2DButOutsideToolbar, true)
+    // }, [moveArmedForId])
 
 
     useEffect(() => {
@@ -2915,8 +3030,26 @@ export default function FloorPlanEditor({
         const handler = (e: WheelEvent) => {
             if ((e.target as HTMLElement).closest('[data-panel="right-sidebar"]')) return
             e.preventDefault(); e.stopPropagation()
+
+            const rect = el.getBoundingClientRect()
+            const cursorX = e.clientX - rect.left
+            const cursorY = e.clientY - rect.top
+
             const factor = e.deltaY < 0 ? 1.12 : 0.9
             const newZoom = Math.max(0.2, Math.min(5, zoomRef.current * factor))
+
+            // world point currently under the cursor, at the OLD zoom/pan
+            const worldX = toWorld(cursorX, panRef.current.x, zoomRef.current)
+            const worldY = toWorld(cursorY, panRef.current.y, zoomRef.current)
+
+            // solve pan so that same world point stays under the cursor at the NEW zoom
+            const newPan = {
+                x: cursorX - worldX * PX_PER_M * newZoom,
+                y: cursorY - worldY * PX_PER_M * newZoom,
+            }
+
+            panRef.current = newPan
+            setPan(newPan)
             zoomRef.current = newZoom
             setZoom(newZoom)
         }
@@ -2968,8 +3101,6 @@ export default function FloorPlanEditor({
 
 
     const [previewOpen, setPreviewOpen] = useState(true)
-    // Fraction of the row's width given to the 3D pane when preview is open.
-    // 0.46 matches your old fixed 46% split as the starting point.
     const [splitRatio, setSplitRatio] = useState(0.46)
     const splitContainerRef = useRef<HTMLDivElement>(null)
     const dragStateRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null)
@@ -3044,10 +3175,6 @@ export default function FloorPlanEditor({
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
 
-    const activeFloorDerived = useMemo(
-        () => computeDerivedFloorData(fp),
-        [fp]
-    )
     const ghostFloorsDerivedRef = useRef<{ floor: Floor; derived: ReturnType<typeof computeDerivedFloorData> }[]>([])
 
     const ghostFloorsDerived = useMemo(() => {
@@ -3335,6 +3462,21 @@ export default function FloorPlanEditor({
                         isWallDecorTool={isWallDecorTool}
                         selectedFurnitureType={selectedFurnitureType}
                     />
+                    {showRecenterPrompt && (
+                        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-white/95 border rounded-full px-4 py-2 shadow-md flex items-center gap-2 text-sm">
+                            <span>You've scrolled away from your plan</span>
+                            <button
+                                className="font-medium text-blue-600 hover:underline"
+                                onClick={() => {
+                                    centerOnContent(fpRef.current, canvasRef.current)
+                                    setShowRecenterPrompt(false)
+                                    recenterPromptShownRef.current = false
+                                }}
+                            >
+                                Scroll back
+                            </button>
+                        </div>
+                    )}
                     {/* Annotation editor */}
                     {editingAnnotation && (
                         <div style={{ position: 'fixed', left: Math.min(editingAnnotation.x - 80, window.innerWidth - 260), top: Math.min(editingAnnotation.y - 40, window.innerHeight - 120), zIndex: 300, background: THEME.bgPanel, border: `1px solid ${THEME.accent}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: THEME.shadowLg }}>
@@ -3540,50 +3682,102 @@ export default function FloorPlanEditor({
                     onClose={() => setLayersOpen(false)}
                 />
             </div>
-            {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection ? (
-                <div
-                    onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
-                    style={{
-                        position: 'fixed',
-                        left: quickMenuAnchor.x,
-                        top: quickMenuAnchor.y,
-                        transform: 'translate(-50%, calc(-100% - 14px))',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 2,
-                        padding: 6,
-                        borderRadius: 999,
-                        background: 'rgba(28,28,32,0.95)',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
-                        backdropFilter: 'blur(6px)',
-                        zIndex: 50,
-                    }}
-                >
-                    <button
-                        onClick={e => { e.stopPropagation(); e.preventDefault(); handleDuplicateSelected() }}
-                        title="Duplicate all"
+            <div ref={toolbarRef}>
+
+
+                {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection ? (
+                    <div
+                        onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
                         style={{
-                            width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
-                            color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                            position: 'fixed',
+                            left: quickMenuAnchor.x,
+                            top: quickMenuAnchor.y,
+                            transform: 'translate(-50%, calc(-100% - 14px))',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            padding: 6,
+                            borderRadius: 999,
+                            background: 'rgba(28,28,32,0.95)',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
+                            backdropFilter: 'blur(6px)',
+                            zIndex: 50,
                         }}
                     >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="9" y="9" width="11" height="11" rx="2" />
-                            <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-                        </svg>
-                    </button>
-                    <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.14)', margin: '0 2px' }} />
-                    <button
-                        onClick={e => {
-                            e.stopPropagation(); e.preventDefault()
-                            const idSet = new Set(selectedIds.filter(id => !id.includes('::wall::')))
-                            if (idSet.size === 0) return
+                        <button
+                            onClick={e => { e.stopPropagation(); e.preventDefault(); handleDuplicateSelected() }}
+                            title="Duplicate all"
+                            style={{
+                                width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
+                                color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                            }}
+                        >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="9" y="9" width="11" height="11" rx="2" />
+                                <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                            </svg>
+                        </button>
+                        <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.14)', margin: '0 2px' }} />
+                        <button
+                            onClick={e => {
+                                e.stopPropagation(); e.preventDefault()
+                                const idSet = new Set(selectedIds.filter(id => !id.includes('::wall::')))
+                                if (idSet.size === 0) return
+                                setFp(prev => ({
+                                    ...prev,
+                                    rooms: prev.rooms.filter(r => !idSet.has(r.id)),
+                                    openings: prev.openings.filter(o => !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))),
+                                    lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
+                                    lineSegments: prev.lineSegments.filter(s => !idSet.has(s.id)).filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
+                                    closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
+                                    furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
+                                    stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
+                                    annotations: (prev.annotations ?? []).filter(a => !idSet.has(a.id)),
+                                    wallDecor: (prev.wallDecor ?? []).filter(d => !idSet.has(d.id)),
+                                    lights: (prev.lights ?? []).filter(l => !idSet.has(l.id)),
+                                    outdoorObjects: (prev.outdoorObjects ?? []).filter(o => !idSet.has(o.id)),
+                                }))
+                                selectedIdsRef.current = []
+                                setSelectedIds([])
+                                pushHistory()
+                            }}
+                            title="Delete all"
+                            style={{
+                                width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
+                                color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                            }}
+                        >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
+                            </svg>
+                        </button>
+                    </div>
+                ) : quickMenuAnchor && (
+                    <QuickActionMenu
+                        fp={fp}
+                        selectedId={selectedId}
+                        screenX={quickMenuAnchor.x}
+                        screenY={quickMenuAnchor.y}
+                        visible={!isDraggingSelection && tool === 'select'}
+                        onDuplicate={handleDuplicateSelected}
+                        onDelete={() => {
+                            const rawIds = selectedIds.length > 0
+                                ? selectedIds
+                                : (selectedId ? [selectedId] : [])
+                            const idsToDelete = rawIds.filter(id => !id.includes('::wall::'))
+                            if (idsToDelete.length === 0) return
+                            const idSet = new Set(idsToDelete)
+
                             setFp(prev => ({
                                 ...prev,
                                 rooms: prev.rooms.filter(r => !idSet.has(r.id)),
-                                openings: prev.openings.filter(o => !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))),
+                                openings: prev.openings.filter(o =>
+                                    !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))
+                                ),
                                 lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
-                                lineSegments: prev.lineSegments.filter(s => !idSet.has(s.id)).filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
+                                lineSegments: prev.lineSegments
+                                    .filter(s => !idSet.has(s.id))
+                                    .filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
                                 closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
                                 furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
                                 stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
@@ -3594,70 +3788,23 @@ export default function FloorPlanEditor({
                             }))
                             selectedIdsRef.current = []
                             setSelectedIds([])
-                            pushHistory()
+                            setSelectedId(null)
                         }}
-                        title="Delete all"
-                        style={{
-                            width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
-                            color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        onBend={handleBendSelectedSegment}
+                        onMove={handleArmMove}
+                        moveArmed={moveArmedForId === selectedId}
+                        onOpenProperties={() => {
+                            if (sheetOpen && rightTab === 'properties') {
+                                setSheetOpen(false)
+                            } else {
+                                setRightTab('properties')
+                                setSheetOpen(true)
+                            }
                         }}
-                    >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
-                        </svg>
-                    </button>
-                </div>
-            ) : quickMenuAnchor && (
-                <QuickActionMenu
-                    fp={fp}
-                    selectedId={selectedId}
-                    screenX={quickMenuAnchor.x}
-                    screenY={quickMenuAnchor.y}
-                    visible={!isDraggingSelection && tool === 'select'}
-                    onDuplicate={handleDuplicateSelected}
-                    onDelete={() => {
-                        const rawIds = selectedIds.length > 0
-                            ? selectedIds
-                            : (selectedId ? [selectedId] : [])
-                        const idsToDelete = rawIds.filter(id => !id.includes('::wall::'))
-                        if (idsToDelete.length === 0) return
-                        const idSet = new Set(idsToDelete)
+                    />
+                )}
+            </div>
 
-                        setFp(prev => ({
-                            ...prev,
-                            rooms: prev.rooms.filter(r => !idSet.has(r.id)),
-                            openings: prev.openings.filter(o =>
-                                !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))
-                            ),
-                            lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
-                            lineSegments: prev.lineSegments
-                                .filter(s => !idSet.has(s.id))
-                                .filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
-                            closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
-                            furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
-                            stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
-                            annotations: (prev.annotations ?? []).filter(a => !idSet.has(a.id)),
-                            wallDecor: (prev.wallDecor ?? []).filter(d => !idSet.has(d.id)),
-                            lights: (prev.lights ?? []).filter(l => !idSet.has(l.id)),
-                            outdoorObjects: (prev.outdoorObjects ?? []).filter(o => !idSet.has(o.id)),
-                        }))
-                        selectedIdsRef.current = []
-                        setSelectedIds([])
-                        setSelectedId(null)
-                    }}
-                    onBend={handleBendSelectedSegment}
-                    onMove={handleArmMove}
-                    moveArmed={moveArmedForId === selectedId}
-                    onOpenProperties={() => {
-                        if (sheetOpen && rightTab === 'properties') {
-                            setSheetOpen(false)
-                        } else {
-                            setRightTab('properties')
-                            setSheetOpen(true)
-                        }
-                    }}
-                />
-            )}
             {sheetOpen && rightTab === 'properties' && (
                 <div
                     data-panel="right-sidebar"

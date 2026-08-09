@@ -15,6 +15,7 @@ import {
   FURNITURE_FOOTPRINTS,
   FURNITURE_LABELS,
 } from "@/components/workspace/lib/furniture-constants";
+import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
 
 // export function deriveClosedPolygons(
 //   lineNodes: LineNode[],
@@ -908,5 +909,158 @@ export function computeTopDownView(
     position: [centerX, height, centerZ + 0.001],
     target: [centerX, 0, centerZ],
     isPreset: false,
+  };
+}
+
+// Shared by both the floorplan canvas draw loop AND the palette thumbnails,
+// so palette icons never drift out of sync with what actually gets placed.
+export function drawStairIcon(
+  ctx: CanvasRenderingContext2D,
+  type: PlacedStairs["type"],
+  sw: number,
+  sd: number,
+) {
+  const treadStroke = "rgba(120,110,95,0.85)";
+  ctx.strokeStyle = treadStroke;
+  ctx.lineWidth = 1;
+
+  if (type === "elevator") {
+    ctx.beginPath();
+    ctx.moveTo(-sw / 2, 0);
+    ctx.lineTo(sw / 2, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -sd / 2);
+    ctx.lineTo(0, sd / 2);
+    ctx.stroke();
+  } else if (type === "stairs-spiral") {
+    const r = Math.min(sw, sd) / 2 - 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    const spokeCount = 12;
+    for (let i = 0; i < spokeCount; i++) {
+      const a = (i / spokeCount) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      ctx.stroke();
+    }
+  } else if (type === "stairs-l") {
+    const flightW = Math.min(sw, sd) * 0.42;
+    const steps1 = 5;
+    for (let i = 1; i < steps1; i++) {
+      const yy = -sd / 2 + ((sd - flightW) / steps1) * i;
+      ctx.beginPath();
+      ctx.moveTo(-sw / 2, yy);
+      ctx.lineTo(-sw / 2 + flightW, yy);
+      ctx.stroke();
+    }
+    const steps2 = 5;
+    for (let i = 1; i < steps2; i++) {
+      const xx =
+        -sw / 2 + flightW + ((sw / 2 - (-sw / 2 + flightW)) / steps2) * i;
+      ctx.beginPath();
+      ctx.moveTo(xx, -sd / 2);
+      ctx.lineTo(xx, -sd / 2 + flightW);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.rect(-sw / 2, -sd / 2, flightW, flightW);
+    ctx.stroke();
+  } else if (type === "stairs-u") {
+    const runW = (sw - 0.2 * (sw / 2)) / 2;
+    const landingD = sd * 0.25;
+    const steps1 = 5;
+    for (let i = 1; i < steps1; i++) {
+      const yy = -sd / 2 + ((sd - landingD) / steps1) * i;
+      ctx.beginPath();
+      ctx.moveTo(-sw / 2, yy);
+      ctx.lineTo(-sw / 2 + runW, yy);
+      ctx.stroke();
+    }
+    const steps2 = 5;
+    for (let i = 1; i < steps2; i++) {
+      const yy = -sd / 2 + ((sd - landingD) / steps2) * i;
+      ctx.beginPath();
+      ctx.moveTo(sw / 2 - runW, yy);
+      ctx.lineTo(sw / 2, yy);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.rect(-sw / 2, sd / 2 - landingD, sw, landingD);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -sd / 2);
+    ctx.lineTo(0, sd / 2 - landingD);
+    ctx.stroke();
+  } else if (type === "stairs-ramp") {
+    const hatchCount = 6;
+    for (let i = 0; i <= hatchCount; i++) {
+      const yy = -sd / 2 + (sd / hatchCount) * i;
+      ctx.beginPath();
+      ctx.moveTo(-sw / 2, yy);
+      ctx.lineTo(-sw / 2 + sw * 0.3, yy - sd * 0.06);
+      ctx.stroke();
+    }
+  } else {
+    // stairs-straight
+    const steps = 6;
+    for (let i = 1; i < steps; i++) {
+      const yy = -sd / 2 + (sd / steps) * i;
+      ctx.beginPath();
+      ctx.moveTo(-sw / 2, yy);
+      ctx.lineTo(sw / 2, yy);
+      ctx.stroke();
+    }
+  }
+}
+
+// lib/helpers.ts
+export function getFloorContentBounds(
+  state: FloorPlanState,
+): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+  const xs: number[] = [];
+  const zs: number[] = [];
+
+  state.rooms.forEach((r) => {
+    xs.push(r.x, r.x + r.width);
+    zs.push(r.z, r.z + r.depth);
+  });
+  state.lineNodes.forEach((n) => {
+    xs.push(n.x);
+    zs.push(n.z);
+  });
+  state.stairs.forEach((s) => {
+    xs.push(s.x);
+    zs.push(s.z);
+  });
+  state.furniture.forEach((f) => {
+    xs.push(f.x);
+    zs.push(f.z);
+  });
+  state.outdoorObjects.forEach((o) => {
+    xs.push(o.x);
+    zs.push(o.z);
+  });
+  state.lights.forEach((l) => {
+    // wall/segment-anchored lights don't carry x/z directly — skip, they're bounded by their wall anyway
+    if (
+      !l.wall &&
+      !l.segmentNodeIds &&
+      typeof l.x === "number" &&
+      typeof l.z === "number"
+    ) {
+      xs.push(l.x);
+      zs.push(l.z);
+    }
+  });
+
+  if (xs.length === 0) return null;
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minZ: Math.min(...zs),
+    maxZ: Math.max(...zs),
   };
 }

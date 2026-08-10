@@ -106,62 +106,79 @@ function LineWalls3DImpl({
         [fp.lineNodes]
     )
 
-    const segWallMaterial = new Map<string, WallMaterial>()
-    const segWallColor = new Map<string, string>()
-    const segExteriorWallMaterial = new Map<string, WallMaterial | undefined>()
-    const segExteriorWallColor = new Map<string, string | undefined>()
+    const segWallMaterial = new Map<string, WallMaterial | undefined>()
+    const segWallColor = new Map<string, string | undefined>()
+    const segWallMaterialSide = new Map<
+        string,
+        'interior' | 'exterior' | 'both'
+    >()
+    // const segExteriorWallMaterial = new Map<string, WallMaterial | undefined>()
+    // const segExteriorWallColor = new Map<string, string | undefined>()
+
+    // in LineWalls3D, alongside the existing maps
+    // alongside the existing maps, near segWallMaterial/segWallColor
+    const segWallExteriorMaterial = new Map<string, WallMaterial | undefined>()
+
     for (const seg of fp.lineSegments ?? []) {
-        const matchedShape = (closedShapes ?? fp.closedShapes ?? []).find(s =>
-            segmentBelongsToShape(seg.nodeIds, s.nodeIds)
-        )
-        const segCfg = roomSceneConfigs?.find(r => r.roomId === seg.id) as (RoomSceneConfig & {
-            exteriorWallMaterial?: WallMaterial
-            exteriorWallColor?: string
-        }) | undefined
-        segWallMaterial.set(seg.id, segCfg?.wallMaterial ?? matchedShape?.wallMaterial ?? wallMaterial)
-        segWallColor.set(seg.id, segCfg?.wallColor ?? wallColor)
-        segExteriorWallMaterial.set(seg.id, segCfg?.exteriorWallMaterial)
-        segExteriorWallColor.set(seg.id, segCfg?.exteriorWallColor)
+        const segCfg = roomSceneConfigs?.find(r => r.roomId === seg.id)
+        segWallMaterial.set(seg.id, segCfg?.wallMaterial)
+        segWallExteriorMaterial.set(seg.id, segCfg?.exteriorWallMaterial)   // NEW
+        segWallColor.set(seg.id, segCfg?.wallColor)
+        segWallMaterialSide.set(seg.id, segCfg?.wallMaterialSide ?? 'interior')
     }
-
-    console.log('LineWalls3D debug', {
-        roomHeight: fp.roomHeight,
-        numSegments: fp.lineSegments?.length,
-        numNodes: fp.lineNodes?.length,
-        sampleSegment: fp.lineSegments?.[0],
-    })
-
     return (
         <>
             {(fp.lineSegments ?? []).map(seg => {
                 const nodes = seg.nodeIds
                     .map(nid => fp.lineNodes.find(n => n.id === nid))
                     .filter(Boolean) as LineNode[]
+
                 if (nodes.length < 2) return null
 
                 const isRoomSelected = interactive && selectedId === seg.id
                 const panels: React.ReactNode[] = []
                 const effH = seg.height ?? H
+                const segT = seg.thickness ?? 0.15
+
                 for (let i = 0; i < nodes.length - 1; i++) {
-                    const a = nodes[i]!, b = nodes[i + 1]!
-                    const dx = b.x - a.x, dz = b.z - a.z
+                    const a = nodes[i]!
+                    const b = nodes[i + 1]!
+
+                    const dx = b.x - a.x
+                    const dz = b.z - a.z
+
                     const len = Math.hypot(dx, dz)
+
                     if (len < 0.05) continue
 
                     const mcx = (a.x + b.x) / 2
                     const mcz = (a.z + b.z) / 2
+
                     const angle = Math.atan2(dz, dx)
 
+                    /*
+                     * --------------------------------------------------------
+                     * OPENINGS
+                     * --------------------------------------------------------
+                     */
                     const segOpenings = fp.openings.filter(op =>
                         op.roomId === seg.id &&
                         op.segmentNodeIds?.[0] === a.id &&
                         op.segmentNodeIds?.[1] === b.id
                     )
 
-                    const matchingShapes = shapesForSegment(seg.nodeIds, closedShapes ?? fp.closedShapes ?? [])
-                    // nodesById now comes from the hoisted useMemo above — no
-                    // longer rebuilt here on every wall piece.
-                    const nx = Math.sin(angle), nz = -Math.cos(angle)
+                    /*
+                     * --------------------------------------------------------
+                     * FIND WHICH ROOM IS ON WHICH SIDE OF THE WALL
+                     * --------------------------------------------------------
+                     */
+                    const matchingShapes = shapesForSegment(
+                        [a.id, b.id],
+                        closedShapes ?? fp.closedShapes ?? []
+                    )
+
+                    const nx = Math.sin(angle)
+                    const nz = -Math.cos(angle)
                     const probeDist = 0.3
 
                     let shapeFacingA: ClosedShape | undefined
@@ -169,50 +186,244 @@ function LineWalls3DImpl({
 
                     if (matchingShapes.length === 2) {
                         const [s1, s2] = matchingShapes
-                        const insideS1AtPlusZ = pointInPolygon(mcx + nx * probeDist, mcz + nz * probeDist, s1!.nodeIds, nodesById)
-                        if (insideS1AtPlusZ) { shapeFacingA = s1; shapeFacingB = s2 }
-                        else { shapeFacingA = s2; shapeFacingB = s1 }
-                    } else {
-                        shapeFacingA = matchingShapes[0]
-                        shapeFacingB = undefined
+
+                        const insideS1AtPlusNormal = pointInPolygon(
+                            mcx + nx * probeDist,
+                            mcz + nz * probeDist,
+                            s1!.nodeIds,
+                            nodesById
+                        )
+
+                        if (insideS1AtPlusNormal) {
+                            shapeFacingA = s1
+                            shapeFacingB = s2
+                        } else {
+                            shapeFacingA = s2
+                            shapeFacingB = s1
+                        }
+                    } else if (matchingShapes.length === 1) {
+                        const onlyShape = matchingShapes[0]
+
+                        const shapeIsAtPlusNormal = pointInPolygon(
+                            mcx + nx * probeDist,
+                            mcz + nz * probeDist,
+                            onlyShape!.nodeIds,
+                            nodesById
+                        )
+
+                        if (shapeIsAtPlusNormal) {
+                            shapeFacingA = onlyShape
+                        } else {
+                            shapeFacingB = onlyShape
+                        }
                     }
 
                     const pieceKey = `${seg.id}_${i}`
-                    const overrideA = shapeFacingA?.wallOverrides?.[pieceKey] as WallSideOverride
-                    const overrideB = shapeFacingB?.wallOverrides?.[pieceKey] as WallSideOverride
 
-                    const baseMatA = shapeFacingA?.wallMaterial ?? segWallMaterial.get(seg.id) ?? wallMaterial
-                    const baseColorA = segWallColor.get(seg.id) ?? wallColor
-                    const baseMatB = shapeFacingB?.wallMaterial ?? segExteriorWallMaterial.get(seg.id) ?? baseMatA
-                    const baseColorB = segExteriorWallColor.get(seg.id) ?? baseColorA
+                    const overrideA =
+                        shapeFacingA?.wallOverrides?.[pieceKey] as WallSideOverride
 
-                    const interior = { mat: overrideA?.material ?? baseMatA, color: overrideA?.color ?? baseColorA }
-                    const exterior = shapeFacingB
-                        ? { mat: overrideB?.material ?? baseMatB, color: overrideB?.color ?? baseColorB }
-                        : {
-                            mat: overrideA?.exteriorMaterial ?? segExteriorWallMaterial.get(seg.id) ?? interior.mat,
-                            color: overrideA?.exteriorColor ?? segExteriorWallColor.get(seg.id) ?? interior.color,
-                        }
+                    const overrideB =
+                        shapeFacingB?.wallOverrides?.[pieceKey] as WallSideOverride
+                    const INTERIOR_ATTACH = 'material-4'
+                    const EXTERIOR_ATTACH = 'material-5'
+                    const interiorIsPlusNormal = !!shapeFacingA
+                    const interiorFaceAttach = INTERIOR_ATTACH
 
+                    const exteriorFaceAttach = EXTERIOR_ATTACH
+
+                    console.log('[WALL FACE ORIENTATION]', {
+                        segment: seg.id,
+                        piece: i,
+                        shapeFacingA: shapeFacingA?.id,
+                        shapeFacingB: shapeFacingB?.id,
+                        interiorIsPlusNormal,
+                        interiorFaceAttach,
+                        exteriorFaceAttach,
+                    })
+
+                    const selectedWallSide =
+                        segWallMaterialSide.get(seg.id) ?? 'interior'
+
+                    const selectedWallMaterial =
+                        segWallMaterial.get(seg.id)
+
+                    const selectedWallColor =
+                        segWallColor.get(seg.id)
+
+                    console.group(
+                        `%c[WALL MATERIAL DEBUG] ${seg.id} piece ${i}`,
+                        'color: #00aaff; font-weight: bold;'
+                    )
+
+                    console.log('SEGMENT:', {
+                        id: seg.id,
+                        nodeIds: seg.nodeIds,
+                        angle,
+                        rotationY: -angle,
+                    })
+
+                    console.log('SELECTED SIDE:', selectedWallSide)
+
+                    console.log('SELECTED MATERIAL:', {
+                        material: selectedWallMaterial,
+                        color: selectedWallColor,
+                    })
+
+                    console.log('SHAPES:', {
+                        matchingShapes: matchingShapes.length,
+                        shapeFacingA: shapeFacingA?.id,
+                        shapeFacingB: shapeFacingB?.id,
+                    })
+
+                    console.log('OVERRIDES:', {
+                        overrideA,
+                        overrideB,
+                    })
+
+                    console.groupEnd()
+                    /*
+                     * --------------------------------------------------------
+                     * BASE MATERIALS
+                     * --------------------------------------------------------
+                     *
+                     * Start with the material belonging to each side's room.
+                     *
+                     * If there is a segment-level material selection, it
+                     * replaces ONLY the selected physical face.
+                     */
+                    // Default wall on both sides
+                    let interiorMat: WallMaterial = wallMaterial
+                    let exteriorMat: WallMaterial = wallMaterial
+                    let interiorColor: string = wallColor
+                    let exteriorColor: string = wallColor
+
+                    if (shapeFacingA) {
+                        interiorMat = shapeFacingA.wallMaterial ?? wallMaterial
+                    } else if (shapeFacingB && matchingShapes.length === 1) {
+                        interiorMat = shapeFacingB.wallMaterial ?? wallMaterial
+                    }
+
+                    if (matchingShapes.length === 2 && shapeFacingB) {
+                        exteriorMat = shapeFacingB.wallMaterial ?? wallMaterial
+                    } else {
+                        const soloShape = shapeFacingA ?? shapeFacingB
+                        exteriorMat = soloShape?.exteriorWallMaterial ?? exteriorMat
+                    }
+                    /*
+                     * --------------------------------------------------------
+                     * SEGMENT SIDE SELECTION
+                     * --------------------------------------------------------
+                     *
+                     * IMPORTANT:
+                     *
+                     * We do NOT apply selectedWallMaterial to both faces
+                     * unless the user explicitly selected "both".
+                     */
+
+                    // replace the old side-gated if/else block with:
+                    const selectedWallExteriorMaterial = segWallExteriorMaterial.get(seg.id)
+                    if (selectedWallMaterial) interiorMat = selectedWallMaterial
+                    if (selectedWallExteriorMaterial) exteriorMat = selectedWallExteriorMaterial
+
+                    // ── FINAL FACE MATERIALS ──
+                    const interior = {
+                        mat: overrideA?.material ?? interiorMat,
+                        color: overrideA?.color ?? interiorColor,
+                    }
+                    const exterior = {
+                        mat: overrideB?.material ?? overrideA?.exteriorMaterial ?? exteriorMat,
+                        color: overrideB?.color ?? overrideA?.exteriorColor ?? exteriorColor,
+                    }
+
+                    console.group(
+                        `%c FINAL MATERIALS — ${seg.id} / piece ${i}`,
+                        'color: #ff9900; font-weight: bold;'
+                    )
+
+                    console.log('INTERIOR:', interior)
+
+                    console.log('EXTERIOR:', exterior)
+
+                    console.log('SIDE SELECTED:', selectedWallSide)
+
+                    console.groupEnd()
+
+                    console.groupEnd()
+                    /*
+                     * --------------------------------------------------------
+                     * SELECTION / INTERACTION
+                     * --------------------------------------------------------
+                     */
                     const pieceId = `${seg.id}::piece::${i}`
-                    const isPieceSelected = interactive && selectedId === pieceId
 
-                    const handlers = interactive ? {
-                        onClick: (e: any) => { e.stopPropagation(); onSelect?.(pieceId) },
-                        onPointerOver: (e: any) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' },
-                        onPointerOut: (e: any) => { e.stopPropagation(); setHovered(false); document.body.style.cursor = 'auto' },
-                    } : {}
-                    const showOutline = interactive && (isPieceSelected || isRoomSelected || hovered)
-                    const wallType = seg.wallType ?? 'solid'
-                    const segT = seg.thickness ?? 0.15
+                    const isPieceSelected =
+                        interactive &&
+                        selectedId === pieceId
+
+                    const handlers = interactive
+                        ? {
+                            onClick: (e: any) => {
+                                e.stopPropagation()
+                                onSelect?.(pieceId)
+                            },
+
+                            onPointerOver: (e: any) => {
+                                e.stopPropagation()
+                                setHovered(true)
+                                document.body.style.cursor = 'pointer'
+                            },
+
+                            onPointerOut: (e: any) => {
+                                e.stopPropagation()
+                                setHovered(false)
+                                document.body.style.cursor = 'auto'
+                            },
+                        }
+                        : {}
+
+                    const showOutline =
+                        interactive &&
+                        (isPieceSelected ||
+                            isRoomSelected ||
+                            hovered)
+
+                    const wallType =
+                        seg.wallType ?? 'solid'
+
                     const outlineMesh = (
-                        <mesh position={[mcx, effH / 2, mcz]} rotation={[0, -angle, 0]} renderOrder={999}>
-                            <boxGeometry args={[len * 1.01, effH * 1.01, segT * 1.4]} />
+                        <mesh
+                            position={[
+                                mcx,
+                                effH / 2,
+                                mcz,
+                            ]}
+                            rotation={[0, -angle, 0]}
+                            renderOrder={999}
+                        >
+                            <boxGeometry
+                                args={[
+                                    len * 1.01,
+                                    effH * 1.01,
+                                    segT * 1.4,
+                                ]}
+                            />
+
                             <meshBasicMaterial
-                                color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
+                                color={
+                                    isPieceSelected ||
+                                        isRoomSelected
+                                        ? '#3B82F6'
+                                        : '#93C5FD'
+                                }
                                 wireframe
                                 transparent
-                                opacity={isPieceSelected || isRoomSelected ? 0.9 : 0.5}
+                                opacity={
+                                    isPieceSelected ||
+                                        isRoomSelected
+                                        ? 0.9
+                                        : 0.5
+                                }
                                 depthTest={false}
                             />
                         </mesh>
@@ -224,101 +435,435 @@ function LineWalls3DImpl({
                                 <group key={`${seg.id}_${i}`}>
                                     {interactive && (
                                         <mesh
-                                            position={[mcx, effH / 2, mcz]}
-                                            rotation={[0, -angle, 0]}
+                                            position={[
+                                                mcx,
+                                                effH / 2,
+                                                mcz,
+                                            ]}
+                                            rotation={[
+                                                0,
+                                                -angle,
+                                                0,
+                                            ]}
                                             {...handlers}
                                             visible={false}
                                         >
-                                            <boxGeometry args={[len, effH, T]} />
+                                            <boxGeometry
+                                                args={[
+                                                    len,
+                                                    effH,
+                                                    T,
+                                                ]}
+                                            />
+
                                             <meshBasicMaterial />
                                         </mesh>
                                     )}
+
                                     {showOutline && outlineMesh}
                                 </group>
                             )
+
+                            /*
+                             * ----------------------------------------------------
+                             * RAILING
+                             * ----------------------------------------------------
+                             */
                         } else if (wallType === 'railing') {
                             panels.push(
-                                <group key={`${seg.id}_${i}`} position={[mcx, 0, mcz]} rotation={[0, -angle, 0]}>
+                                <group
+                                    key={`${seg.id}_${i}`}
+                                    position={[
+                                        mcx,
+                                        0,
+                                        mcz,
+                                    ]}
+                                    rotation={[
+                                        0,
+                                        -angle,
+                                        0,
+                                    ]}
+                                >
                                     <group {...handlers}>
-                                        <Railing3D len={len} wallRoughness={wallRoughness} color={interior.color} height={effH} />
+                                        <Railing3D
+                                            from={[
+                                                -len / 2,
+                                                0,
+                                                0,
+                                            ]}
+                                            to={[
+                                                len / 2,
+                                                0,
+                                                0,
+                                            ]}
+                                            wallRoughness={
+                                                wallRoughness
+                                            }
+                                            color={
+                                                interior.color
+                                            }
+                                            height={effH}
+                                        />
                                     </group>
+
                                     {showOutline && (
-                                        <mesh position={[0, effH / 2, 0]} renderOrder={999}>
-                                            <boxGeometry args={[len * 1.01, effH * 1.01, T * 1.4]} />
+                                        <mesh
+                                            position={[
+                                                0,
+                                                effH / 2,
+                                                0,
+                                            ]}
+                                            renderOrder={999}
+                                        >
+                                            <boxGeometry
+                                                args={[
+                                                    len * 1.01,
+                                                    effH * 1.01,
+                                                    T * 1.4,
+                                                ]}
+                                            />
+
                                             <meshBasicMaterial
-                                                color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
+                                                color={
+                                                    isPieceSelected ||
+                                                        isRoomSelected
+                                                        ? '#3B82F6'
+                                                        : '#93C5FD'
+                                                }
                                                 wireframe
                                                 transparent
-                                                opacity={isPieceSelected || isRoomSelected ? 0.9 : 0.5}
+                                                opacity={
+                                                    isPieceSelected ||
+                                                        isRoomSelected
+                                                        ? 0.9
+                                                        : 0.5
+                                                }
                                                 depthTest={false}
                                             />
                                         </mesh>
                                     )}
                                 </group>
                             )
+
+                            /*
+                             * ----------------------------------------------------
+                             * SOLID WALL
+                             * ----------------------------------------------------
+                             */
                         } else {
                             panels.push(
                                 <group key={`${seg.id}_${i}`}>
                                     <mesh
-                                        position={[mcx, effH / 2, mcz]}
-                                        rotation={[0, -angle, 0]}
+                                        position={[
+                                            mcx,
+                                            effH / 2,
+                                            mcz,
+                                        ]}
+                                        rotation={[
+                                            0,
+                                            -angle,
+                                            0,
+                                        ]}
                                         castShadow
                                         receiveShadow
                                         {...handlers}
                                     >
-                                        <boxGeometry args={[len, effH, segT]} />
-                                        <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={len} height={effH} depth={segT} opacity={opacity} transparent={transparent} />
+                                        <boxGeometry
+                                            args={[
+                                                len,
+                                                effH,
+                                                segT,
+                                            ]}
+                                        />
+                                        {/* End cap +X */}
+                                        <WallMat
+                                            attach="material-0"
+                                            mat={interior.mat}
+                                            color={interior.color}
+                                            roughness={wallRoughness}
+                                            width={len}
+                                            height={effH}
+                                            depth={segT}
+                                            opacity={opacity}
+                                            transparent={transparent}
+                                        />
+
+                                        {/* End cap -X */}
+                                        <WallMat
+                                            attach="material-1"
+                                            mat={interior.mat}
+                                            color={interior.color}
+                                            roughness={wallRoughness}
+                                            width={len}
+                                            height={effH}
+                                            depth={segT}
+                                            opacity={opacity}
+                                            transparent={transparent}
+                                        />
+
+                                        {/* Top */}
+                                        <WallMat
+                                            attach="material-2"
+                                            mat={interior.mat}
+                                            color={interior.color}
+                                            roughness={wallRoughness}
+                                            width={len}
+                                            height={effH}
+                                            depth={segT}
+                                            opacity={opacity}
+                                            transparent={transparent}
+                                        />
+
+                                        {/* Bottom */}
+                                        <WallMat
+                                            attach="material-3"
+                                            mat={interior.mat}
+                                            color={interior.color}
+                                            roughness={wallRoughness}
+                                            width={len}
+                                            height={effH}
+                                            depth={segT}
+                                            opacity={opacity}
+                                            transparent={transparent}
+                                        />
+
+                                        {/* +Z = EXTERIOR */}
+                                        <WallMat
+                                            attach={exteriorFaceAttach}
+                                            mat={exterior.mat}
+                                            color={exterior.color}
+                                            roughness={wallRoughness}
+                                            width={len}
+                                            height={effH}
+                                            depth={segT}
+                                            opacity={opacity}
+                                            transparent={transparent}
+                                        />
+
+                                        {/* -Z = INTERIOR */}
+                                        <WallMat
+                                            attach={interiorFaceAttach}
+                                            mat={interior.mat}
+                                            color={interior.color}
+                                            roughness={wallRoughness}
+                                            width={len}
+                                            height={effH}
+                                            depth={segT}
+                                            opacity={opacity}
+                                            transparent={transparent}
+                                        />
                                     </mesh>
-                                    <group position={[mcx, effH / 2, mcz]} rotation={[0, -angle, 0]}>
-                                        <mesh position={[0, 0, -(segT / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}>
-                                            <planeGeometry args={[len, effH]} />
-                                            <WallMat mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={len} height={effH} depth={0.01} opacity={opacity} transparent={transparent} />
-                                        </mesh>
-                                    </group>
+
                                     {showOutline && outlineMesh}
                                 </group>
                             )
                         }
+
+                        /*
+                         * ========================================================
+                         * WALL HAS OPENINGS
+                         * ========================================================
+                         */
                     } else {
-                        const sorted = [...segOpenings].sort((a, b) => (a.segmentT ?? 0) - (b.segmentT ?? 0))
+                        const sorted = [...segOpenings].sort(
+                            (a, b) =>
+                                (a.segmentT ?? 0) -
+                                (b.segmentT ?? 0)
+                        )
+
                         let cursor = 0
 
-                        for (let si = 0; si <= sorted.length; si++) {
+                        for (
+                            let si = 0;
+                            si <= sorted.length;
+                            si++
+                        ) {
                             const op = sorted[si]
-                            const opPos = op ? (op.segmentT ?? 0) * len : len
-                            const segEnd = op ? opPos - op.width / 2 : len
-                            const segLen = segEnd - cursor
 
+                            const opPos = op
+                                ? (op.segmentT ?? 0) * len
+                                : len
+
+                            const segEnd = op
+                                ? opPos - op.width / 2
+                                : len
+
+                            const segLen =
+                                segEnd - cursor
+
+                            /*
+                             * ------------------------------------------------
+                             * WALL SECTION BETWEEN OPENINGS
+                             * ------------------------------------------------
+                             */
                             if (segLen > 0.02) {
-                                const segMid = cursor + segLen / 2
-                                const wx = a.x + (dx / len) * segMid
-                                const wz = a.z + (dz / len) * segMid
+                                const segMid =
+                                    cursor + segLen / 2
+
+                                const wx =
+                                    a.x +
+                                    (dx / len) * segMid
+
+                                const wz =
+                                    a.z +
+                                    (dz / len) * segMid
+
                                 panels.push(
-                                    <group key={`${seg.id}_${i}_l${si}`}>
+                                    <group
+                                        key={`${seg.id}_${i}_l${si}`}
+                                    >
                                         <mesh
-                                            position={[wx, effH / 2, wz]}
-                                            rotation={[0, -angle, 0]}
+                                            position={[
+                                                wx,
+                                                effH / 2,
+                                                wz,
+                                            ]}
+                                            rotation={[
+                                                0,
+                                                -angle,
+                                                0,
+                                            ]}
                                             castShadow
                                             receiveShadow
                                             {...handlers}
                                         >
-                                            <boxGeometry args={[segLen, effH, segT]} />
-                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={segLen} height={effH} depth={segT} opacity={opacity} transparent={transparent} />
+                                            <boxGeometry
+                                                args={[
+                                                    segLen,
+                                                    effH,
+                                                    segT,
+                                                ]}
+                                            />
+
+                                            {/* End cap +X */}
+                                            <WallMat
+                                                attach="material-0"
+                                                mat={interior.mat}
+                                                color={interior.color}
+                                                roughness={wallRoughness}
+                                                width={segLen}
+                                                height={effH}
+                                                depth={segT}
+                                                opacity={opacity}
+                                                transparent={transparent}
+                                            />
+
+                                            {/* End cap -X */}
+                                            <WallMat
+                                                attach="material-1"
+                                                mat={interior.mat}
+                                                color={interior.color}
+                                                roughness={wallRoughness}
+                                                width={segLen}
+                                                height={effH}
+                                                depth={segT}
+                                                opacity={opacity}
+                                                transparent={transparent}
+                                            />
+
+                                            {/* Top */}
+                                            <WallMat
+                                                attach="material-2"
+                                                mat={interior.mat}
+                                                color={interior.color}
+                                                roughness={wallRoughness}
+                                                width={segLen}
+                                                height={effH}
+                                                depth={segT}
+                                                opacity={opacity}
+                                                transparent={transparent}
+                                            />
+
+                                            {/* Bottom */}
+                                            <WallMat
+                                                attach="material-3"
+                                                mat={interior.mat}
+                                                color={interior.color}
+                                                roughness={wallRoughness}
+                                                width={segLen}
+                                                height={effH}
+                                                depth={segT}
+                                                opacity={opacity}
+                                                transparent={transparent}
+                                            />
+
+                                            {/* +Z = EXTERIOR */}
+                                            <WallMat
+                                                attach={exteriorFaceAttach}
+                                                mat={exterior.mat}
+                                                color={exterior.color}
+                                                roughness={wallRoughness}
+                                                width={segLen}
+                                                height={effH}
+                                                depth={segT}
+                                                opacity={opacity}
+                                                transparent={transparent}
+                                            />
+
+                                            {/* -Z = INTERIOR */}
+                                            <WallMat
+                                                attach={interiorFaceAttach}
+                                                mat={interior.mat}
+                                                color={interior.color}
+                                                roughness={wallRoughness}
+                                                width={segLen}
+                                                height={effH}
+                                                depth={segT}
+                                                opacity={opacity}
+                                                transparent={transparent}
+                                            />
                                         </mesh>
-                                        <group position={[wx, effH / 2, wz]} rotation={[0, -angle, 0]}>
-                                            <mesh position={[0, 0, -(segT / 2 + FACE_EPS)]} rotation={[0, Math.PI, 0]}>
-                                                <planeGeometry args={[segLen, effH]} />
-                                                <WallMat mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={segLen} height={effH} depth={0.01} opacity={opacity} transparent={transparent} />
-                                            </mesh>
-                                        </group>
+
+                                        {/*
+                             * IMPORTANT:
+                             *
+                             * This is a separate exterior face used
+                             * for the opening-wall section.
+                             *
+                             * It MUST be a mesh containing the
+                             * planeGeometry.
+                             *
+                             * The old code had planeGeometry directly
+                             * inside <group>, which was incorrect.
+                             */}
+
                                         {showOutline && (
-                                            <mesh position={[wx, effH / 2, wz]} rotation={[0, -angle, 0]} renderOrder={999}>
-                                                <boxGeometry args={[segLen * 1.01, effH * 1.01, segT * 1.4]} />
+                                            <mesh
+                                                position={[
+                                                    wx,
+                                                    effH / 2,
+                                                    wz,
+                                                ]}
+                                                rotation={[
+                                                    0,
+                                                    -angle,
+                                                    0,
+                                                ]}
+                                                renderOrder={999}
+                                            >
+                                                <boxGeometry
+                                                    args={[
+                                                        segLen * 1.01,
+                                                        effH * 1.01,
+                                                        segT * 1.4,
+                                                    ]}
+                                                />
+
                                                 <meshBasicMaterial
-                                                    color={isPieceSelected || isRoomSelected ? '#3B82F6' : '#93C5FD'}
+                                                    color={
+                                                        isPieceSelected ||
+                                                            isRoomSelected
+                                                            ? '#3B82F6'
+                                                            : '#93C5FD'
+                                                    }
                                                     wireframe
                                                     transparent
-                                                    opacity={isPieceSelected || isRoomSelected ? 0.9 : 0.5}
+                                                    opacity={
+                                                        isPieceSelected ||
+                                                            isRoomSelected
+                                                            ? 0.9
+                                                            : 0.5
+                                                    }
                                                     depthTest={false}
                                                 />
                                             </mesh>
@@ -327,19 +872,66 @@ function LineWalls3DImpl({
                                 )
                             }
 
+                            /*
+                             * ------------------------------------------------
+                             * OPENING
+                             * ------------------------------------------------
+                             */
                             if (op) {
-                                const opPos2 = (op.segmentT ?? 0) * len
-                                const headerH = effH - op.height
-                                const isPassage = op.type === 'opening' && op.variant === 'opening-passage'
-                                const isArchway = op.type === 'opening' && op.variant === 'opening-archway'
+                                const opPos2 =
+                                    (op.segmentT ?? 0) *
+                                    len
 
-                                if (!isPassage && headerH > 0.02) {
-                                    const hx = a.x + (dx / len) * opPos2
-                                    const hz = a.z + (dz / len) * opPos2
+                                const openingBottom =
+                                    op.sillHeight ?? 0
+
+                                const openingTop =
+                                    openingBottom +
+                                    op.height
+
+                                const headerH =
+                                    effH -
+                                    openingTop
+
+                                const isPassage =
+                                    op.type === 'opening' &&
+                                    op.variant ===
+                                    'opening-passage'
+
+                                const isArchway =
+                                    op.type === 'opening' &&
+                                    op.variant ===
+                                    'opening-archway'
+
+                                /*
+                                 * ------------------------------------------------
+                                 * HEADER
+                                 * ------------------------------------------------
+                                 */
+                                if (
+                                    !isPassage &&
+                                    headerH > 0.02
+                                ) {
+                                    const hx =
+                                        a.x +
+                                        (dx / len) *
+                                        opPos2
+
+                                    const hz =
+                                        a.z +
+                                        (dz / len) *
+                                        opPos2
 
                                     if (isArchway) {
                                         panels.push(
-                                            <group key={`${seg.id}_${i}_h${si}`} position={[hx, op.height, hz]}>
+                                            <group
+                                                key={`${seg.id}_${i}_h${si}`}
+                                                position={[
+                                                    hx,
+                                                    openingTop,
+                                                    hz,
+                                                ]}
+                                            >
                                                 <ArchHeader3D
                                                     width={op.width}
                                                     headerH={headerH}
@@ -347,7 +939,9 @@ function LineWalls3DImpl({
                                                     angle={-angle}
                                                     mat={interior.mat}
                                                     color={interior.color}
-                                                    roughness={wallRoughness}
+                                                    roughness={
+                                                        wallRoughness
+                                                    }
                                                 />
                                             </group>
                                         )
@@ -355,73 +949,222 @@ function LineWalls3DImpl({
                                         panels.push(
                                             <mesh
                                                 key={`${seg.id}_${i}_h${si}`}
-                                                position={[hx, op.height + headerH / 2, hz]}
-                                                rotation={[0, -angle, 0]}
+                                                position={[
+                                                    hx,
+                                                    openingTop +
+                                                    headerH / 2,
+                                                    hz,
+                                                ]}
+                                                rotation={[
+                                                    0,
+                                                    -angle,
+                                                    0,
+                                                ]}
                                                 castShadow
                                                 receiveShadow
                                                 {...handlers}
                                             >
-                                                <boxGeometry args={[op.width, headerH, segT]} />
-                                                <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
+                                                <boxGeometry
+                                                    args={[
+                                                        op.width,
+                                                        headerH,
+                                                        segT,
+                                                    ]}
+                                                />
+
+                                                <WallMat
+                                                    mat={
+                                                        interior.mat
+                                                    }
+                                                    color={
+                                                        interior.color
+                                                    }
+                                                    roughness={
+                                                        wallRoughness
+                                                    }
+                                                    width={
+                                                        op.width
+                                                    }
+                                                    height={
+                                                        headerH
+                                                    }
+                                                    depth={
+                                                        segT
+                                                    }
+                                                    opacity={
+                                                        opacity
+                                                    }
+                                                    transparent={
+                                                        transparent
+                                                    }
+                                                />
                                             </mesh>
                                         )
                                     }
                                 }
 
-                                if (op.type === 'window' && op.sillHeight > 0.02) {
-                                    const sx = a.x + (dx / len) * opPos2
-                                    const sz = a.z + (dz / len) * opPos2
+                                /*
+                                 * ------------------------------------------------
+                                 * SILL
+                                 * ------------------------------------------------
+                                 */
+                                if (
+                                    (
+                                        op.type === 'window' ||
+                                        op.type === 'door'
+                                    ) &&
+                                    openingBottom > 0.02
+                                ) {
+                                    const sx =
+                                        a.x +
+                                        (dx / len) *
+                                        opPos2
+
+                                    const sz =
+                                        a.z +
+                                        (dz / len) *
+                                        opPos2
+
                                     panels.push(
                                         <mesh
                                             key={`${seg.id}_${i}_s${si}`}
-                                            position={[sx, op.sillHeight / 2, sz]}
-                                            rotation={[0, -angle, 0]}
+                                            position={[
+                                                sx,
+                                                openingBottom / 2,
+                                                sz,
+                                            ]}
+                                            rotation={[
+                                                0,
+                                                -angle,
+                                                0,
+                                            ]}
                                             castShadow
                                             receiveShadow
                                             {...handlers}
                                         >
-                                            <boxGeometry args={[op.width, op.sillHeight, segT]} />
-                                            <WallMat mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={op.sillHeight} depth={segT} opacity={opacity} transparent={transparent} />
+                                            <boxGeometry
+                                                args={[
+                                                    op.width,
+                                                    openingBottom,
+                                                    segT,
+                                                ]}
+                                            />
+
+                                            <WallMat
+                                                mat={
+                                                    interior.mat
+                                                }
+                                                color={
+                                                    interior.color
+                                                }
+                                                roughness={
+                                                    wallRoughness
+                                                }
+                                                width={
+                                                    op.width
+                                                }
+                                                height={
+                                                    openingBottom
+                                                }
+                                                depth={segT}
+                                                opacity={opacity}
+                                                transparent={
+                                                    transparent
+                                                }
+                                            />
                                         </mesh>
                                     )
                                 }
 
-                                const ox = a.x + (dx / len) * opPos2
-                                const oz = a.z + (dz / len) * opPos2
+                                const ox =
+                                    a.x +
+                                    (dx / len) *
+                                    opPos2
 
+                                const oz =
+                                    a.z +
+                                    (dz / len) *
+                                    opPos2
+
+                                /*
+                                 * ------------------------------------------------
+                                 * WINDOW
+                                 * ------------------------------------------------
+                                 */
                                 if (op.type === 'window') {
-                                    const glazingCenterY = op.sillHeight + op.height / 2
+                                    const glazingCenterY =
+                                        op.sillHeight +
+                                        op.height / 2
+
                                     panels.push(
                                         <WindowVariant3D
                                             key={`${seg.id}_${i}_w${si}`}
                                             op={op}
                                             angle={angle}
-                                            basePos={[ox, glazingCenterY, oz]}
-                                            interactive={interactive}
-                                            onToggleOpen={onToggleDoorOpen ? () => onToggleDoorOpen(op.id) : undefined}
+                                            basePos={[
+                                                ox,
+                                                glazingCenterY,
+                                                oz,
+                                            ]}
+                                            interactive={
+                                                interactive
+                                            }
+                                            onToggleOpen={
+                                                onToggleDoorOpen
+                                                    ? () =>
+                                                        onToggleDoorOpen(
+                                                            op.id
+                                                        )
+                                                    : undefined
+                                            }
                                         />
                                     )
-                                } else if (op.type === 'door') {
+
+                                    /*
+                                     * ------------------------------------------------
+                                     * DOOR
+                                     * ------------------------------------------------
+                                     */
+                                } else if (
+                                    op.type === 'door'
+                                ) {
                                     panels.push(
                                         <DoorVariant3D
                                             key={`${seg.id}_${i}_d${si}`}
                                             op={op}
                                             angle={angle}
-                                            basePos={[ox, op.height / 2, oz]}
-                                            doorStyle={doorStyle}
-                                            interactive={interactive}
-                                            onToggleOpen={onToggleDoorOpen}
+                                            basePos={[
+                                                ox,
+                                                openingBottom +
+                                                op.height / 2,
+                                                oz,
+                                            ]}
+                                            doorStyle={
+                                                doorStyle
+                                            }
+                                            interactive={
+                                                interactive
+                                            }
+                                            onToggleOpen={
+                                                onToggleDoorOpen
+                                            }
                                         />
                                     )
                                 }
 
-                                cursor = opPos + op.width / 2
+                                cursor =
+                                    opPos +
+                                    op.width / 2
                             }
                         }
                     }
                 }
 
-                return <group key={seg.id}>{panels}</group>
+                return (
+                    <group key={seg.id}>
+                        {panels}
+                    </group>
+                )
             })}
 
             {derivedPolygons.map((nodeIds, idx) => {
@@ -486,21 +1229,6 @@ function LineWalls3DImpl({
                             {shapeLabel}
                         </Text>
                     </React.Fragment>
-                )
-            })}
-
-            {(fp.lineNodes ?? []).map(node => {
-                const owningSeg = (fp.lineSegments ?? []).find(seg => seg.nodeIds.includes(node.id))
-                const nodeMat = owningSeg ? (segWallMaterial.get(owningSeg.id) ?? wallMaterial) : wallMaterial
-                const nodeColor = owningSeg ? (segWallColor.get(owningSeg.id) ?? wallColor) : wallColor
-                const nodeT = owningSeg?.thickness ?? 0.15
-                const nodeH = owningSeg?.height ?? H
-
-                return (
-                    <mesh key={node.id} position={[node.x, nodeH / 2, node.z]} castShadow receiveShadow>
-                        <cylinderGeometry args={[nodeT / 2, nodeT / 2, nodeH, 8]} />
-                        <WallMat mat={nodeMat} color={nodeColor} roughness={wallRoughness} width={nodeT} height={nodeH} depth={nodeT} opacity={opacity} transparent={transparent} />
-                    </mesh>
                 )
             })}
 

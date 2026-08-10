@@ -1,3 +1,9 @@
+import {
+  RailingConfig,
+  SkirtConfig,
+  TreadConfig,
+} from "../objects/stair-config";
+
 export type StairsType =
   | "stairs-straight"
   | "stairs-l"
@@ -44,21 +50,71 @@ export type PlacedStairs = {
   depth: number;
   rotation: number; // radians
   anchorSegmentId?: string;
+
   // ── Geometry ──
   rise?: number; // total vertical height in meters; defaults to roomHeight
   steps?: number; // step count; defaults to stairsMesh's existing auto-calc
-  // ── Railing ──
-  railingEnabled?: boolean; // defaults to true (current behavior always drew railings)
-  railingStyle?: RailingStyle; // defaults to 'baluster'
-  railingColor?: string; // defaults to the current hardcoded RAILING_COLOR ('#6B5B4E')
-  railingHeight?: number; // defaults to 0.9 (matches Railing3D's current railHeight)
+
+  // ── L/U flight step counts ──
+  // Per-flight step count overrides for L-Stairs and U-Stairs. `steps`
+  // above still applies to Straight and Spiral; these are separate because
+  // an L/U stair has two independent runs that can each need a different
+  // count. Optional — falls back to LStairs'/UStairs' existing
+  // auto-computed count (based on rise) when omitted, same as `steps` does.
+  steps1?: number; // flight 1 (lower run) step count
+  steps2?: number; // flight 2 (upper run) step count
+
+  // ── L-Stairs flight/landing sizing ──
+  // Optional overrides for the shared width of both flights + the landing,
+  // and the landing slab's thickness. Falls back to LStairs' internal
+  // defaults (derived from width/depth) when omitted.
+  flightWidth?: number;
+  landingThickness?: number;
+
+  // ── U-Stairs center wall ──
+  // Toggles the solid dividing wall between the two U-Stairs flights.
+  // Defaults to true (matches current always-on behavior) when omitted,
+  // so existing saves render exactly as before.
+  showCenterWall?: boolean;
+
+  // ── Tread style ──
+  // Primary config going forward, same pattern as `railing`/`skirt`:
+  // optional so in-memory objects built before migration runs don't fail
+  // type checks; always read through resolveTreadConfig()/DEFAULT_TREAD
+  // rather than assuming this is populated.
+  tread?: TreadConfig;
+
+  // ── Railing / Skirt ──
+  // Primary config going forward. Optional (not required) so in-memory
+  // objects built before migration runs don't fail type checks; always
+  // read through resolveRailingSkirt()/DEFAULT_RAILING/DEFAULT_SKIRT
+  // rather than assuming these are populated.
+  railing?: RailingConfig;
+  skirt?: SkirtConfig;
+
+  // ── Legacy railing fields — DEPRECATED ──
+  // Kept only so migrateStairRailingSkirt() has something to read when
+  // backfilling `railing` on stairs saved before this change. Do not
+  // write to these going forward; new code should only touch `railing`.
+  /** @deprecated use railing.enabled */
+  railingEnabled?: boolean;
+  /** @deprecated use railing.style */
+  railingStyle?: RailingStyle;
+  /** @deprecated use railing.color */
+  railingColor?: string;
+  /** @deprecated use railing.height */
+  railingHeight?: number;
+
   openingMode?: StairsOpeningMode; // defaults to 'destination'
   autoCutout?: boolean; // defaults to true
   openingOffset?: number; // defaults to 0.5
   fromLevel?: string;
   toLevel?: string;
   materialId?: string;
-  // NEW — closed/solid spiral style: fills the vertical gap between
+
+  // Closed/solid spiral style: fills the vertical gap between treads
+  // @deprecated use tread.mode === 'closed' (still read as a fallback by
+  // SpiralStairs' `isClosed` check, so existing saves keep working)
   filledRisers?: boolean;
 };
 

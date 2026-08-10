@@ -1,4 +1,4 @@
-import { deriveClosedPolygons, snapFurniture, snapM, uid } from "@/lib/helpers"
+import { applyShapeExteriorMaterial, deriveClosedPolygons, snapFurniture, snapM, uid } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
 import { ClosedShape, EditorOpening, EditorRoom, FloorMaterial, FloorPlanState, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
@@ -10,6 +10,7 @@ import { getMaterialsForDomain } from "./texture/materials-registry"
 import { Button, Card, COLOR, ColorSwatchInput, Divider, EmptyState, IconButton, RangeRow, SectionLabel, SegmentedControl, SPACE } from "./texture/inspector-ui"
 import { LIGHT_FIXTURE_LABELS, PlacedLight } from "./lights-constant"
 import { FURNITURE_LABELS } from "./lib/furniture-constants"
+import { DEFAULT_RAILING, DEFAULT_SKIRT, DEFAULT_TREAD, FlightRailingConfig, RailingSideConfig } from "./objects/stair-config"
 
 // Every door geometry variant DoorVariant3D actually knows how to render
 // (its switch-case keys) — kept here so the "Type" dropdown can't offer an
@@ -42,16 +43,19 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 }) {
 
     const pickerTheme = { border: COLOR.border, borderStrong: COLOR.borderStrong, textMuted: COLOR.textMuted }
-    const [segWallSide, setSegWallSide] = useState<'interior' | 'exterior'>('interior')
+    const [segWallSide, setSegWallSide] = useState<'interior' | 'exterior' | 'both'>('interior')
+    const [shapeWallSide, setShapeWallSide] = useState<'interior' | 'exterior' | 'both'>('interior')
     const wallMaterials = getMaterialsFor('wall')
     const floorMaterials = getMaterialsFor('floor')
     const furnitureMaterials = getMaterialsFor('furniture')
-
-
+    const [skirtFlightTab, setSkirtFlightTab] = useState<'0' | '1'>('0')
     const wallSel = selectedId?.includes('::wall::')
         ? { roomId: selectedId.split('::wall::')[0], wall: selectedId.split('::wall::')[1] as 'north' | 'south' | 'east' | 'west' }
         : null
     const wallRoom = wallSel ? fp.rooms.find(r => r.id === wallSel.roomId) : null
+    const [railingFlightTab, setRailingFlightTab] = useState<'0' | '1'>('0')
+    const [railingSideTab, setRailingSideTab] = useState<'left' | 'right'>('left')
+
 
     const derivedPolygonForSelection = useMemo(
         () => deriveClosedPolygons(fp.lineNodes, fp.lineSegments).find(nodeIds => {
@@ -102,10 +106,41 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         })
     }
 
-    // ── FIX: this guard previously omitted `light`, so selecting a light
-    // fell through to the empty state before the (correct) second guard
-    // further down ever ran. `light` is now part of the single guard below,
-    // and the duplicate second guard has been removed entirely. ──
+    const applyShapeWallTexture = (
+        side: 'interior' | 'exterior' | 'both',
+        material: WallMaterial | undefined
+    ) => {
+        if (!shape) return
+
+        const exists = (fp.closedShapes ?? []).some(
+            sh => sh.id === shape.id
+        )
+
+        const patch: Partial<ClosedShape> = {}
+        if (side === 'interior' || side === 'both') {
+            patch.wallMaterial = material
+        }
+        if (side === 'exterior' || side === 'both') {
+            patch.exteriorWallMaterial = material
+        }
+
+        const nextShapes = exists
+            ? (fp.closedShapes ?? []).map(sh =>
+                sh.id === shape.id
+                    ? { ...sh, ...patch }
+                    : sh
+            )
+            : [
+                ...(fp.closedShapes ?? []),
+                { ...shape, ...patch },
+            ]
+
+        onChange({
+            ...fp,
+            closedShapes: nextShapes,
+        })
+    }
+
     if (!room && !opening && !node && !seg && !furniture && !stairs && !wallRoom && !shape && !wallDecor && !outdoorObj && !light) return (
         <EmptyState label="Select a room, wall, node or opening to edit properties" />
     )
@@ -172,6 +207,28 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
             ...fp,
             lights: (fp.lights ?? []).map(l => l.id === light.id ? { ...l, ...patch } : l)
         })
+    }
+
+    function getOpeningWorldPos(op: EditorOpening, fp: FloorPlanState): { x: number; z: number } | null {
+        if (!op.segmentNodeIds) return null
+        const a = fp.lineNodes.find(n => n.id === op.segmentNodeIds![0])
+        const b = fp.lineNodes.find(n => n.id === op.segmentNodeIds![1])
+        if (!a || !b) return null
+        const t = op.segmentT ?? 0
+        return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }
+    }
+
+    function findNearestStairsTopHeight(fp: FloorPlanState, op: EditorOpening): number | null {
+        const pos = getOpeningWorldPos(op, fp)
+        if (!pos) return null
+        let best: { dist: number; top: number } | null = null
+        for (const s of fp.stairs ?? []) {
+            const cx = s.x + s.width / 2, cz = s.z + s.depth / 2
+            const dist = Math.hypot(cx - pos.x, cz - pos.z)
+            if (dist > 4) continue // ignore stairs unrelated to this wall
+            if (!best || dist < best.dist) best = { dist, top: s.rise ?? fp.roomHeight }
+        }
+        return best?.top ?? null
     }
 
     const canDuplicate = !!(room || shape || furniture || stairs || outdoorObj || wallDecor || opening || light);
@@ -258,12 +315,51 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 </Card>
 
                 <Card>
+                    <SectionLabel>Wall Texture</SectionLabel>
+                    <PropField label="Side">
+                        <SegmentedControl
+                            options={[
+                                { value: 'interior', label: 'Interior' },
+                                { value: 'exterior', label: 'Exterior' },
+                                { value: 'both', label: 'Both' },
+                            ] as const}
+                            value={shapeWallSide}
+                            onChange={(side) => setShapeWallSide(side)}
+                        />
+                    </PropField>
+                    <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: -4 }}>
+                        {shapeWallSide === 'exterior'
+                            ? 'Applies to the outside face of this wall.'
+                            : shapeWallSide === 'both'
+                                ? 'Applies to both faces of this wall.'
+                                : 'Applies to the inside face of this wall.'}
+                    </div>
                     <MaterialTexturePicker
-                        label="Wall Texture"
+                        label={
+                            shapeWallSide === 'both'
+                                ? 'Wall Texture'
+                                : shapeWallSide === 'exterior'
+                                    ? 'Exterior Wall Texture'
+                                    : 'Interior Wall Texture'
+                        }
                         items={wallMaterials}
-                        currentId={shape.wallMaterial}
-                        onSelect={(id) => patchShape({ wallMaterial: id as WallMaterial })}
-                        onClear={() => patchShape({ wallMaterial: undefined })}
+                        currentId={
+                            shapeWallSide === 'exterior'
+                                ? shape.exteriorWallMaterial
+                                : shape.wallMaterial
+                        }
+                        onSelect={(id) =>
+                            applyShapeWallTexture(
+                                shapeWallSide,
+                                id as WallMaterial
+                            )
+                        }
+                        onClear={() =>
+                            applyShapeWallTexture(
+                                shapeWallSide,
+                                undefined
+                            )
+                        }
                         theme={pickerTheme}
                     />
                     <Divider />
@@ -299,14 +395,31 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         />
                     </PropField>
                     <Divider />
-                    <MaterialTexturePicker
-                        label="Wall Texture"
-                        items={wallMaterials}
-                        currentId={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallMaterial}
-                        onSelect={(id) => patchRoomScene({ wallMaterial: id as WallMaterial })}
-                        onClear={() => patchRoomScene({ wallMaterial: undefined })}
-                        theme={pickerTheme}
-                    />
+                    {
+                        seg &&
+                        <MaterialTexturePicker
+                            label="Wall Texture"
+                            items={wallMaterials}
+                            currentId={
+                                segWallSide === 'exterior'
+                                    ? segSceneConfig?.exteriorWallMaterial
+                                    : segSceneConfig?.wallMaterial
+                            }
+                            onSelect={(id) => {
+                                const patch: Partial<RoomSceneConfig> = {}
+                                if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = id as WallMaterial
+                                if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = id as WallMaterial
+                                patchRoomSceneById(seg.id, patch)
+                            }}
+                            onClear={() => {
+                                const patch: Partial<RoomSceneConfig> = {}
+                                if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = undefined
+                                if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = undefined
+                                patchRoomSceneById(seg.id, patch)
+                            }}
+                            theme={pickerTheme}
+                        />
+                    }
                     <Divider />
                     <MaterialTexturePicker
                         label="Floor Texture"
@@ -378,49 +491,63 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             options={[
                                 { value: 'interior', label: 'Interior' },
                                 { value: 'exterior', label: 'Exterior' },
+                                { value: 'both', label: 'Both' },
                             ] as const}
                             value={segWallSide}
-                            onChange={setSegWallSide}
+                            onChange={(side) => {
+                                setSegWallSide(side)
+                                patchRoomSceneById(seg.id, { wallMaterialSide: side })
+                            }}
                         />
                     </PropField>
+
                     <PropField label="Wall color">
                         <ColorSwatchInput
-                            value={(segWallSide === 'exterior'
-                                ? (segSceneConfig as any)?.exteriorWallColor ?? segSceneConfig?.wallColor
-                                : segSceneConfig?.wallColor) ?? '#FFFFFF'}
-                            onChange={v => patchRoomSceneById(seg.id,
-                                segWallSide === 'exterior' ? { exteriorWallColor: v } as any : { wallColor: v })}
+                            value={segSceneConfig?.wallColor ?? '#FFFFFF'}
+                            onChange={v =>
+                                patchRoomSceneById(seg.id, {
+                                    wallColor: v,
+                                })
+                            }
                         />
                     </PropField>
+
                     <Divider />
-                    <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: -4 }}>
-                        {segWallSide === 'exterior'
-                            ? "Leave on \"Default\" to mirror the interior texture on this side."
-                            : 'Applies to the inside face of this wall loop.'}
+
+                    <div style={{
+                        fontSize: 11,
+                        color: COLOR.textFaint,
+                        marginBottom: -4
+                    }}>
+                        {segWallSide === 'interior'
+                            ? 'Applies to the interior face of this wall.'
+                            : segWallSide === 'exterior'
+                                ? 'Applies to the exterior face of this wall.'
+                                : 'Applies to both faces of this wall.'}
                     </div>
+
                     <MaterialTexturePicker
-                        label={segWallSide === 'exterior' ? 'Exterior Wall Texture' : 'Interior Wall Texture'}
+                        label="Wall Texture"
                         items={wallMaterials}
-                        currentId={segWallSide === 'exterior'
-                            ? (segSceneConfig as any)?.exteriorWallMaterial
-                            : segSceneConfig?.wallMaterial}
-                        onSelect={(id) => patchRoomSceneById(seg.id,
-                            segWallSide === 'exterior'
-                                ? { exteriorWallMaterial: id as WallMaterial } as any
-                                : { wallMaterial: id as WallMaterial })}
-                        onClear={() => patchRoomSceneById(seg.id,
-                            segWallSide === 'exterior'
-                                ? { exteriorWallMaterial: undefined } as any
-                                : { wallMaterial: undefined })}
-                        theme={pickerTheme}
-                    />
-                    <Divider />
-                    <MaterialTexturePicker
-                        label="Floor Texture"
-                        items={floorMaterials}
-                        currentId={segSceneConfig?.floorMaterial}
-                        onSelect={(id) => patchRoomSceneById(seg.id, { floorMaterial: id as FloorMaterial })}
-                        onClear={() => patchRoomSceneById(seg.id, { floorMaterial: undefined })}
+                        currentId={
+                            segWallSide === 'interior'
+                                ? segSceneConfig?.wallMaterial
+                                : segWallSide === 'exterior'
+                                    ? segSceneConfig?.exteriorWallMaterial
+                                    : undefined
+                        }
+                        onSelect={(id) => {
+                            const patch: Partial<RoomSceneConfig> = {}
+                            if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = id as WallMaterial
+                            if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = id as WallMaterial
+                            patchRoomSceneById(seg.id, patch)
+                        }}
+                        onClear={() => {
+                            const patch: Partial<RoomSceneConfig> = {}
+                            if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = undefined
+                            if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = undefined
+                            patchRoomSceneById(seg.id, patch)
+                        }}
                         theme={pickerTheme}
                     />
                 </Card>
@@ -430,16 +557,58 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 <Card>
                     <PropField label="Width (m)"><NumInput value={opening.width} min={0.5} max={4} step={0.1} onChange={v => patchOpening({ width: v })} /></PropField>
                     {opening.type === 'window' && <>
-                        <PropField label="Height (m)"><NumInput value={opening.height} min={0.3} max={2.5} step={0.1} onChange={v => patchOpening({ height: v })} /></PropField>
-                        <PropField label="Sill (m)"><NumInput value={opening.sillHeight} min={0} max={2} step={0.1} onChange={v => patchOpening({ sillHeight: v })} /></PropField>
+                        <PropField label="Height (m)">...</PropField>
                     </>}
-                    {opening.type === 'window' && (opening.variant === 'window-casement' || opening.variant === 'window-sliding') && (
-                        <PropField label="State">
-                            <Button variant="secondary" onClick={() => patchOpening({ isOpen: !opening.isOpen })}>
-                                {opening.isOpen ? '🪟 Open' : '🪟 Closed'}
+                    {(opening.type === 'window' || opening.type === 'door') && (
+                        <PropField label={opening.type === 'door' ? 'Height above floor (m)' : 'Sill (m)'}>
+                            <NumInput value={opening.sillHeight} min={0} max={fp.roomHeight - 0.3} step={0.05}
+                                onChange={v => patchOpening({ sillHeight: v })} />
+                        </PropField>
+                    )}
+                    {opening.type === 'door' && (
+                        <PropField label="Snap">
+                            <Button variant="secondary" onClick={() => {
+                                const target = findNearestStairsTopHeight(fp, opening)
+                                if (target !== null) patchOpening({ sillHeight: target })
+                            }}>
+                                ⤒ Snap to nearest stairs landing
                             </Button>
                         </PropField>
                     )}
+
+                    {opening.type === 'window' && (
+                        ['window-casement', 'window-sliding', 'window-single-hung', 'window-double-hung', 'window-awning']
+                            .includes(opening.variant ?? 'window-fixed')
+                    ) && (
+                            <>
+                                <PropField label="State">
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => patchOpening({
+                                            isOpen: !opening.isOpen,
+                                            // Keep openAmount in sync so the slider below reflects
+                                            // the toggle instead of freezing at its old value.
+                                            openAmount: !opening.isOpen ? (opening.openAmount ?? 1) : opening.openAmount,
+                                        })}
+                                    >
+                                        {opening.isOpen ? '🪟 Open' : '🪟 Closed'}
+                                    </Button>
+                                </PropField>
+                                <PropField label="Open amount">
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={1}
+                                        step={0.01}
+                                        value={opening.openAmount ?? (opening.isOpen ? 1 : 0)}
+                                        onChange={e => {
+                                            const v = parseFloat(e.target.value)
+                                            patchOpening({ openAmount: v, isOpen: v > 0 })
+                                        }}
+                                    />
+                                </PropField>
+                            </>
+                        )}
                     <PropField label="Position (m)"><NumInput value={opening.position} min={0.3} max={20} step={0.1} onChange={v => patchOpening({ position: v })} /></PropField>
                     {opening.type === 'door' && <>
                         <PropField label="Type">
@@ -617,6 +786,211 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         onChange={t => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, type: t } : s) })}
                     />
                 </Card>
+                <Card>
+                    <SectionLabel>Railing</SectionLabel>
+                    <PropField label="Enabled">
+                        <Button
+                            variant="secondary"
+                            onClick={() => onChange({
+                                ...fp,
+                                stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                    ? { ...s, railing: { ...(s.railing ?? DEFAULT_RAILING), enabled: !(s.railing?.enabled ?? true) } }
+                                    : s)
+                            })}
+                        >
+                            {(stairs.railing?.enabled ?? true) ? '☑ On' : '☐ Off'}
+                        </Button>
+                    </PropField>
+
+                    {(stairs.railing?.enabled ?? true) && <>
+                        {(stairs.type === 'stairs-l' || stairs.type === 'stairs-u') && (
+                            <PropField label="Flight">
+                                <SegmentedControl
+                                    options={[
+                                        { value: '0', label: 'Flight 1' },
+                                        { value: '1', label: 'Flight 2' },
+                                    ] as const}
+                                    value={railingFlightTab}
+                                    onChange={setRailingFlightTab}
+                                />
+                            </PropField>
+                        )}
+
+                        {/* Side tabs — this is the piece that was missing. Each side is
+            now edited and stored independently via perFlight, instead of
+            one shared Style/Height/Color applied to "Both" sides at once. */}
+                        <PropField label="Editing side">
+                            <SegmentedControl
+                                options={[
+                                    { value: 'left', label: 'Left' },
+                                    { value: 'right', label: 'Right' },
+                                ] as const}
+                                value={railingSideTab}
+                                onChange={setRailingSideTab}
+                            />
+                        </PropField>
+
+                        {(() => {
+                            const isMultiFlight = stairs.type === 'stairs-l' || stairs.type === 'stairs-u'
+                            const flightIndex = isMultiFlight ? Number(railingFlightTab) : 0
+                            const perFlight = stairs.railing?.perFlight ?? []
+                            const flightCfg = perFlight.find(p => p.flightIndex === flightIndex)
+                            const sideCfg: RailingSideConfig = flightCfg?.[railingSideTab] ?? {
+                                enabled: stairs.railing?.side === 'both' || stairs.railing?.side === railingSideTab,
+                                style: stairs.railing?.style ?? 'baluster',
+                                height: stairs.railing?.height ?? 0.9,
+                                color: stairs.railing?.color,
+                                postSpacing: stairs.railing?.postSpacing,
+                                railingWidth: stairs.railing?.railingWidth,
+                            }
+
+                            const updateSide = (patch: Partial<RailingSideConfig>) => {
+                                const nextSideCfg = { ...sideCfg, ...patch }
+                                const nextFlightCfg: FlightRailingConfig = {
+                                    flightIndex,
+                                    left: flightCfg?.left,
+                                    right: flightCfg?.right,
+                                    [railingSideTab]: nextSideCfg,
+                                }
+                                const nextPerFlight = flightCfg
+                                    ? perFlight.map(p => p.flightIndex === flightIndex ? nextFlightCfg : p)
+                                    : [...perFlight, nextFlightCfg]
+                                onChange({
+                                    ...fp,
+                                    stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                        ? { ...s, railing: { ...(s.railing ?? DEFAULT_RAILING), perFlight: nextPerFlight } }
+                                        : s)
+                                })
+                            }
+
+                            return <>
+                                <PropField label={`${railingSideTab === 'left' ? 'Left' : 'Right'} side`}>
+                                    <Button variant="secondary" onClick={() => updateSide({ enabled: !sideCfg.enabled })}>
+                                        {sideCfg.enabled ? '☑ On' : '☐ Off'}
+                                    </Button>
+                                </PropField>
+
+                                {sideCfg.enabled && <>
+                                    <PropField label="Style">
+                                        <SegmentedControl
+                                            options={[
+                                                { value: 'baluster', label: 'Baluster' },
+                                                { value: 'glass', label: 'Glass' },
+                                                { value: 'cable', label: 'Cable' },
+                                                { value: 'solid-panel', label: 'Solid' },
+                                                { value: 'criss-cross', label: 'Criss-Cross' },
+                                            ] as const}
+                                            value={sideCfg.style}
+                                            onChange={style => updateSide({ style })}
+                                        />
+                                    </PropField>
+                                    <PropField label="Height (m)">
+                                        <NumInput value={sideCfg.height} min={0.6} max={1.2} step={0.05}
+                                            onChange={height => updateSide({ height })} />
+                                    </PropField>
+                                    <PropField label="Rail width (m)">
+                                        <NumInput value={sideCfg.railingWidth ?? 0.05} min={0.02} max={0.12} step={0.01}
+                                            onChange={railingWidth => updateSide({ railingWidth })} />
+                                    </PropField>
+                                    {(sideCfg.style === 'baluster' || sideCfg.style === 'cable') && (
+                                        <PropField label="Post spacing (m)">
+                                            <NumInput value={sideCfg.postSpacing ?? 0.12} min={0.05} max={0.3} step={0.01}
+                                                onChange={postSpacing => updateSide({ postSpacing })} />
+                                        </PropField>
+                                    )}
+                                    <PropField label="Color">
+                                        <ColorSwatchInput
+                                            value={sideCfg.color ?? '#6B5B4E'}
+                                            onChange={color => updateSide({ color })}
+                                        />
+                                    </PropField>
+                                </>}
+                            </>
+                        })()}
+                    </>}
+                </Card>
+
+                <Card>
+                    <SectionLabel>Skirt (closed sides)</SectionLabel>
+                    <PropField label="Enabled">
+                        <Button
+                            variant="secondary"
+                            onClick={() => onChange({
+                                ...fp,
+                                stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                    ? { ...s, skirt: { ...(s.skirt ?? DEFAULT_SKIRT), enabled: !(s.skirt?.enabled ?? false) } }
+                                    : s)
+                            })}
+                        >
+                            {(stairs.skirt?.enabled ?? false) ? '☑ Closed' : '☐ Open (hollow)'}
+                        </Button>
+                    </PropField>
+
+                    {(stairs.skirt?.enabled ?? false) && <>
+                        {(stairs.type === 'stairs-l' || stairs.type === 'stairs-u') ? (
+                            <PropField label="Flight">
+                                <SegmentedControl
+                                    options={[
+                                        { value: '0', label: 'Flight 1' },
+                                        { value: '1', label: 'Flight 2' },
+                                    ] as const}
+                                    value={skirtFlightTab}
+                                    onChange={setSkirtFlightTab}
+                                />
+                            </PropField>
+                        ) : null}
+
+                        {(['left', 'right', 'front'] as const).map(side => {
+                            const activeFlight = (stairs.type === 'stairs-l' || stairs.type === 'stairs-u') ? Number(skirtFlightTab) : 0
+                            const flightCfg = stairs.skirt?.perFlight?.find(p => p.flightIndex === activeFlight)
+                            const active = flightCfg?.sides?.includes(side) ?? false
+                            return (
+                                <PropField key={side} label={side[0].toUpperCase() + side.slice(1)}>
+                                    <Button
+                                        variant={active ? 'secondary' : 'ghost'}
+                                        onClick={() => {
+                                            const perFlight = stairs.skirt?.perFlight ?? []
+                                            const existing = perFlight.find(p => p.flightIndex === activeFlight)
+                                            const nextSides = existing
+                                                ? (active ? existing.sides.filter(s => s !== side) : [...existing.sides, side])
+                                                : [side]
+                                            const nextPerFlight = existing
+                                                ? perFlight.map(p => p.flightIndex === activeFlight ? { ...p, sides: nextSides } : p)
+                                                : [...perFlight, { flightIndex: activeFlight, sides: nextSides }]
+                                            onChange({
+                                                ...fp,
+                                                stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                                    ? { ...s, skirt: { ...(s.skirt ?? DEFAULT_SKIRT), perFlight: nextPerFlight } }
+                                                    : s)
+                                            })
+                                        }}
+                                    >
+                                        {active ? '☑' : '☐'}
+                                    </Button>
+                                </PropField>
+                            )
+                        })}
+                        <Divider />
+                        <MaterialTexturePicker
+                            label="Skirt Material"
+                            items={getMaterialsFor('stairs')}
+                            currentId={stairs.skirt?.materialId}
+                            onSelect={(id) => onChange({
+                                ...fp,
+                                stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                    ? { ...s, skirt: { ...(s.skirt ?? DEFAULT_SKIRT), materialId: id } }
+                                    : s)
+                            })}
+                            onClear={() => onChange({
+                                ...fp,
+                                stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                    ? { ...s, skirt: { ...(s.skirt ?? DEFAULT_SKIRT), materialId: undefined } }
+                                    : s)
+                            })}
+                            theme={pickerTheme}
+                        />
+                    </>}
+                </Card>
                 {stairs && (
                     <Card>
                         <MaterialTexturePicker
@@ -645,14 +1019,95 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             })}
                         />
                     </PropField>
+
+                    {/* NEW — total flight length, independent of step count. Changes d,
+        which StraightStairs/LStairs/UStairs all already use to recompute
+        each tread's run/spacing without touching numTreads. */}
+                    {stairs.type !== 'stairs-spiral' && (
+                        <PropField label="Length (m)">
+                            <NumInput
+                                value={stairs.depth}
+                                min={1}
+                                max={12}
+                                step={0.1}
+                                onChange={v => onChange({
+                                    ...fp,
+                                    stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, depth: v } : s)
+                                })}
+                            />
+                        </PropField>
+                    )}
+
                     <PropField label="Rise (m)">
                         <NumInput value={stairs.rise ?? fp.roomHeight} min={1} max={6} step={0.1}
                             onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, rise: v } : s) })} />
                     </PropField>
-                    <PropField label="Steps">
-                        <NumInput value={stairs.steps ?? 20} min={3} max={40} step={1}
-                            onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, steps: Math.round(v) } : s) })} />
-                    </PropField>
+                    <Card>
+                        <SectionLabel>Tread Style</SectionLabel>
+                        <PropField label="Style">
+                            <SegmentedControl
+                                options={[
+                                    { value: 'floating', label: 'Open Riser' },
+                                    { value: 'closed', label: 'Closed Riser' },
+                                ] as const}
+                                value={stairs.tread?.mode ?? 'floating'}
+                                onChange={mode => onChange({
+                                    ...fp,
+                                    stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                        ? { ...s, tread: { ...(s.tread ?? DEFAULT_TREAD), mode } }
+                                        : s)
+                                })}
+                            />
+                        </PropField>
+
+                        {(stairs.tread?.mode ?? 'floating') === 'floating' && (
+                            <PropField label="Gap (m)">
+                                <NumInput value={stairs.tread?.gap ?? 0.03} min={0.005} max={0.1} step={0.005}
+                                    onChange={v => onChange({
+                                        ...fp,
+                                        stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                            ? { ...s, tread: { ...(s.tread ?? DEFAULT_TREAD), gap: v } }
+                                            : s)
+                                    })} />
+                            </PropField>
+                        )}
+
+                        <PropField label="Tread depth (m)">
+                            <NumInput value={stairs.tread?.depth ?? 0} min={0} max={0.6} step={0.01}
+                                onChange={v => onChange({
+                                    ...fp,
+                                    stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                        ? { ...s, tread: { ...(s.tread ?? DEFAULT_TREAD), depth: v || undefined } }
+                                        : s)
+                                })} />
+                        </PropField>
+                        <PropField label="Tread thickness (m)">
+                            <NumInput value={stairs.tread?.thickness ?? 0} min={0} max={0.15} step={0.005}
+                                onChange={v => onChange({
+                                    ...fp,
+                                    stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
+                                        ? { ...s, tread: { ...(s.tread ?? DEFAULT_TREAD), thickness: v || undefined } }
+                                        : s)
+                                })} />
+                        </PropField>
+                    </Card>
+                    {(stairs.type === 'stairs-l' || stairs.type === 'stairs-u') ? (
+                        <>
+                            <PropField label="Steps (flight 1)">
+                                <NumInput value={stairs.steps1 ?? Math.round(((stairs.rise ?? fp.roomHeight) / 2) / 0.18)} min={3} max={30} step={1}
+                                    onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, steps1: Math.round(v) } : s) })} />
+                            </PropField>
+                            <PropField label="Steps (flight 2)">
+                                <NumInput value={stairs.steps2 ?? Math.round(((stairs.rise ?? fp.roomHeight) / 2) / 0.18)} min={3} max={30} step={1}
+                                    onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, steps2: Math.round(v) } : s) })} />
+                            </PropField>
+                        </>
+                    ) : (stairs.type === 'stairs-straight' || stairs.type === 'stairs-spiral') && (
+                        <PropField label="Steps">
+                            <NumInput value={stairs.steps ?? 20} min={3} max={40} step={1}
+                                onChange={v => onChange({ ...fp, stairs: (fp.stairs ?? []).map(s => s.id === stairs.id ? { ...s, steps: Math.round(v) } : s) })} />
+                        </PropField>
+                    )}
                 </Card>
             </>}
 

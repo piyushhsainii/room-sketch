@@ -25,6 +25,71 @@ export type MaterialDef = {
     roughnessMapUrl?: string
 }
 
+
+
+const TILE_BASE = [
+    { id: 'tiles-058', folder: 'Tiles058_1K-JPG', color: '#2A2A2E', roughness: 0.35, domains: ['floor', 'stairs'] },        // dark pebble mosaic
+    { id: 'tiles-030', folder: 'Tiles030_1K-JPG', color: '#B7BFC7', roughness: 0.3, domains: ['floor', 'wall', 'stairs'] }, // light gray subway-ish
+    { id: 'tiles-109', folder: 'Tiles109_1K-JPG', color: '#C7C2B3', roughness: 0.32, domains: ['floor', 'wall'] },          // beige domed tile
+    { id: 'tiles-007', folder: 'Tiles007_1K-JPG', color: '#B9B9B9', roughness: 0.3, domains: ['floor', 'wall'] },           // gray square
+    { id: 'tiles-111', folder: 'Tiles111_1K-JPG', color: '#A6552E', roughness: 0.4, domains: ['floor', 'stairs'] },        // terracotta
+    { id: 'tiles-008', folder: 'Tiles008_1K-JPG', color: '#D8D2C4', roughness: 0.3, domains: ['floor', 'wall'] },          // cream square
+    { id: 'tiles-135b', folder: 'Tiles135B_1K-JPG', color: '#7A93A8', roughness: 0.25, domains: ['floor', 'wall'] },       // blue-gray glossy
+    { id: 'tiles-124', folder: 'Tiles124_1K-JPG', color: '#3C3C3C', roughness: 0.35, domains: ['floor', 'stairs'] },       // dark pebble round
+    { id: 'tiles-095', folder: 'Tiles095_1K-JPG', color: '#C9BFA8', roughness: 0.32, domains: ['floor', 'wall'] },         // beige hex
+    { id: 'tiles-072', folder: 'Tiles072_1K-JPG', color: '#5C5C60', roughness: 0.34, domains: ['floor', 'stairs'] },       // dark gray square
+    { id: 'tiles-135d', folder: 'Tiles135D_1K-JPG', color: '#8FA6B8', roughness: 0.25, domains: ['floor', 'wall'] },       // blue mosaic
+    { id: 'tiles-120', folder: 'Tiles120_1K-JPG', color: '#C6CCD1', roughness: 0.3, domains: ['floor', 'wall'] },          // pebble round light
+    { id: 'tiles-010', folder: 'Tiles010_1K-JPG', color: '#D3D3D0', roughness: 0.3, domains: ['floor', 'wall'] },          // white domed
+    { id: 'tiles-038', folder: 'Tiles038_1K-JPG', color: '#C7CBCE', roughness: 0.3, domains: ['floor', 'wall'] },          // light square
+    { id: 'tiles-054', folder: 'Tiles054_1K-JPG', color: '#AEB5BC', roughness: 0.28, domains: ['floor', 'wall'] },         // gray-blue domed
+    { id: 'tiles-110', folder: 'Tiles110_1K-JPG', color: '#B2A48C', roughness: 0.32, domains: ['floor', 'wall'] },         // stone-look mosaic
+    { id: 'tiles-076', folder: 'Tiles076_1K-JPG', color: '#1F1F1F', roughness: 0.3, domains: ['floor'] },                  // black/white geometric
+    { id: 'tiles-051', folder: 'Tiles051_1K-JPG', color: '#8B8F92', roughness: 0.33, domains: ['floor', 'stairs'] },       // gray square variant
+    { id: 'tiles-079', folder: 'Tiles079_1K-JPG', color: '#DADADA', roughness: 0.3, domains: ['floor', 'wall'] },         // white square-grid
+    { id: 'tiles-081', folder: 'Tiles081_1K-JPG', color: '#DDD9CE', roughness: 0.28, domains: ['floor', 'wall'] },         // hex ball pattern
+    { id: 'tiles-084', folder: 'Tiles084_1K-JPG', color: '#B9AE9C', roughness: 0.32, domains: ['floor', 'wall'] },         // stone hex
+    { id: 'tiles-133d', folder: 'Tiles133D_1K-JPG', color: '#C6C1B4', roughness: 0.3, domains: ['floor', 'wall'] },        // white domed
+    { id: 'tiles-075', folder: 'Tiles075_1K-JPG', color: '#B7BAC0', roughness: 0.3, domains: ['floor', 'wall'] },          // gray domed variant
+    { id: 'tiles-045', folder: 'Tiles045_1K-JPG', color: '#232629', roughness: 0.3, domains: ['floor', 'stairs'] },        // dark square
+    { id: 'tiles-108', folder: 'Tiles108_1K-JPG', color: '#151515', roughness: 0.28, domains: ['floor', 'stairs'] },       // black w/ grid
+    { id: 'tiles-129b', folder: 'Tiles129B_1K-JPG', color: '#3E3E3E', roughness: 0.32, domains: ['floor'] },               // dark honeycomb
+    { id: 'tiles-133a', folder: 'Tiles133A_1K-JPG', color: '#D6D6D2', roughness: 0.28, domains: ['floor', 'wall'] },       // white square-grid
+    { id: 'tiles-093', folder: 'Tiles093_1K-JPG', color: '#8A8D90', roughness: 0.32, domains: ['floor', 'stairs'] },       // gray domed
+    { id: 'tiles-052', folder: 'Tiles052_1K-JPG', color: '#4A4A4C', roughness: 0.34, domains: ['floor', 'stairs'] },       // dark square
+    { id: 'tiles-074', folder: 'Tiles074_1K-JPG', color: '#8F8A7A', roughness: 0.35, domains: ['floor', 'wall'] },         // camo-stone mosaic
+    { id: 'tiles-131', folder: 'Tiles131_1K-JPG', color: '#6B6558', roughness: 0.4, domains: ['floor', 'wall'] },          // camo-brown mosaic
+    { id: 'tiles-132a', folder: 'Tiles132A_1K-JPG', color: '#3A8A85', roughness: 0.22, domains: ['floor', 'wall'] },       // teal glossy square
+] as const
+const REPEAT_VARIANTS: { suffix: string; label: string; repeatScale: number }[] = [
+    { suffix: 'fine', label: 'Fine', repeatScale: 0.5 },
+    { suffix: 'standard', label: 'Standard', repeatScale: 1 },
+    { suffix: 'wide', label: 'Wide', repeatScale: 2 },
+]
+
+function buildTileEntries(): Record<string, MaterialDef> {
+    const entries: Record<string, MaterialDef> = {}
+    for (const t of TILE_BASE) {
+        for (const v of REPEAT_VARIANTS) {
+            entries[`${t.id}-${v.suffix}`] = {
+                color: t.color,
+                roughness: t.roughness,
+                metalness: 0,
+                repeatScale: v.repeatScale,
+                category: 'tile',
+                domains: [...t.domains],
+                label: `${t.folder.split('_')[0]} — ${v.label}`,
+                textureUrl: `/textures/tiles/${t.folder}/${t.folder}_Color.jpg`,
+                normalMapUrl: `/textures/tiles/${t.folder}/${t.folder}_NormalGL.jpg`,
+                roughnessMapUrl: `/textures/tiles/${t.folder}/${t.folder}_Roughness.jpg`,
+            }
+        }
+    }
+    return entries
+}
+
+export const TILE_MATERIALS: Record<string, MaterialDef> = buildTileEntries()
+
 export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     // ── Solids — usable everywhere ──────────────────────────────────────
     paint: { color: '#FFFFFF', roughness: 0.85, metalness: 0, repeatScale: 0.1, category: 'solid', domains: ['wall', 'door', 'furniture'], preview: '⬜' },
@@ -62,6 +127,11 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     'wood-siding-010': { color: '#AC8C64', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding010_1K-JPG/WoodSiding010_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding010_1K-JPG/WoodSiding010_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding010_1K-JPG/WoodSiding010_1K-JPG_Roughness.jpg' },
     'wood-siding-012': { color: '#98785450', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding012_1K-JPG/WoodSiding012_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding012_1K-JPG/WoodSiding012_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding012_1K-JPG/WoodSiding012_1K-JPG_Roughness.jpg' },
     'wood-siding-013': { color: '#B0906C', roughness: 0.65, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'floor', 'door', 'outdoor'], textureUrl: '/textures/wood/WoodSiding013_1K-JPG/WoodSiding013_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/WoodSiding013_1K-JPG/WoodSiding013_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/WoodSiding013_1K-JPG/WoodSiding013_1K-JPG_Roughness.jpg' },
+    'planks-015': { color: '#8B6742', roughness: 0.6, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/wood/Planks015_1K-JPG/Planks015_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/Planks015_1K-JPG/Planks015_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/Planks015_1K-JPG/Planks015_1K-JPG_Roughness.jpg' },
+    'planks-013': { color: '#5C4632', roughness: 0.62, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/wood/Planks013_1K-JPG/Planks013_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/Planks013_1K-JPG/Planks013_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/Planks013_1K-JPG/Planks013_1K-JPG_Roughness.jpg' },
+    'planks-012': { color: '#7A5738', roughness: 0.6, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/wood/Planks012_1K-JPG/Planks012_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/Planks012_1K-JPG/Planks012_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/Planks012_1K-JPG/Planks012_1K-JPG_Roughness.jpg' },
+    'planks-017': { color: '#96674A', roughness: 0.58, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/wood/Planks017_1K-JPG/Planks017_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/Planks017_1K-JPG/Planks017_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/Planks017_1K-JPG/Planks017_1K-JPG_Roughness.jpg' },
+    'planks-014': { color: '#4A3626', roughness: 0.64, metalness: 0, repeatScale: 1, category: 'wood', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/wood/Planks014_1K-JPG/Planks014_1K-JPG_Color.jpg', normalMapUrl: '/textures/wood/Planks014_1K-JPG/Planks014_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/wood/Planks014_1K-JPG/Planks014_1K-JPG_Roughness.jpg' },
 
     // ── Marble & stone ───────────────────────────────────────────────────
     marble: { color: '#EAE6E0', roughness: 0.12, metalness: 0.1, repeatScale: 1, category: 'marble-stone', domains: ['floor', 'stairs', 'door'], textureUrl: '/textures/Marble022_1K-JPG_Color.jpg', normalMapUrl: '/textures/Marble022_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Marble022_1K-JPG_Roughness.jpg' },
@@ -114,6 +184,20 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     'brick-red': { color: '#A85C42', roughness: 0.85, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/Bricks104_1K-JPG_Color.jpg', normalMapUrl: '/textures/Bricks104_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Bricks104_1K-JPG_Roughness.jpg' },
     'brick-white': { color: '#D8D2C4', roughness: 0.82, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/Bricks019_1K-JPG_Color.jpg', normalMapUrl: '/textures/Bricks019_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Bricks019_1K-JPG_Roughness.jpg' },
     'exposed-brick': { color: '#8B5A44', roughness: 0.95, metalness: 0, repeatScale: 0.35, category: 'brick', domains: ['wall', 'stairs'], preview: '🧱' },
+    'bricks-055': { color: '#8C8C8C', roughness: 0.88, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks055_1K-JPG/Bricks055_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks055_1K-JPG/Bricks055_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks055_1K-JPG/Bricks055_1K-JPG_Roughness.jpg' },
+    'bricks-048': { color: '#B8B4AC', roughness: 0.85, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks048_1K-JPG/Bricks048_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks048_1K-JPG/Bricks048_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks048_1K-JPG/Bricks048_1K-JPG_Roughness.jpg' },
+    'bricks-067': { color: '#9A9A96', roughness: 0.87, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks067_1K-JPG/Bricks067_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks067_1K-JPG/Bricks067_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks067_1K-JPG/Bricks067_1K-JPG_Roughness.jpg' },
+    'bricks-031': { color: '#A6553F', roughness: 0.86, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_Roughness.jpg' },
+    'bricks-088': { color: '#A8402C', roughness: 0.84, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks088_1K-JPG/Bricks088_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks088_1K-JPG/Bricks088_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks088_1K-JPG/Bricks088_1K-JPG_Roughness.jpg' },
+    'bricks-083': { color: '#C4B79A', roughness: 0.89, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks083_1K-JPG/Bricks083_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks083_1K-JPG/Bricks083_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks083_1K-JPG/Bricks083_1K-JPG_Roughness.jpg' },
+    'bricks-071': { color: '#9C4530', roughness: 0.85, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks071_1K-JPG/Bricks071_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks071_1K-JPG/Bricks071_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks071_1K-JPG/Bricks071_1K-JPG_Roughness.jpg' },
+    'bricks-103': { color: '#C9BC9E', roughness: 0.9, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks103_1K-JPG/Bricks103_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks103_1K-JPG/Bricks103_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks103_1K-JPG/Bricks103_1K-JPG_Roughness.jpg' },
+    'bricks-058': { color: '#88857E', roughness: 0.87, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks058_1K-JPG/Bricks058_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks058_1K-JPG/Bricks058_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks058_1K-JPG/Bricks058_1K-JPG_Roughness.jpg' },
+    'bricks-051': { color: '#A5503A', roughness: 0.86, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks051_1K-JPG/Bricks051_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks051_1K-JPG/Bricks051_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks051_1K-JPG/Bricks051_1K-JPG_Roughness.jpg' },
+    'bricks-066': { color: '#ADADA8', roughness: 0.88, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks066_1K-JPG/Bricks066_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks066_1K-JPG/Bricks066_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks066_1K-JPG/Bricks066_1K-JPG_Roughness.jpg' },
+    'bricks-060': { color: '#D6D2C8', roughness: 0.91, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks060_1K-JPG/Bricks060_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks060_1K-JPG/Bricks060_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks060_1K-JPG/Bricks060_1K-JPG_Roughness.jpg' },
+    'bricks-075a': { color: '#B0A88F', roughness: 0.93, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks075A_1K-JPG/Bricks075A_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks075A_1K-JPG/Bricks075A_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks075A_1K-JPG/Bricks075A_1K-JPG_Roughness.jpg' },
+    'bricks-068': { color: '#9E9C97', roughness: 0.86, metalness: 0, repeatScale: 1, category: 'brick', domains: ['wall', 'stairs', 'floor'], textureUrl: '/textures/bricks/Bricks068_1K-JPG/Bricks068_1K-JPG_Color.jpg', normalMapUrl: '/textures/bricks/Bricks068_1K-JPG/Bricks068_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/bricks/Bricks068_1K-JPG/Bricks068_1K-JPG_Roughness.jpg' },
 
     // ── Wallpaper / PVC panel (wall-only) ───────────────────────────────
     'wallpaper-stripe': { color: '#E8E4DC', roughness: 0.7, metalness: 0, repeatScale: 0.3, category: 'wallpaper', domains: ['wall', 'stairs'] },
@@ -140,6 +224,7 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
 
     // ── Fabric / carpet ──────────────────────────────────────────────────
     fabric: { color: '#B8A898', roughness: 0.98, metalness: 0, repeatScale: 10, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'furniture', 'door'], textureUrl: '/textures/Fabric049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Fabric049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Fabric049_1K-JPG_Roughness.jpg' },
+    'fabric-1': { color: '#C4B8A8', roughness: 0.96, metalness: 0, repeatScale: 1, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/Fabric049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Fabric049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Fabric049_1K-JPG_Roughness.jpg' },
     'fabric-fine-weave': { color: '#C4B8A8', roughness: 0.96, metalness: 0, repeatScale: 10, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/fabric/Fabric061_1K-JPG/Fabric061_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Fabric061_1K-JPG/Fabric061_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Fabric061_1K-JPG/Fabric061_1K-JPG_Roughness.jpg' },
     'carpet-plush': { color: '#B8ACA0', roughness: 0.98, metalness: 0, repeatScale: 12, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/fabric/Carpet001_1K-JPG/Carpet001_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Carpet001_1K-JPG/Carpet001_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Carpet001_1K-JPG/Carpet001_1K-JPG_Roughness.jpg' },
     'carpet-woven': { color: '#A89A88', roughness: 0.95, metalness: 0, repeatScale: 12, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/fabric/Carpet015_1K-JPG/Carpet015_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Carpet015_1K-JPG/Carpet015_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Carpet015_1K-JPG/Carpet015_1K-JPG_Roughness.jpg' },
@@ -182,7 +267,11 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
         color: '#B8A898', roughness: 0.98, metalness: 0, repeatScale: 1, category: 'outdoor',
         domains: ['floor', 'furniture', 'door', 'outdoor'], textureUrl: '/textures/outdoor/Bamboo001C_1K-JPG/Bamboo001C_1K-JPG_Color.jpg', normalMapUrl: '/textures/outdoor/Bamboo001C_1K-JPG/Bamboo001C_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/outdoor/Bamboo001C_1K-JPG/Bamboo001C_1K-JPG_Roughness.jpg'
     },
+    ...TILE_MATERIALS
 }
+
+
+
 
 export function getMaterialsForDomain(domain: MaterialDomain): { key: string; def: MaterialDef }[] {
     return Object.entries(MATERIAL_REGISTRY)
@@ -215,6 +304,7 @@ export interface EditorOpening {
     segmentT?: number
     material?: DoorStyle
     isOpen?: boolean
+    openAmount?: number
 }
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
@@ -238,6 +328,7 @@ export type FloorPlanState = {
     lights: PlacedLight[],
     outdoorObjects: PlacedOutdoorObject[],
     savedViews: CameraView[]
+
 }
 
 export const DEFAULT_FP: FloorPlanState = {
@@ -304,7 +395,9 @@ export type ClosedShape = {
         exteriorColor?: string
         exteriorMaterial?: WallMaterial
     }>
-
+    exteriorWallMaterial?: WallMaterial
+    exteriorWallColor?: string
+    wallMaterialSide?: 'interior' | 'exterior' | 'both'
 
 }
 

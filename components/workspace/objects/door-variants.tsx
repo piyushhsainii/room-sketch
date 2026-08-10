@@ -301,7 +301,7 @@ function DoorFrame({ width, height, basePos, angle, itemOpacity, itemTransparent
 }) {
     const jambW = 0.05
     const jambD = T + 0.02
-    const floorPos: [number, number, number] = [basePos[0], 0, basePos[2]]
+    const floorPos: [number, number, number] = [basePos[0], basePos[1] - height / 2, basePos[2]]
     return (
         <group position={floorPos} rotation={[0, -angle, 0]}>
             <mesh position={[-width / 2 - jambW / 2, height / 2, 0]} castShadow>
@@ -833,7 +833,8 @@ function AnimatedGarageDoor({
             onPointerOut={interactive && onToggleOpen ? () => { document.body.style.cursor = 'auto' } : undefined}
         >
             {Array.from({ length: slats }).map((_, i) => {
-                const y = height - slatH * (i + 0.5) - 0.02
+                const sillY = basePos[1] - height / 2
+                const y = sillY + height - slatH * (i + 0.5) - 0.02
                 return (
                     <group key={`slat${i}`} position={[basePos[0], y, basePos[2]]} rotation={[0, -angle, 0]}>
                         <mesh castShadow>

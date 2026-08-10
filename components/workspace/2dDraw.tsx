@@ -1,4 +1,4 @@
-import { getSegmentOpeningWorldPos, toCanvas } from "@/lib/helpers";
+import { drawStairIcon, getSegmentOpeningWorldPos, toCanvas } from "@/lib/helpers";
 import { EditorTool, FloorPlanState, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./lib/constants";
 import { LIGHT_FIXTURE_LABELS, LIGHT_PLACEMENT_KIND } from "./lights-constant";
 import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./lib/outdoor-constants";
@@ -1115,30 +1115,7 @@ export function draw2D(
         ctx.rect(-sw / 2, -sd / 2, sw, sd)
         ctx.fill(); ctx.stroke()
 
-        if (s.type === 'elevator') {
-            ctx.strokeStyle = 'rgba(200,190,175,0.7)'
-            ctx.beginPath(); ctx.moveTo(-sw / 2, 0); ctx.lineTo(sw / 2, 0); ctx.stroke()
-            ctx.beginPath(); ctx.moveTo(0, -sd / 2); ctx.lineTo(0, sd / 2); ctx.stroke()
-        } else if (s.type === 'stairs-spiral') {
-            const r = Math.min(sw, sd) / 2 - 3
-            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke()
-            // radial step lines, matching the reference's clean spoke pattern
-            const spokeCount = 12
-            for (let i = 0; i < spokeCount; i++) {
-                const a = (i / spokeCount) * Math.PI * 2
-                ctx.beginPath()
-                ctx.moveTo(0, 0)
-                ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r)
-                ctx.stroke()
-            }
-        } else {
-            // Tread lines across the run
-            const steps = 8
-            for (let i = 1; i < steps; i++) {
-                const yy = -sd / 2 + (sd / steps) * i
-                ctx.beginPath(); ctx.moveTo(-sw / 2, yy); ctx.lineTo(sw / 2, yy); ctx.stroke()
-            }
-        }
+        drawStairIcon(ctx, s.type, sw, sd)
 
         ctx.restore()
         if (showLabels) {

@@ -5,7 +5,7 @@ import { WalkModeControls } from "./WalkModeControls"
 import { SceneConfig } from "./FloorPlanEditor"
 import { CameraView } from "./lib/camera"
 import { useThree } from "@react-three/fiber"
-import { computeTopDownView } from "@/lib/helpers"
+import { computeTopDownView, getFloorContentBounds } from "@/lib/helpers"
 import * as THREE from "three"
 import { sunIntensity, sunLightColor, sunPosition, sunVectorFromAngles } from "./lib/sunPosition"
 import { Floor } from "./lib/floor-data"
@@ -136,26 +136,29 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         const isStacked = viewMode !== 'single'
         const relevantFloors = isStacked ? floors.filter(f => f.visible) : (activeFloor ? [activeFloor] : [])
 
-        const allX: number[] = []
-        const allZ: number[] = []
+        let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
         let minElev = 0, maxElev = 0
+        let hasContent = false
 
         for (const f of relevantFloors) {
             const src = f.id === activeFloorId ? activeFp : f.state
-            allX.push(...src.rooms.flatMap(r => [r.x, r.x + r.width]), ...src.lineNodes.map(n => n.x))
-            allZ.push(...src.rooms.flatMap(r => [r.z, r.z + r.depth]), ...src.lineNodes.map(n => n.z))
+            const b = getFloorContentBounds(src)
+            if (b) {
+                hasContent = true
+                minX = Math.min(minX, b.minX); maxX = Math.max(maxX, b.maxX)
+                minZ = Math.min(minZ, b.minZ); maxZ = Math.max(maxZ, b.maxZ)
+            }
             const relElev = f.elevation - activeElevation
             minElev = Math.min(minElev, relElev)
             maxElev = Math.max(maxElev, relElev + f.state.roomHeight)
         }
-        if (allX.length === 0) return
 
-        const minX = Math.min(...allX), maxX = Math.max(...allX)
-        const minZ = Math.min(...allZ), maxZ = Math.max(...allZ)
-        const cx = (minX + maxX) / 2
-        const cz = (minZ + maxZ) / 2
+        // Fallback: no geometry anywhere yet (blank new floor) — center on origin at a
+        // reasonable default distance instead of leaving the camera at its stale/default spot.
+        const cx = hasContent ? (minX + maxX) / 2 : 0
+        const cz = hasContent ? (minZ + maxZ) / 2 : 0
         const midY = (minElev + maxElev) / 2
-        const span = Math.max(maxX - minX, maxZ - minZ, maxElev - minElev, 5)
+        const span = hasContent ? Math.max(maxX - minX, maxZ - minZ, maxElev - minElev, 5) : 10
 
         controls.object.position.set(cx, midY + span * 1.6, cz + 0.01)
         controls.target.set(cx, midY, cz)

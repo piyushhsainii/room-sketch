@@ -10,11 +10,13 @@ import {
   OPENING_VARIANT_LABELS,
   PX_PER_M,
   STAIRS_LABELS,
+  WallMaterial,
 } from "@/components/workspace/lib/constants";
 import {
   FURNITURE_FOOTPRINTS,
   FURNITURE_LABELS,
 } from "@/components/workspace/lib/furniture-constants";
+import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
 
 // export function deriveClosedPolygons(
 //   lineNodes: LineNode[],
@@ -909,4 +911,295 @@ export function computeTopDownView(
     target: [centerX, 0, centerZ],
     isPreset: false,
   };
+}
+
+// Shared by both the floorplan canvas draw loop AND the palette thumbnails,
+// so palette icons never drift out of sync with what actually gets placed.
+export function drawStairIcon(
+  ctx: CanvasRenderingContext2D,
+  type: PlacedStairs["type"],
+  sw: number,
+  sd: number,
+) {
+  const treadStroke = "rgba(120,110,95,0.85)";
+  ctx.strokeStyle = treadStroke;
+  ctx.lineWidth = 1;
+
+  if (type === "elevator") {
+    ctx.beginPath();
+    ctx.moveTo(-sw / 2, 0);
+    ctx.lineTo(sw / 2, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -sd / 2);
+    ctx.lineTo(0, sd / 2);
+    ctx.stroke();
+  } else if (type === "stairs-spiral") {
+    const r = Math.min(sw, sd) / 2 - 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    const spokeCount = 12;
+    for (let i = 0; i < spokeCount; i++) {
+      const a = (i / spokeCount) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      ctx.stroke();
+    }
+  } else if (type === "stairs-l") {
+    const flightW = Math.min(sw, sd) * 0.42;
+    const steps1 = 5;
+    for (let i = 1; i < steps1; i++) {
+      const yy = -sd / 2 + ((sd - flightW) / steps1) * i;
+      ctx.beginPath();
+      ctx.moveTo(-sw / 2, yy);
+      ctx.lineTo(-sw / 2 + flightW, yy);
+      ctx.stroke();
+    }
+    const steps2 = 5;
+    for (let i = 1; i < steps2; i++) {
+      const xx =
+        -sw / 2 + flightW + ((sw / 2 - (-sw / 2 + flightW)) / steps2) * i;
+      ctx.beginPath();
+      ctx.moveTo(xx, -sd / 2);
+      ctx.lineTo(xx, -sd / 2 + flightW);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.rect(-sw / 2, -sd / 2, flightW, flightW);
+    ctx.stroke();
+  } else if (type === "stairs-u") {
+    const runW = (sw - 0.2 * (sw / 2)) / 2;
+    const landingD = sd * 0.25;
+    const steps1 = 5;
+    for (let i = 1; i < steps1; i++) {
+      const yy = -sd / 2 + ((sd - landingD) / steps1) * i;
+      ctx.beginPath();
+      ctx.moveTo(-sw / 2, yy);
+      ctx.lineTo(-sw / 2 + runW, yy);
+      ctx.stroke();
+    }
+    const steps2 = 5;
+    for (let i = 1; i < steps2; i++) {
+      const yy = -sd / 2 + ((sd - landingD) / steps2) * i;
+      ctx.beginPath();
+      ctx.moveTo(sw / 2 - runW, yy);
+      ctx.lineTo(sw / 2, yy);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.rect(-sw / 2, sd / 2 - landingD, sw, landingD);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -sd / 2);
+    ctx.lineTo(0, sd / 2 - landingD);
+    ctx.stroke();
+  } else if (type === "stairs-ramp") {
+    const hatchCount = 6;
+    for (let i = 0; i <= hatchCount; i++) {
+      const yy = -sd / 2 + (sd / hatchCount) * i;
+      ctx.beginPath();
+      ctx.moveTo(-sw / 2, yy);
+      ctx.lineTo(-sw / 2 + sw * 0.3, yy - sd * 0.06);
+      ctx.stroke();
+    }
+  } else {
+    // stairs-straight
+    const steps = 6;
+    for (let i = 1; i < steps; i++) {
+      const yy = -sd / 2 + (sd / steps) * i;
+      ctx.beginPath();
+      ctx.moveTo(-sw / 2, yy);
+      ctx.lineTo(sw / 2, yy);
+      ctx.stroke();
+    }
+  }
+}
+
+// lib/helpers.ts
+export function getFloorContentBounds(
+  state: FloorPlanState,
+): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+  const xs: number[] = [];
+  const zs: number[] = [];
+
+  state.rooms.forEach((r) => {
+    xs.push(r.x, r.x + r.width);
+    zs.push(r.z, r.z + r.depth);
+  });
+  state.lineNodes.forEach((n) => {
+    xs.push(n.x);
+    zs.push(n.z);
+  });
+  state.stairs.forEach((s) => {
+    xs.push(s.x);
+    zs.push(s.z);
+  });
+  state.furniture.forEach((f) => {
+    xs.push(f.x);
+    zs.push(f.z);
+  });
+  state.outdoorObjects.forEach((o) => {
+    xs.push(o.x);
+    zs.push(o.z);
+  });
+  state.lights.forEach((l) => {
+    // wall/segment-anchored lights don't carry x/z directly — skip, they're bounded by their wall anyway
+    if (
+      !l.wall &&
+      !l.segmentNodeIds &&
+      typeof l.x === "number" &&
+      typeof l.z === "number"
+    ) {
+      xs.push(l.x);
+      zs.push(l.z);
+    }
+  });
+
+  if (xs.length === 0) return null;
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minZ: Math.min(...zs),
+    maxZ: Math.max(...zs),
+  };
+}
+
+type WallSideOverridePatch = { material?: WallMaterial; color?: string };
+
+function edgeKeyPair(a: string, b: string) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+export function applyShapeExteriorMaterial(
+  fp: FloorPlanState,
+  targetShapeId: string, // NEW — pass shape.id so this matches the
+  // same identity applyShapeWallTexture's
+  // interior branch already uses.
+  targetNodeIds: string[],
+  patch: WallSideOverridePatch,
+): FloorPlanState {
+  const allPolys = deriveClosedPolygons(fp.lineNodes, fp.lineSegments);
+  const targetKey = [...targetNodeIds].sort().join(",");
+  const targetPoly =
+    allPolys.find((p) => [...p].sort().join(",") === targetKey) ??
+    targetNodeIds;
+
+  const edgeToPolys = new Map<string, number[]>();
+  allPolys.forEach((poly, idx) => {
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i]!,
+        b = poly[(i + 1) % poly.length]!;
+      const k = edgeKeyPair(a, b);
+      if (!edgeToPolys.has(k)) edgeToPolys.set(k, []);
+      edgeToPolys.get(k)!.push(idx);
+    }
+  });
+
+  function findPieceForEdge(a: string, b: string) {
+    for (const seg of fp.lineSegments) {
+      for (let i = 0; i < seg.nodeIds.length - 1; i++) {
+        const sa = seg.nodeIds[i]!,
+          sb = seg.nodeIds[i + 1]!;
+        if ((sa === a && sb === b) || (sa === b && sb === a))
+          return { seg, pieceIndex: i };
+      }
+    }
+    return null;
+  }
+
+  let nextShapes = [...(fp.closedShapes ?? [])];
+  let hasTrueExteriorPiece = false;
+
+  for (let i = 0; i < targetPoly.length; i++) {
+    const a = targetPoly[i]!,
+      b = targetPoly[(i + 1) % targetPoly.length]!;
+    const owners = edgeToPolys.get(edgeKeyPair(a, b)) ?? [];
+    const neighborIdx = owners.find(
+      (idx) => [...allPolys[idx]!].sort().join(",") !== targetKey,
+    );
+    const piece = findPieceForEdge(a, b);
+    if (!piece) continue;
+    const pieceKey = `${piece.seg.id}_${piece.pieceIndex}`;
+
+    if (neighborIdx === undefined) {
+      hasTrueExteriorPiece = true;
+      continue;
+    }
+
+    const neighborPoly = allPolys[neighborIdx]!;
+    const neighborKey = [...neighborPoly].sort().join(",");
+    const neighborShape = nextShapes.find(
+      (sh) => [...sh.nodeIds].sort().join(",") === neighborKey,
+    );
+
+    const neighborAlreadySet =
+      !!neighborShape?.wallOverrides?.[pieceKey]?.material ||
+      !!neighborShape?.wallMaterial;
+
+    if (neighborAlreadySet) continue;
+
+    if (neighborShape) {
+      nextShapes = nextShapes.map((sh) =>
+        sh === neighborShape
+          ? {
+              ...sh,
+              wallOverrides: {
+                ...(sh.wallOverrides ?? {}),
+                [pieceKey]: {
+                  ...(sh.wallOverrides?.[pieceKey] ?? {}),
+                  ...patch,
+                },
+              },
+            }
+          : sh,
+      );
+    } else {
+      nextShapes.push({
+        id: crypto.randomUUID(),
+        nodeIds: neighborPoly,
+        label: undefined,
+        wallOverrides: { [pieceKey]: { ...patch } },
+      });
+    }
+  }
+
+  if (hasTrueExteriorPiece) {
+    // CHANGED — match by id first (same identity the interior branch of
+    // applyShapeWallTexture uses via shape.id), falling back to the
+    // nodeIds-derived key only if no shape with that id exists yet. This
+    // is what stops a duplicate ClosedShape row from being created when
+    // "Interior" and "Exterior" are set on the same area — previously
+    // this branch only ever matched by nodeIds key, which could miss the
+    // shape the interior branch had just written (or would write) under
+    // shape.id, producing two rows: one with wallMaterial, one with
+    // exteriorWallMaterial, and the renderer picking whichever it found
+    // first for a given wall piece.
+    const target =
+      nextShapes.find((sh) => sh.id === targetShapeId) ??
+      nextShapes.find((sh) => [...sh.nodeIds].sort().join(",") === targetKey);
+
+    if (target) {
+      nextShapes = nextShapes.map((sh) =>
+        sh === target
+          ? {
+              ...sh,
+              exteriorWallMaterial: patch.material,
+              exteriorWallColor: patch.color,
+            }
+          : sh,
+      );
+    } else {
+      nextShapes.push({
+        id: targetShapeId, // CHANGED — reuse the real shape id instead of
+        nodeIds: targetPoly, // crypto.randomUUID(), so a later interior edit
+        label: undefined, // on the same shape.id (via applyShapeWallTexture)
+        exteriorWallMaterial: patch.material, // finds and patches THIS row
+        exteriorWallColor: patch.color, // instead of creating a third one.
+      });
+    }
+  }
+
+  return { ...fp, closedShapes: nextShapes };
 }

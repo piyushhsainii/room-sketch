@@ -1,0 +1,19 @@
+[gd_resource type="StandardMaterial3D" load_steps=6 format=3 uid="acg_ahynm5c9"]
+
+[ext_resource type="Texture2D" uid="uid://acg_8zf7en32" id="Color" path="./Tiles135D_1K-JPG_Color.jpg"]
+[ext_resource type="Texture2D" uid="uid://acg_hb9i6enk" id="AmbientOcclusion" path="./Tiles135D_1K-JPG_AmbientOcclusion.jpg"]
+[ext_resource type="Texture2D" uid="uid://acg_e2x319sd" id="Displacement" path="./Tiles135D_1K-JPG_Displacement.jpg"]
+[ext_resource type="Texture2D" uid="uid://acg_nl1oik5e" id="Roughness" path="./Tiles135D_1K-JPG_Roughness.jpg"]
+[ext_resource type="Texture2D" uid="uid://acg_tjfqbkcw" id="NormalGL" path="./Tiles135D_1K-JPG_NormalGL.jpg"]
+[resource]
+albedo_texture = ExtResource("Color")
+ao_enabled = true
+ao_texture = ExtResource("AmbientOcclusion")
+ao_texture_channel = 4
+roughness_texture = ExtResource("Roughness")
+roughness_texture_channel = 4
+normal_texture = ExtResource("NormalGL")
+normal_enabled = true
+heightmap_texture = ExtResource("Displacement")
+heightmap_scale = 1.0
+heightmap_enabled = true

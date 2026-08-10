@@ -10,6 +10,7 @@ import {
   OPENING_VARIANT_LABELS,
   PX_PER_M,
   STAIRS_LABELS,
+  WallMaterial,
 } from "@/components/workspace/lib/constants";
 import {
   FURNITURE_FOOTPRINTS,
@@ -1063,4 +1064,142 @@ export function getFloorContentBounds(
     minZ: Math.min(...zs),
     maxZ: Math.max(...zs),
   };
+}
+
+type WallSideOverridePatch = { material?: WallMaterial; color?: string };
+
+function edgeKeyPair(a: string, b: string) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+export function applyShapeExteriorMaterial(
+  fp: FloorPlanState,
+  targetShapeId: string, // NEW — pass shape.id so this matches the
+  // same identity applyShapeWallTexture's
+  // interior branch already uses.
+  targetNodeIds: string[],
+  patch: WallSideOverridePatch,
+): FloorPlanState {
+  const allPolys = deriveClosedPolygons(fp.lineNodes, fp.lineSegments);
+  const targetKey = [...targetNodeIds].sort().join(",");
+  const targetPoly =
+    allPolys.find((p) => [...p].sort().join(",") === targetKey) ??
+    targetNodeIds;
+
+  const edgeToPolys = new Map<string, number[]>();
+  allPolys.forEach((poly, idx) => {
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i]!,
+        b = poly[(i + 1) % poly.length]!;
+      const k = edgeKeyPair(a, b);
+      if (!edgeToPolys.has(k)) edgeToPolys.set(k, []);
+      edgeToPolys.get(k)!.push(idx);
+    }
+  });
+
+  function findPieceForEdge(a: string, b: string) {
+    for (const seg of fp.lineSegments) {
+      for (let i = 0; i < seg.nodeIds.length - 1; i++) {
+        const sa = seg.nodeIds[i]!,
+          sb = seg.nodeIds[i + 1]!;
+        if ((sa === a && sb === b) || (sa === b && sb === a))
+          return { seg, pieceIndex: i };
+      }
+    }
+    return null;
+  }
+
+  let nextShapes = [...(fp.closedShapes ?? [])];
+  let hasTrueExteriorPiece = false;
+
+  for (let i = 0; i < targetPoly.length; i++) {
+    const a = targetPoly[i]!,
+      b = targetPoly[(i + 1) % targetPoly.length]!;
+    const owners = edgeToPolys.get(edgeKeyPair(a, b)) ?? [];
+    const neighborIdx = owners.find(
+      (idx) => [...allPolys[idx]!].sort().join(",") !== targetKey,
+    );
+    const piece = findPieceForEdge(a, b);
+    if (!piece) continue;
+    const pieceKey = `${piece.seg.id}_${piece.pieceIndex}`;
+
+    if (neighborIdx === undefined) {
+      hasTrueExteriorPiece = true;
+      continue;
+    }
+
+    const neighborPoly = allPolys[neighborIdx]!;
+    const neighborKey = [...neighborPoly].sort().join(",");
+    const neighborShape = nextShapes.find(
+      (sh) => [...sh.nodeIds].sort().join(",") === neighborKey,
+    );
+
+    const neighborAlreadySet =
+      !!neighborShape?.wallOverrides?.[pieceKey]?.material ||
+      !!neighborShape?.wallMaterial;
+
+    if (neighborAlreadySet) continue;
+
+    if (neighborShape) {
+      nextShapes = nextShapes.map((sh) =>
+        sh === neighborShape
+          ? {
+              ...sh,
+              wallOverrides: {
+                ...(sh.wallOverrides ?? {}),
+                [pieceKey]: {
+                  ...(sh.wallOverrides?.[pieceKey] ?? {}),
+                  ...patch,
+                },
+              },
+            }
+          : sh,
+      );
+    } else {
+      nextShapes.push({
+        id: crypto.randomUUID(),
+        nodeIds: neighborPoly,
+        label: undefined,
+        wallOverrides: { [pieceKey]: { ...patch } },
+      });
+    }
+  }
+
+  if (hasTrueExteriorPiece) {
+    // CHANGED — match by id first (same identity the interior branch of
+    // applyShapeWallTexture uses via shape.id), falling back to the
+    // nodeIds-derived key only if no shape with that id exists yet. This
+    // is what stops a duplicate ClosedShape row from being created when
+    // "Interior" and "Exterior" are set on the same area — previously
+    // this branch only ever matched by nodeIds key, which could miss the
+    // shape the interior branch had just written (or would write) under
+    // shape.id, producing two rows: one with wallMaterial, one with
+    // exteriorWallMaterial, and the renderer picking whichever it found
+    // first for a given wall piece.
+    const target =
+      nextShapes.find((sh) => sh.id === targetShapeId) ??
+      nextShapes.find((sh) => [...sh.nodeIds].sort().join(",") === targetKey);
+
+    if (target) {
+      nextShapes = nextShapes.map((sh) =>
+        sh === target
+          ? {
+              ...sh,
+              exteriorWallMaterial: patch.material,
+              exteriorWallColor: patch.color,
+            }
+          : sh,
+      );
+    } else {
+      nextShapes.push({
+        id: targetShapeId, // CHANGED — reuse the real shape id instead of
+        nodeIds: targetPoly, // crypto.randomUUID(), so a later interior edit
+        label: undefined, // on the same shape.id (via applyShapeWallTexture)
+        exteriorWallMaterial: patch.material, // finds and patches THIS row
+        exteriorWallColor: patch.color, // instead of creating a third one.
+      });
+    }
+  }
+
+  return { ...fp, closedShapes: nextShapes };
 }

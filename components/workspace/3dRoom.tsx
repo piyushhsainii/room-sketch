@@ -185,13 +185,14 @@ function Room3D({
                     if (op) {
                         const isPassage = op.type === 'opening' && op.variant === 'opening-passage'
                         const isArchway = op.type === 'opening' && op.variant === 'opening-archway'
-                        const headerH = H - op.height
+                        const openingTop = op.sillHeight + op.height
+                        const headerH = H - openingTop
 
                         if (!isPassage && headerH > 0.02) {
                             const opMid = op.position
                             const basePos: [number, number, number] = wall.axis === 'x'
-                                ? [room.x + opMid, op.height, wPos[2]]
-                                : [wPos[0], op.height, room.z + opMid]
+                                ? [room.x + opMid, openingTop, wPos[2]]
+                                : [wPos[0], openingTop, room.z + opMid]
 
                             if (isArchway) {
                                 panels.push(
@@ -211,13 +212,9 @@ function Room3D({
                                 )
                             } else {
                                 const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, headerH, T] : [T, headerH, op.width]
-                                const opMid = op.position
-                                const basePos: [number, number, number] = wall.axis === 'x'
-                                    ? [room.x + opMid, op.height, wPos[2]]
-                                    : [wPos[0], op.height, room.z + opMid]
 
                                 panels.push(
-                                    <mesh key={`h${i}`} position={[basePos[0], op.height + headerH / 2, basePos[2]]} castShadow receiveShadow {...wallClickHandlers}>
+                                    <mesh key={`h${i}`} position={[basePos[0], openingTop + headerH / 2, basePos[2]]} castShadow receiveShadow {...wallClickHandlers}>
                                         <boxGeometry args={hSize} />
                                         <WallMat
                                             mat={resolvedWallMaterial}
@@ -234,7 +231,7 @@ function Room3D({
                             }
                         }
 
-                        if (op.type === 'window' && op.sillHeight > 0.02) {
+                        if ((op.type === 'window' || op.type === 'door') && op.sillHeight > 0.02) {
                             const opMid = op.position
                             const sPos: [number, number, number] = wall.axis === 'x' ? [room.x + opMid, op.sillHeight / 2, wPos[2]] : [wPos[0], op.sillHeight / 2, room.z + opMid]
                             const sSize: [number, number, number] = wall.axis === 'x' ? [op.width, op.sillHeight, T] : [T, op.sillHeight, op.width]
@@ -284,8 +281,8 @@ function Room3D({
                             const opMid = op.position
                             const angle = wall.axis === 'x' ? 0 : Math.PI / 2
                             const doorBasePos: [number, number, number] = wall.axis === 'x'
-                                ? [room.x + opMid, op.height / 2, wPos[2]]
-                                : [wPos[0], op.height / 2, room.z + opMid]
+                                ? [room.x + opMid, op.sillHeight + op.height / 2, wPos[2]]
+                                : [wPos[0], op.sillHeight + op.height / 2, room.z + opMid]
                             panels.push(
                                 <group
                                     key={`door${i}`}

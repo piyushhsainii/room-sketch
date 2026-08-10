@@ -50,6 +50,7 @@ export type RoomSceneConfig = {
     wallOverrides?: Partial<Record<'north' | 'south' | 'east' | 'west', { color?: string; material?: WallMaterial }>>
     exteriorWallColor?: string
     exteriorWallMaterial?: WallMaterial
+    wallMaterialSide?: 'interior' | 'exterior' | 'both'
 }
 
 export type SceneConfig = {
@@ -1247,6 +1248,97 @@ export default function FloorPlanEditor({
         if (lightDragRef) (lightDragRef as any).current = null
         setMoveArmedForId(null)
     }, [])
+
+    function edgeKey(a: string, b: string) {
+        return a < b ? `${a}|${b}` : `${b}|${a}`
+    }
+
+    function deleteAreaCascade(prev: FloorPlanState, targetNodeIds: string[]): FloorPlanState {
+        const allPolys = deriveClosedPolygons(prev.lineNodes, prev.lineSegments)
+        const targetKey = [...targetNodeIds].sort().join(',')
+
+        // Edges belonging to every polygon EXCEPT the one being deleted —
+        // these must survive untouched.
+        const sharedEdges = new Set<string>()
+        for (const poly of allPolys) {
+            if ([...poly].sort().join(',') === targetKey) continue
+            for (let i = 0; i < poly.length; i++) {
+                const a = poly[i]!, b = poly[(i + 1) % poly.length]!
+                sharedEdges.add(edgeKey(a, b))
+            }
+        }
+
+        // Edges of the deleted polygon that are NOT shared — safe to remove.
+        const exclusiveEdges = new Set<string>()
+        for (let i = 0; i < targetNodeIds.length; i++) {
+            const a = targetNodeIds[i]!, b = targetNodeIds[(i + 1) % targetNodeIds.length]!
+            const k = edgeKey(a, b)
+            if (!sharedEdges.has(k)) exclusiveEdges.add(k)
+        }
+
+        // Split each LineSegment's polyline into runs, dropping any
+        // consecutive pair that's an exclusive edge. Shared edges (and
+        // any segment piece not touching the deleted area at all) survive
+        // as-is, in full.
+        const removedSegmentIds = new Set<string>()
+        const nextSegments: typeof prev.lineSegments = []
+        for (const seg of prev.lineSegments) {
+            let changed = false
+            let run: string[] = [seg.nodeIds[0]!]
+            const runs: string[][] = []
+            for (let i = 0; i < seg.nodeIds.length - 1; i++) {
+                const a = seg.nodeIds[i]!, b = seg.nodeIds[i + 1]!
+                if (exclusiveEdges.has(edgeKey(a, b))) {
+                    changed = true
+                    if (run.length > 1) runs.push(run)
+                    run = [b]
+                } else {
+                    run.push(b)
+                }
+            }
+            if (run.length > 1) runs.push(run)
+
+            if (!changed) {
+                nextSegments.push(seg)
+            } else {
+                removedSegmentIds.add(seg.id)
+                runs.forEach((nodeIds, i) => {
+                    if (nodeIds.length >= 2) {
+                        nextSegments.push({ ...seg, id: i === 0 ? seg.id : `${seg.id}_split${i}`, nodeIds })
+                    }
+                })
+            }
+        }
+
+        // Drop nodes no longer referenced by any surviving segment.
+        const liveNodeIds = new Set<string>()
+        for (const seg of nextSegments) for (const id of seg.nodeIds) liveNodeIds.add(id)
+        const nextNodes = prev.lineNodes.filter(n => liveNodeIds.has(n.id))
+
+        // Cascade: drop anything anchored to nodes/segments that no longer exist.
+        const nextOpenings = prev.openings.filter(o =>
+            !o.segmentNodeIds || (liveNodeIds.has(o.segmentNodeIds[0]) && liveNodeIds.has(o.segmentNodeIds[1]))
+        )
+        const nextWallDecor = (prev.wallDecor ?? []).filter(d =>
+            !d.segmentNodeIds || (liveNodeIds.has(d.segmentNodeIds[0]) && liveNodeIds.has(d.segmentNodeIds[1]))
+        )
+        const nextLights = (prev.lights ?? []).filter(l =>
+            !l.segmentNodeIds || (liveNodeIds.has(l.segmentNodeIds[0]) && liveNodeIds.has(l.segmentNodeIds[1]))
+        )
+
+        // Finally, drop the (possibly already-missing) closedShapes metadata entry.
+        const nextShapes = (prev.closedShapes ?? []).filter(sh => [...sh.nodeIds].sort().join(',') !== targetKey)
+
+        return {
+            ...prev,
+            lineNodes: nextNodes,
+            lineSegments: nextSegments,
+            openings: nextOpenings,
+            wallDecor: nextWallDecor,
+            lights: nextLights,
+            closedShapes: nextShapes,
+        }
+    }
 
     const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         isMouseDownRef.current = true
@@ -3766,26 +3858,58 @@ export default function FloorPlanEditor({
                                 : (selectedId ? [selectedId] : [])
                             const idsToDelete = rawIds.filter(id => !id.includes('::wall::'))
                             if (idsToDelete.length === 0) return
-                            const idSet = new Set(idsToDelete)
 
-                            setFp(prev => ({
-                                ...prev,
-                                rooms: prev.rooms.filter(r => !idSet.has(r.id)),
-                                openings: prev.openings.filter(o =>
-                                    !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))
-                                ),
-                                lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
-                                lineSegments: prev.lineSegments
-                                    .filter(s => !idSet.has(s.id))
-                                    .filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
-                                closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
-                                furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
-                                stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
-                                annotations: (prev.annotations ?? []).filter(a => !idSet.has(a.id)),
-                                wallDecor: (prev.wallDecor ?? []).filter(d => !idSet.has(d.id)),
-                                lights: (prev.lights ?? []).filter(l => !idSet.has(l.id)),
-                                outdoorObjects: (prev.outdoorObjects ?? []).filter(o => !idSet.has(o.id)),
-                            }))
+                            setFp(prev => {
+                                // Resolve any shape ids (real ClosedShape ids OR synthetic
+                                // `unconfigured::${sorted}` ids from hitClosedShape) to their
+                                // actual boundary node-id arrays, using a SINGLE derive call so
+                                // every resolution in this pass agrees on the same polygon set.
+                                const allPolys = deriveClosedPolygons(prev.lineNodes, prev.lineSegments)
+                                const shapeTargets: string[][] = []
+                                const nonShapeIds = new Set<string>()
+
+                                for (const id of idsToDelete) {
+                                    if (id.startsWith('unconfigured::')) {
+                                        const poly = allPolys.find(p => `unconfigured::${[...p].sort().join(',')}` === id)
+                                        if (poly) shapeTargets.push(poly)
+                                        continue
+                                    }
+                                    const sh = (prev.closedShapes ?? []).find(sh => sh.id === id)
+                                    if (sh) {
+                                        const poly = allPolys.find(p => [...p].sort().join(',') === [...sh.nodeIds].sort().join(','))
+                                        shapeTargets.push(poly ?? sh.nodeIds)
+                                        continue
+                                    }
+                                    nonShapeIds.add(id)
+                                }
+
+                                // Cascade-delete each shape target (preserves any edge shared
+                                // with a polygon NOT being deleted in this same pass).
+                                let next = prev
+                                for (const target of shapeTargets) {
+                                    next = deleteAreaCascade(next, target)
+                                }
+
+                                // Everything else (rooms, furniture, stairs, etc.) — unchanged
+                                // generic id-set filtering, just no longer touching lineNodes/
+                                // lineSegments here since deleteAreaCascade already owns that.
+                                if (nonShapeIds.size > 0) {
+                                    next = {
+                                        ...next,
+                                        rooms: next.rooms.filter(r => !nonShapeIds.has(r.id)),
+                                        openings: next.openings.filter(o =>
+                                            !nonShapeIds.has(o.id) && !(o.roomId && nonShapeIds.has(o.roomId))
+                                        ),
+                                        furniture: (next.furniture ?? []).filter(f => !nonShapeIds.has(f.id)),
+                                        stairs: (next.stairs ?? []).filter(st => !nonShapeIds.has(st.id)),
+                                        annotations: (next.annotations ?? []).filter(a => !nonShapeIds.has(a.id)),
+                                        wallDecor: (next.wallDecor ?? []).filter(d => !nonShapeIds.has(d.id)),
+                                        lights: (next.lights ?? []).filter(l => !nonShapeIds.has(l.id)),
+                                        outdoorObjects: (next.outdoorObjects ?? []).filter(o => !nonShapeIds.has(o.id)),
+                                    }
+                                }
+                                return next
+                            })
                             selectedIdsRef.current = []
                             setSelectedIds([])
                             setSelectedId(null)
@@ -3852,6 +3976,7 @@ export default function FloorPlanEditor({
                                         const isNode = prev.lineNodes.some(n => n.id === selectedId)
                                         const isSeg = prev.lineSegments.some(s => s.id === selectedId)
                                         const isShape = (prev.closedShapes ?? []).some(sh => sh.id === selectedId)
+                                        const isUnconfiguredShape = selectedId.startsWith('unconfigured::')  // NEW
                                         const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
                                         const isStairs = (prev.stairs ?? []).some(st => st.id === selectedId)
                                         const isAnn = (prev.annotations ?? []).some(a => a.id === selectedId)
@@ -3861,12 +3986,37 @@ export default function FloorPlanEditor({
                                         if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
                                         if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
                                         if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                                        if (isShape) return { ...prev, closedShapes: (prev.closedShapes ?? []).filter(sh => sh.id !== selectedId) }
+
+                                        // NEW — was: `if (isShape) return { ...prev, closedShapes: filter(...) }`,
+                                        // which only removed the label/material sidecar and left the actual
+                                        // wall geometry (lineNodes/lineSegments) untouched, so the area kept
+                                        // rendering via deriveClosedPolygons. Now resolves the real polygon
+                                        // (works whether selectedId is a real ClosedShape id OR the
+                                        // synthetic `unconfigured::${sortedNodeIds}` id hitClosedShape hands
+                                        // out for an unconfigured/just-deleted area) and removes only the
+                                        // edges exclusive to it, preserving any wall shared with a
+                                        // neighboring area.
+                                        if (isShape || isUnconfiguredShape) {
+                                            const allPolys = deriveClosedPolygons(prev.lineNodes, prev.lineSegments)
+                                            const targetNodeIds = isUnconfiguredShape
+                                                ? allPolys.find(poly => `unconfigured::${[...poly].sort().join(',')}` === selectedId)
+                                                : (() => {
+                                                    const sh = (prev.closedShapes ?? []).find(sh => sh.id === selectedId)
+                                                    if (!sh) return undefined
+                                                    return allPolys.find(poly => [...poly].sort().join(',') === [...sh.nodeIds].sort().join(','))
+                                                        ?? sh.nodeIds
+                                                })()
+                                            if (!targetNodeIds) return prev
+                                            return deleteAreaCascade(prev, targetNodeIds)
+                                        }
+
                                         if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
                                         if (isStairs) return { ...prev, stairs: (prev.stairs ?? []).filter(st => st.id !== selectedId) }
                                         if (isAnn) return { ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== selectedId) }
                                         return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
                                     })
+                                    setSelectedId(null)     // NEW — this was missing; PropsPanel and the hit-test
+                                    // chain both key off this, not selectedIds
                                     setSelectedIds([])
                                 }}
                                 sceneConfig={sceneConfig}

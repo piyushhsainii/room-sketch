@@ -12,8 +12,12 @@ interface WallMatProps {
     width?: number
     height?: number
     depth?: number
-    opacity?: number       // NEW
-    transparent?: boolean  // NEW
+    opacity?: number
+    transparent?: boolean
+    polygonOffset?: boolean
+    polygonOffsetFactor?: number
+    polygonOffsetUnits?: number
+    attach?: string   // NEW — e.g. 'material-4', defaults to 'material'
 }
 
 
@@ -94,7 +98,7 @@ export function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture 
     return tex
 }
 
-function LoadingMaterial({ opacity = 1, transparent = false }: { opacity?: number; transparent?: boolean }) {
+function LoadingMaterial({ opacity = 1, transparent = false, attach = 'material' }: { opacity?: number; transparent?: boolean; attach?: string }) {
     const ref = useRef<THREE.MeshStandardMaterial>(null)
     useFrame(({ clock }) => {
         if (ref.current) {
@@ -102,12 +106,32 @@ function LoadingMaterial({ opacity = 1, transparent = false }: { opacity?: numbe
             ref.current.color.setScalar(0.75 + t * 0.1)
         }
     })
-    return <meshStandardMaterial ref={ref} roughness={0.9} opacity={opacity} transparent={transparent} />
+    return <meshStandardMaterial ref={ref} attach={attach} roughness={0.9} opacity={opacity} transparent={transparent} />
 }
 
 export function RealTextureWallMat({
-    width, height, depth, def, opacity = 1, transparent = false,
-}: { width: number; height: number; depth: number; def: MaterialDef; opacity?: number; transparent?: boolean }) {
+    width,
+    height,
+    depth,
+    def,
+    opacity = 1,
+    transparent = false,
+    polygonOffset = false,
+    polygonOffsetFactor = 0,
+    polygonOffsetUnits = 0,
+    attach = 'material',
+}: {
+    width: number
+    height: number
+    depth: number
+    def: MaterialDef
+    opacity?: number
+    transparent?: boolean
+    polygonOffset?: boolean
+    polygonOffsetFactor?: number
+    polygonOffsetUnits?: number
+    attach?: string
+}) {
     const urls = [def.textureUrl!, def.normalMapUrl, def.roughnessMapUrl].filter(Boolean) as string[]
     const loaded = useLoader(THREE.TextureLoader, urls)
 
@@ -138,72 +162,202 @@ export function RealTextureWallMat({
 
     return (
         <meshStandardMaterial
-            attach="material"
+            attach={attach}
             color="#FFFFFF"
             roughness={def.roughnessMapUrl ? 1 : def.roughness}
             metalness={def.metalness}
             opacity={opacity}
             transparent={transparent}
+            polygonOffset={polygonOffset}
+            polygonOffsetFactor={polygonOffsetFactor}
+            polygonOffsetUnits={polygonOffsetUnits}
             {...maps}
         />
     )
 }
 
 export function WallMat({
-    color, roughness, textured = false, mat = 'paint',
-    width = 1, height = 2.7, depth = 0.15,
-    opacity = 1, transparent = false,   // NEW
-}: WallMatProps) {
+    color,
+    roughness,
+    textured = false,
+    mat = 'paint',
+    width = 1,
+    height = 2.7,
+    depth = 0.15,
+    opacity = 1,
+    transparent = false,
+    wallRunLength,
+    wallRunHeight,
+    polygonOffset = false,
+    polygonOffsetFactor = 0,
+    polygonOffsetUnits = 0,
+    attach = 'material',
+}: WallMatProps & {
+    wallRunLength?: number
+    wallRunHeight?: number
+}) {
     const def = WALL_MAT_DEFS[mat] || WALL_MAT_DEFS['paint']
-    const finalColor = color && color !== '#FFFFFF' ? color : def.color
-    const finalRoughness = roughness ?? def.roughness
-    // `transparent` must also be true whenever opacity < 1, even if caller
-    // forgot to pass it explicitly — three.js silently ignores opacity
-    // on a non-transparent material.
-    const finalTransparent = transparent || opacity < 1
+
+    const finalColor =
+        color && color !== '#FFFFFF'
+            ? color
+            : def.color
+
+    const finalRoughness =
+        roughness ?? def.roughness
+
+    const finalTransparent =
+        transparent || opacity < 1
+
+    const repeatW = wallRunLength ?? width
+    const repeatH = wallRunHeight ?? height
 
     const texture = useMemo(() => {
         if (def.textureUrl) return null
+
         const tex = createProceduralTexture(mat)
+
         if (tex) {
-            tex.repeat.set(width * def.repeatScale, height * def.repeatScale)
+            tex.repeat.set(
+                repeatW * def.repeatScale,
+                repeatH * def.repeatScale
+            )
+
             tex.needsUpdate = true
         }
-        return tex
-    }, [mat, width, height, def.repeatScale, def.textureUrl])
 
+        return tex
+    }, [
+        mat,
+        repeatW,
+        repeatH,
+        def.repeatScale,
+        def.textureUrl,
+    ])
+
+    /*
+     * REAL TEXTURE MATERIAL
+     */
     if (def.textureUrl) {
         return (
-            <Suspense fallback={<LoadingMaterial opacity={opacity} transparent={finalTransparent} />}>
-                <RealTextureWallMat width={width} height={height} depth={depth} def={def} opacity={opacity} transparent={finalTransparent} />
+            <Suspense fallback={<LoadingMaterial opacity={opacity} transparent={finalTransparent} attach={attach} />}>
+                <RealTextureWallMat width={repeatW} height={repeatH} depth={depth} def={def} opacity={opacity} transparent={finalTransparent}
+                    polygonOffset={polygonOffset} polygonOffsetFactor={polygonOffsetFactor} polygonOffsetUnits={polygonOffsetUnits}
+                    attach={attach} />
             </Suspense>
         )
     }
 
+    /*
+     * PVC PANEL
+     */
     if (mat === 'pvc-panel-groove') {
         const numGrooves = Math.floor(width / 0.15)
         const grooveW = 0.015
+
         return (
             <>
-                <meshStandardMaterial attach="material" color={finalColor} roughness={finalRoughness} metalness={def.metalness} opacity={opacity} transparent={finalTransparent} />
-                <group position={[0, 0, depth / 2 + 0.002]}>
-                    {Array.from({ length: numGrooves }).map((_, i) => {
-                        const startX = -width / 2 + 0.075
+                <meshStandardMaterial
+                    attach={attach}
+                    color={finalColor}
+                    roughness={finalRoughness}
+                    metalness={def.metalness}
+                    opacity={opacity}
+                    transparent={finalTransparent}
+                    polygonOffset={polygonOffset}
+                    polygonOffsetFactor={polygonOffsetFactor}
+                    polygonOffsetUnits={polygonOffsetUnits}
+                />
+
+                <group
+                    position={[
+                        0,
+                        0,
+                        depth / 2 + 0.002,
+                    ]}
+                >
+                    {Array.from({
+                        length: numGrooves,
+                    }).map((_, i) => {
+                        const startX =
+                            -width / 2 + 0.075
+
                         return (
-                            <mesh key={i} position={[startX + i * 0.15, 0, 0]} castShadow receiveShadow>
-                                <boxGeometry args={[grooveW, height, 0.005]} />
-                                <meshStandardMaterial color={finalColor} roughness={finalRoughness + 0.1} opacity={opacity} transparent={finalTransparent} />
+                            <mesh
+                                key={i}
+                                position={[
+                                    startX + i * 0.15,
+                                    0,
+                                    0,
+                                ]}
+                                castShadow
+                                receiveShadow
+                            >
+                                <boxGeometry
+                                    args={[
+                                        grooveW,
+                                        height,
+                                        0.005,
+                                    ]}
+                                />
+
+                                <meshStandardMaterial
+                                    color={finalColor}
+                                    roughness={
+                                        finalRoughness + 0.1
+                                    }
+                                    opacity={opacity}
+                                    transparent={
+                                        finalTransparent
+                                    }
+                                />
                             </mesh>
                         )
                     })}
                 </group>
-                <group position={[0, 0, -depth / 2 - 0.002]}>
-                    {Array.from({ length: numGrooves }).map((_, i) => {
-                        const startX = -width / 2 + 0.075
+
+                <group
+                    position={[
+                        0,
+                        0,
+                        -depth / 2 - 0.002,
+                    ]}
+                >
+                    {Array.from({
+                        length: numGrooves,
+                    }).map((_, i) => {
+                        const startX =
+                            -width / 2 + 0.075
+
                         return (
-                            <mesh key={i} position={[startX + i * 0.15, 0, 0]} castShadow receiveShadow>
-                                <boxGeometry args={[grooveW, height, 0.005]} />
-                                <meshStandardMaterial color={finalColor} roughness={finalRoughness + 0.1} opacity={opacity} transparent={finalTransparent} />
+                            <mesh
+                                key={i}
+                                position={[
+                                    startX + i * 0.15,
+                                    0,
+                                    0,
+                                ]}
+                                castShadow
+                                receiveShadow
+                            >
+                                <boxGeometry
+                                    args={[
+                                        grooveW,
+                                        height,
+                                        0.005,
+                                    ]}
+                                />
+
+                                <meshStandardMaterial
+                                    color={finalColor}
+                                    roughness={
+                                        finalRoughness + 0.1
+                                    }
+                                    opacity={opacity}
+                                    transparent={
+                                        finalTransparent
+                                    }
+                                />
                             </mesh>
                         )
                     })}
@@ -212,15 +366,21 @@ export function WallMat({
         )
     }
 
+    /*
+     * PROCEDURAL / BASIC MATERIAL
+     */
     return (
         <meshStandardMaterial
-            attach="material"
+            attach={attach}
             color={finalColor}
             roughness={finalRoughness}
             metalness={def.metalness}
             map={texture || undefined}
             opacity={opacity}
             transparent={finalTransparent}
+            polygonOffset={polygonOffset}
+            polygonOffsetFactor={polygonOffsetFactor}
+            polygonOffsetUnits={polygonOffsetUnits}
         />
     )
 }

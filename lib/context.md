@@ -250,6 +250,115 @@ camera angle that it reads clearly as a distinct surface rather than being
 mistaken for the floor slab beneath it — verify visually before assuming
 this is fully polished.
 
+### 4g. Wall face materials (interior/exterior) — line-walls-3d.tsx
+
+Each wall piece is a SINGLE `boxGeometry` mesh with a 6-slot material
+array (`material-0` through `material-5`), not two separate meshes with a
+floating overlay plane. The overlay-plane approach (a thin coincident
+`planeGeometry` positioned in front of the box's own face) was the
+original implementation and caused persistent z-fighting / draw-order
+flicker between the box's own face and the overlay — this is why "wrong
+material on wrong side" bugs kept resurfacing. **Do not reintroduce a
+floating overlay mesh for wall faces.** If a mesh with `<WallMat>` +
+`planeGeometry` (or a `<WallMat>` with no geometry at all, i.e. dead code
+left mid-refactor) shows up again in this file, it's regressing.
+
+**Two independent axes, do not conflate them:**
+
+1. **Geometry — which box face is "interior" vs "exterior".** This is a
+   FIXED constant, unrelated to any per-wall computation:
+
+```ts
+const INTERIOR_ATTACH = "material-5"; // confirmed correct as of this fix
+const EXTERIOR_ATTACH = "material-4";
+```
+
+`material-0`/`1` = end caps (±X), `material-2`/`3` = top/bottom, both
+always get `interior.mat` (mostly hidden anyway, doesn't matter
+visually). If this axis is ever found wrong again, it can ONLY be a
+two-value swap of these two literals — nothing else in the file should
+need to change. Previously this was wrongly computed as a per-wall
+ternary keyed off `!!shapeFacingA` (`interiorIsPlusNormal`), which
+silently produced a fixed-but-wrong result for freestanding wall
+segments (no shape at all → `shapeFacingA` always undefined → ternary
+always resolved the same way regardless of the user's actual pick).
+Don't reintroduce that coupling.
+
+2. **Material resolution — what `interiorMat`/`exteriorMat` actually
+   equal.** This DOES vary per wall piece, based on `shapeFacingA`/
+   `shapeFacingB` (which `ClosedShape`(s), if any, border this wall). Two
+   real cases:
+   - **Shared edge (`matchingShapes.length === 2`)**: `shapeFacingB`'s own
+     `wallMaterial` mirrors onto this piece's exterior-relative face —
+     i.e. what looks like "my exterior" is actually "the neighbor's own
+     interior."
+   - **Solo/true-exterior (`matchingShapes.length < 2`)**: read the same
+     shape's `exteriorWallMaterial` field (set via
+     `applyShapeExteriorMaterial`), regardless of whether that lone shape
+     landed in the `shapeFacingA` or `shapeFacingB` slot — slot assignment
+     is winding-direction-dependent and NOT meaningful on its own; branch
+     on `matchingShapes.length`, never on which slot got populated.
+
+   After this branching, a confirmed-correct-but-inverted-output swap is
+   applied:
+
+```ts
+[interiorMat, exteriorMat] = [exteriorMat, interiorMat];
+```
+
+This must run BEFORE segment-level explicit overrides (next point),
+so a user's own Interior/Exterior pick on a wall segment always wins
+as-authored and never gets re-flipped by this line.
+
+**Segment-level explicit override** (from `PropsPanel`'s per-segment
+Interior/Exterior/Both picker) always wins over shape-derived defaults:
+
+```ts
+if (selectedWallMaterial) interiorMat = selectedWallMaterial;
+if (selectedWallExteriorMaterial) exteriorMat = selectedWallExteriorMaterial;
+```
+
+sourced from `segWallMaterial`/`segWallExteriorMaterial` maps, built once
+per render from `roomSceneConfigs` (`RoomSceneConfig.wallMaterial` /
+`.exteriorWallMaterial`, keyed by `seg.id`).
+
+**Known past bug, now fixed — the picker itself, not the render logic.**
+`PropsPanel`'s wall-segment `MaterialTexturePicker` `onSelect`/`onClear`
+must branch on the active `segWallSide` tab and write to the matching
+field:
+
+```ts
+onSelect={(id) => {
+    const patch: Partial<RoomSceneConfig> = {}
+    if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = id as WallMaterial
+    if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = id as WallMaterial
+    patchRoomSceneById(seg.id, patch)
+}}
+```
+
+A prior version always wrote `wallMaterial` regardless of which tab was
+active — Exterior picks silently landed on the interior field, making
+Exterior appear completely non-functional no matter what render-logic
+fixes were made downstream. **If a similar per-side texture bug appears
+for a NEW entity type in the future, check the picker's write logic
+first, before assuming the render/attach logic is at fault** — this
+exact bug shape (correct render logic, wrong picker write target) cost
+significant debugging time here.
+
+**Areas/shapes use a parallel but separate write path** —
+`PropsPanel.applyShapeWallTexture` + `lib/helpers.ts`'s
+`applyShapeExteriorMaterial`. Both must resolve the SAME `ClosedShape` by
+`id` (not by re-deriving a `nodeIds`-sorted key independently), or
+Interior and Exterior picks fork into two separate `ClosedShape` rows
+with the same `nodeIds` — this previously caused `shapesForSegment` to
+see 2 matching shapes for what should be a single isolated room, feeding
+the wrong material into `shapeFacingA`/`shapeFacingB` unpredictably.
+`applyShapeExteriorMaterial(fp, shape.id, shape.nodeIds, patch)` — the
+`shape.id` param is REQUIRED, added specifically to fix this; do not
+drop it. When creating a not-yet-persisted shape's first `ClosedShape`
+row (either side), reuse `shape.id` as-is — do NOT mint a
+`crypto.randomUUID()` for it, or the two write paths will diverge again.
+
 ---
 
 ## 5. Floating UI — unchanged from prior notes

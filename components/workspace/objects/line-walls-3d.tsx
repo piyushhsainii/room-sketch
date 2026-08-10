@@ -813,20 +813,6 @@ function LineWalls3DImpl({
                                                 transparent={transparent}
                                             />
                                         </mesh>
-
-                                        {/*
-                             * IMPORTANT:
-                             *
-                             * This is a separate exterior face used
-                             * for the opening-wall section.
-                             *
-                             * It MUST be a mesh containing the
-                             * planeGeometry.
-                             *
-                             * The old code had planeGeometry directly
-                             * inside <group>, which was incorrect.
-                             */}
-
                                         {showOutline && (
                                             <mesh
                                                 position={[
@@ -878,60 +864,25 @@ function LineWalls3DImpl({
                              * ------------------------------------------------
                              */
                             if (op) {
-                                const opPos2 =
-                                    (op.segmentT ?? 0) *
-                                    len
-
-                                const openingBottom =
-                                    op.sillHeight ?? 0
-
-                                const openingTop =
-                                    openingBottom +
-                                    op.height
-
-                                const headerH =
-                                    effH -
-                                    openingTop
-
-                                const isPassage =
-                                    op.type === 'opening' &&
-                                    op.variant ===
-                                    'opening-passage'
-
-                                const isArchway =
-                                    op.type === 'opening' &&
-                                    op.variant ===
-                                    'opening-archway'
+                                const opPos2 = (op.segmentT ?? 0) * len
+                                const openingBottom = op.sillHeight ?? 0
+                                const openingTop = openingBottom + op.height
+                                const headerH = effH - openingTop
+                                const isPassage = op.type === 'opening' && op.variant === 'opening-passage'
+                                const isArchway = op.type === 'opening' && op.variant === 'opening-archway'
 
                                 /*
                                  * ------------------------------------------------
                                  * HEADER
                                  * ------------------------------------------------
                                  */
-                                if (
-                                    !isPassage &&
-                                    headerH > 0.02
-                                ) {
-                                    const hx =
-                                        a.x +
-                                        (dx / len) *
-                                        opPos2
-
-                                    const hz =
-                                        a.z +
-                                        (dz / len) *
-                                        opPos2
+                                if (!isPassage && headerH > 0.02) {
+                                    const hx = a.x + (dx / len) * opPos2
+                                    const hz = a.z + (dz / len) * opPos2
 
                                     if (isArchway) {
                                         panels.push(
-                                            <group
-                                                key={`${seg.id}_${i}_h${si}`}
-                                                position={[
-                                                    hx,
-                                                    openingTop,
-                                                    hz,
-                                                ]}
-                                            >
+                                            <group key={`${seg.id}_${i}_h${si}`} position={[hx, openingTop, hz]}>
                                                 <ArchHeader3D
                                                     width={op.width}
                                                     headerH={headerH}
@@ -939,9 +890,7 @@ function LineWalls3DImpl({
                                                     angle={-angle}
                                                     mat={interior.mat}
                                                     color={interior.color}
-                                                    roughness={
-                                                        wallRoughness
-                                                    }
+                                                    roughness={wallRoughness}
                                                 />
                                             </group>
                                         )
@@ -949,55 +898,19 @@ function LineWalls3DImpl({
                                         panels.push(
                                             <mesh
                                                 key={`${seg.id}_${i}_h${si}`}
-                                                position={[
-                                                    hx,
-                                                    openingTop +
-                                                    headerH / 2,
-                                                    hz,
-                                                ]}
-                                                rotation={[
-                                                    0,
-                                                    -angle,
-                                                    0,
-                                                ]}
+                                                position={[hx, openingTop + headerH / 2, hz]}
+                                                rotation={[0, -angle, 0]}
                                                 castShadow
                                                 receiveShadow
                                                 {...handlers}
                                             >
-                                                <boxGeometry
-                                                    args={[
-                                                        op.width,
-                                                        headerH,
-                                                        segT,
-                                                    ]}
-                                                />
-
-                                                <WallMat
-                                                    mat={
-                                                        interior.mat
-                                                    }
-                                                    color={
-                                                        interior.color
-                                                    }
-                                                    roughness={
-                                                        wallRoughness
-                                                    }
-                                                    width={
-                                                        op.width
-                                                    }
-                                                    height={
-                                                        headerH
-                                                    }
-                                                    depth={
-                                                        segT
-                                                    }
-                                                    opacity={
-                                                        opacity
-                                                    }
-                                                    transparent={
-                                                        transparent
-                                                    }
-                                                />
+                                                <boxGeometry args={[op.width, headerH, segT]} />
+                                                <WallMat attach="material-0" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
+                                                <WallMat attach="material-1" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
+                                                <WallMat attach="material-2" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
+                                                <WallMat attach="material-3" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
+                                                <WallMat attach={exteriorFaceAttach} mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
+                                                <WallMat attach={interiorFaceAttach} mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
                                             </mesh>
                                         )
                                     }
@@ -1008,83 +921,32 @@ function LineWalls3DImpl({
                                  * SILL
                                  * ------------------------------------------------
                                  */
-                                if (
-                                    (
-                                        op.type === 'window' ||
-                                        op.type === 'door'
-                                    ) &&
-                                    openingBottom > 0.02
-                                ) {
-                                    const sx =
-                                        a.x +
-                                        (dx / len) *
-                                        opPos2
-
-                                    const sz =
-                                        a.z +
-                                        (dz / len) *
-                                        opPos2
+                                if ((op.type === 'window' || op.type === 'door') && openingBottom > 0.02) {
+                                    const sx = a.x + (dx / len) * opPos2
+                                    const sz = a.z + (dz / len) * opPos2
 
                                     panels.push(
                                         <mesh
                                             key={`${seg.id}_${i}_s${si}`}
-                                            position={[
-                                                sx,
-                                                openingBottom / 2,
-                                                sz,
-                                            ]}
-                                            rotation={[
-                                                0,
-                                                -angle,
-                                                0,
-                                            ]}
+                                            position={[sx, openingBottom / 2, sz]}
+                                            rotation={[0, -angle, 0]}
                                             castShadow
                                             receiveShadow
                                             {...handlers}
                                         >
-                                            <boxGeometry
-                                                args={[
-                                                    op.width,
-                                                    openingBottom,
-                                                    segT,
-                                                ]}
-                                            />
-
-                                            <WallMat
-                                                mat={
-                                                    interior.mat
-                                                }
-                                                color={
-                                                    interior.color
-                                                }
-                                                roughness={
-                                                    wallRoughness
-                                                }
-                                                width={
-                                                    op.width
-                                                }
-                                                height={
-                                                    openingBottom
-                                                }
-                                                depth={segT}
-                                                opacity={opacity}
-                                                transparent={
-                                                    transparent
-                                                }
-                                            />
+                                            <boxGeometry args={[op.width, openingBottom, segT]} />
+                                            <WallMat attach="material-0" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={openingBottom} depth={segT} opacity={opacity} transparent={transparent} />
+                                            <WallMat attach="material-1" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={openingBottom} depth={segT} opacity={opacity} transparent={transparent} />
+                                            <WallMat attach="material-2" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={openingBottom} depth={segT} opacity={opacity} transparent={transparent} />
+                                            <WallMat attach="material-3" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={openingBottom} depth={segT} opacity={opacity} transparent={transparent} />
+                                            <WallMat attach={exteriorFaceAttach} mat={exterior.mat} color={exterior.color} roughness={wallRoughness} width={op.width} height={openingBottom} depth={segT} opacity={opacity} transparent={transparent} />
+                                            <WallMat attach={interiorFaceAttach} mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={openingBottom} depth={segT} opacity={opacity} transparent={transparent} />
                                         </mesh>
                                     )
                                 }
 
-                                const ox =
-                                    a.x +
-                                    (dx / len) *
-                                    opPos2
-
-                                const oz =
-                                    a.z +
-                                    (dz / len) *
-                                    opPos2
+                                const ox = a.x + (dx / len) * opPos2
+                                const oz = a.z + (dz / len) * opPos2
 
                                 /*
                                  * ------------------------------------------------

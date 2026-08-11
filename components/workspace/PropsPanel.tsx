@@ -565,6 +565,95 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                 onChange={v => patchOpening({ sillHeight: v })} />
                         </PropField>
                     )}
+                    {opening.type === 'window' && opening.variant === 'window-bay' && (
+                        <PropField label="Openable panel">
+                            <select
+                                value={opening.bayDoorIndex ?? ''}
+                                onChange={e => patchOpening({ bayDoorIndex: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            >
+                                <option value="">None (fixed)</option>
+                                {Array.from({ length: opening.bayPanelCount ?? 3 }).map((_, i) => (
+                                    <option key={i} value={i}>Panel {i + 1}</option>
+                                ))}
+                            </select>
+                        </PropField>
+                    )}
+                    {opening.type === 'door' && (opening.variant ?? 'door-swing-single') === 'door-sliding-panorama' && (
+                        <Card>
+                            <div style={{ fontSize: 11.5, color: COLOR.textFaint, marginBottom: -4 }}>
+                                Configure glass transparency for this sliding panorama door.
+                            </div>
+
+                            <PropField label="Glass finish">
+                                <select
+                                    value={(opening as any).glass?.finish ?? 'clear'}
+                                    onChange={e => patchOpening({
+                                        glass: { ...((opening as any).glass ?? {}), finish: e.target.value },
+                                    } as any)}
+                                    style={{ height: 30, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 12.5, padding: '0 8px', outline: 'none', cursor: 'pointer' }}
+                                >
+                                    <option value="clear">Clear</option>
+                                    <option value="tinted">Tinted</option>
+                                    <option value="frosted">Frosted</option>
+                                    <option value="reflective">Reflective</option>
+                                </select>
+                            </PropField>
+
+                            <PropField label="Visibility">
+                                <select
+                                    value={(opening as any).glass?.viewMode ?? 'two-way'}
+                                    onChange={e => patchOpening({
+                                        glass: { ...((opening as any).glass ?? {}), viewMode: e.target.value },
+                                    } as any)}
+                                    style={{ height: 30, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 12.5, padding: '0 8px', outline: 'none', cursor: 'pointer' }}
+                                >
+                                    <option value="two-way">See-through both sides</option>
+                                    <option value="one-way">One-way (privacy)</option>
+                                </select>
+                            </PropField>
+
+                            {(opening as any).glass?.viewMode === 'one-way' && (
+                                <>
+                                    <PropField label="Viewable from">
+                                        <select
+                                            value={(opening as any).glass?.oneWayViewableFrom ?? 'front'}
+                                            onChange={e => patchOpening({
+                                                glass: { ...((opening as any).glass ?? {}), oneWayViewableFrom: e.target.value },
+                                            } as any)}
+                                            style={{ height: 30, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 12.5, padding: '0 8px', outline: 'none', cursor: 'pointer' }}
+                                        >
+                                            <option value="front">Front</option>
+                                            <option value="back">Back</option>
+                                        </select>
+                                    </PropField>
+
+                                    <PropField label="Blocked-side finish">
+                                        <select
+                                            value={(opening as any).glass?.backFinish ?? 'reflective'}
+                                            onChange={e => patchOpening({
+                                                glass: { ...((opening as any).glass ?? {}), backFinish: e.target.value },
+                                            } as any)}
+                                            style={{ height: 30, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 12.5, padding: '0 8px', outline: 'none', cursor: 'pointer' }}
+                                        >
+                                            <option value="reflective">Reflective</option>
+                                            <option value="frosted">Frosted</option>
+                                            <option value="tinted">Tinted</option>
+                                        </select>
+                                    </PropField>
+                                </>
+                            )}
+
+                            <PropField label="Sides">
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => patchOpening({ invertGlassSide: !(opening as any).invertGlassSide } as any)}
+                                >
+                                    {(opening as any).invertGlassSide ? '⇋ Inverted' : '⇋ Invert left/right'}
+                                </Button>
+                            </PropField>
+                        </Card>
+                    )}
+
                     {opening.type === 'door' && (
                         <PropField label="Snap">
                             <Button variant="secondary" onClick={() => {

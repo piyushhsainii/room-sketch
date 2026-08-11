@@ -45,6 +45,7 @@ export function Toolbar({
 
 
 export const DOOR_WINDOW_CURSOR = 'cell'
+
 export const TOOL_CURSORS: Record<EditorTool, string> = {
     select: 'default',
     pan: 'grab',
@@ -55,6 +56,7 @@ export const TOOL_CURSORS: Record<EditorTool, string> = {
     'door-swing-single': DOOR_WINDOW_CURSOR,
     'door-swing-double': DOOR_WINDOW_CURSOR,
     'door-sliding': DOOR_WINDOW_CURSOR,
+    'door-sliding-panorama': DOOR_WINDOW_CURSOR,   // NEW — 4-panel telescoping slider
     'door-pocket': DOOR_WINDOW_CURSOR,
     'door-folding': DOOR_WINDOW_CURSOR,
     'door-garage': DOOR_WINDOW_CURSOR,

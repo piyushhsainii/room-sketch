@@ -4,6 +4,7 @@ import { EditorOpening } from "../lib/constants"
 import * as THREE from 'three'
 import { glassMat, mat } from "../windows/materials"
 import { WindowGlass } from "./windows-glass"
+import { BayPanel, useBayCapGeometry } from "../hooks/useWindowGeometry"
 
 const INSTALL_GAP = 0.025
 
@@ -500,42 +501,75 @@ export function WindowVariant3D({
         }
 
         case 'window-bay': {
-            const segW = innerW / 3
-            const depth = 0.5
-            const angleOut = Math.PI / 6
-            const segFrameDepth = 0.04
-            const segFrameSize: [number, number, number] = [segW, innerH + frameT, segFrameDepth]
+            const doorPanelIndex: number | undefined = (op as any).bayDoorIndex
+            const projectDepth = (op as any).bayProjection ?? 0.45
+            const sideAngle = Math.PI / 4
+
+            const bayW = op.width - INSTALL_GAP * 2
+            const bayH = op.height - INSTALL_GAP * 2
+
+            const frontW = bayW * 0.62
+            const sideW = bayW * 0.4
+            const panelH = bayH
+
+            const leftX = -frontW / 2 - (sideW / 2) * Math.cos(sideAngle)
+            const leftZ = -projectDepth + (sideW / 2) * Math.sin(sideAngle)
+            const rightX = frontW / 2 + (sideW / 2) * Math.cos(sideAngle)
+            const rightZ = -projectDepth + (sideW / 2) * Math.sin(sideAngle)
+
+            const panels = [
+                { key: 'left', index: 0, width: sideW, x: leftX, z: leftZ, rotY: sideAngle },
+                { key: 'center', index: 1, width: frontW, x: 0, z: -projectDepth, rotY: 0 },
+                { key: 'right', index: 2, width: sideW, x: rightX, z: rightZ, rotY: -sideAngle },
+            ]
+
+            const roofT = 0.05
+            const sillT = 0.08
+            const roofTopY = bayH / 2
+            const roofBottomY = roofTopY - roofT
+            const sillBottomY = -bayH / 2
+
+            const roofGeo = useBayCapGeometry(bayW, frontW, sideW, projectDepth, sideAngle, roofT, 0.18)
+            const sillGeo = useBayCapGeometry(bayW, frontW, sideW, projectDepth, sideAngle, sillT, 0.15)
 
             return (
                 <group position={basePos} rotation={groupRot}>
-                    <mesh castShadow>
-                        <boxGeometry args={[op.width, op.height, 0.04]} />
-                        {mat(frameColor, { roughness: 0.55 }, itemOpacity, itemTransparent)}
-                    </mesh>
-                    <mesh position={[0, -innerH / 2 - 0.06, -depth * 0.5]} castShadow>
-                        <boxGeometry args={[op.width * 0.92, 0.1, depth]} />
-                        {mat(sillColor, { roughness: 0.6 }, itemOpacity, itemTransparent)}
-                    </mesh>
-                    <group position={[0, 0, -depth]}>
-                        <mesh>
-                            <boxGeometry args={segFrameSize} />
-                            {mat(frameColor, { roughness: 0.55 }, itemOpacity, itemTransparent)}
-                        </mesh>
-                        <group position={[0, 0, frameFrontZ]}>
-                            <WindowGlass width={innerW} height={innerH} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
-                        </group>
-                    </group>
-                    {[[-1, angleOut], [1, -angleOut]].map(([side, rot], idx) => (
-                        <group key={idx} position={[side * segW * 0.9, 0, -depth * 0.42]} rotation={[0, rot, 0]}>
-                            <mesh>
-                                <boxGeometry args={segFrameSize} />
-                                {mat(frameColor, { roughness: 0.55 }, itemOpacity, itemTransparent)}
-                            </mesh>
-                            <group position={[0, 0, frameFrontZ]}>
-                                <WindowGlass width={innerW} height={innerH} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
-                            </group>
+                    {panels.map(p => (
+                        <group key={p.key} position={[p.x, 0, p.z]} rotation={[0, p.rotY, 0]}>
+                            <BayPanel
+                                width={p.width}
+                                height={panelH}
+                                isDoor={doorPanelIndex === p.index}
+                                hingeSign={p.index === 0 ? -1 : 1}
+                                isOpen={isOpen}
+                                openAmount={openAmount}
+                                interactive={interactive}
+                                onToggleOpen={onToggleOpen}
+                                itemOpacity={itemOpacity}
+                                itemTransparent={itemTransparent}
+                            />
                         </group>
                     ))}
+
+                    <mesh geometry={roofGeo} position={[0, roofBottomY, 0]} castShadow>
+                        <meshStandardMaterial
+                            color={bayRoofColor}
+                            roughness={0.85}
+                            opacity={itemOpacity}
+                            transparent={itemTransparent}
+                            side={THREE.DoubleSide}
+                        />
+                    </mesh>
+
+                    <mesh geometry={sillGeo} position={[0, sillBottomY - sillT, 0]} castShadow receiveShadow>
+                        <meshStandardMaterial
+                            color={bayStoneDark}
+                            roughness={0.75}
+                            opacity={itemOpacity}
+                            transparent={itemTransparent}
+                            side={THREE.DoubleSide}
+                        />
+                    </mesh>
                 </group>
             )
         }
@@ -574,4 +608,56 @@ export function WindowVariant3D({
                 </group>
             )
     }
+}
+
+const bayStoneDark = '#8A857A'
+const bayRoofColor = '#3A3733'
+
+function BayRoofCap({
+    frontWidth, sideWidth, sideAngle, projectDepth, itemOpacity, itemTransparent,
+}: {
+    frontWidth: number; sideWidth: number; sideAngle: number; projectDepth: number
+    itemOpacity: number; itemTransparent: boolean
+}) {
+    const capH = 0.16
+    const overhang = 0.05
+
+    return (
+        <group>
+            {/* Flat fascia band the roof sits on, tying the three panel tops together */}
+            <mesh position={[0, 0, -projectDepth * 0.5]} castShadow>
+                <boxGeometry args={[frontWidth + sideWidth * 1.6, 0.08, projectDepth + 0.1]} />
+                {mat(bayStoneDark, { roughness: 0.7 }, itemOpacity, itemTransparent)}
+            </mesh>
+            {/* Center sloped roof slab */}
+            <mesh position={[0, capH / 2, -projectDepth * 0.4]} rotation={[-Math.PI / 10, 0, 0]} castShadow>
+                <boxGeometry args={[frontWidth + overhang * 2, 0.03, projectDepth * 0.75]} />
+                {mat(bayRoofColor, { roughness: 0.85 }, itemOpacity, itemTransparent)}
+            </mesh>
+            {/* Angled side roof slabs */}
+            {[-1, 1].map((side) => (
+                <group key={side} position={[side * (frontWidth / 2 + sideWidth * 0.42), 0, -projectDepth * 0.16]} rotation={[0, -side * sideAngle, 0]}>
+                    <mesh position={[0, capH / 2, -projectDepth * 0.3]} rotation={[-Math.PI / 10, 0, 0]} castShadow>
+                        <boxGeometry args={[sideWidth + overhang, 0.03, projectDepth * 0.7]} />
+                        {mat(bayRoofColor, { roughness: 0.85 }, itemOpacity, itemTransparent)}
+                    </mesh>
+                </group>
+            ))}
+        </group>
+    )
+}
+
+// Projecting sill/base ledge beneath the bay.
+function BaySillBase({
+    frontWidth, sideWidth, sideAngle, projectDepth, itemOpacity, itemTransparent,
+}: {
+    frontWidth: number; sideWidth: number; sideAngle: number; projectDepth: number
+    itemOpacity: number; itemTransparent: boolean
+}) {
+    return (
+        <mesh position={[0, 0, -projectDepth * 0.42]} castShadow receiveShadow>
+            <boxGeometry args={[frontWidth + sideWidth * 1.5, 0.1, projectDepth + 0.08]} />
+            {mat(bayStoneDark, { roughness: 0.75 }, itemOpacity, itemTransparent)}
+        </mesh>
+    )
 }

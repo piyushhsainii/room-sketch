@@ -315,6 +315,7 @@ export function draw2D(
                 const doorPx = op.width * scale
                 const dv = op.variant ?? 'door-swing-single'
                 const isDouble = dv === 'door-swing-double' || dv === 'door-swing-double-french' || dv === 'door-swing-double-arched'
+                const isPanorama = dv === 'door-sliding-panorama'
                 const isSliding = dv === 'door-sliding' || dv === 'door-sliding-double' || dv === 'door-pocket'
                 const isFolding = dv === 'door-folding' || dv === 'door-folding-single' || dv === 'door-folding-french'
                 const isGarage = dv === 'door-garage'
@@ -335,6 +336,46 @@ export function draw2D(
                     if (isHorizontal) { ctx.moveTo(gx1, midY); ctx.lineTo(gx2, midY) }
                     else { ctx.moveTo(midX, gy1); ctx.lineTo(midX, gy2) }
                     ctx.stroke()
+                } else if (isPanorama) {
+                    // Multi-pane slider — opening line + evenly spaced panel dividers,
+                    // so it reads as a multi-panel glass slider distinct from the
+                    // simpler double-slider symbol. Offset bar marks the operable leaf(s).
+                    const panelCount = (op as any).panelCount ?? 2
+                    ctx.beginPath()
+                    if (isHorizontal) { ctx.moveTo(gx1, midY); ctx.lineTo(gx2, midY) }
+                    else { ctx.moveTo(midX, gy1); ctx.lineTo(midX, gy2) }
+                    ctx.stroke()
+
+                    ctx.lineWidth = Math.max(1, ctx.lineWidth - 0.5)
+                    for (let i = 1; i < panelCount; i++) {
+                        const t = i / panelCount
+                        ctx.beginPath()
+                        if (isHorizontal) {
+                            const x = gx1 + doorPx * t
+                            ctx.moveTo(x, midY - 4)
+                            ctx.lineTo(x, midY + 4)
+                        } else {
+                            const y = gy1 + doorPx * t
+                            ctx.moveTo(midX - 4, y)
+                            ctx.lineTo(midX + 4, y)
+                        }
+                        ctx.stroke()
+                    }
+
+                    const slidingIndices: number[] = (op as any).slidingPanels ?? [panelCount - 1]
+                    const panelLen = (doorPx / panelCount) * 0.85
+                    slidingIndices.forEach(idx => {
+                        const start = doorPx * (idx / panelCount)
+                        ctx.beginPath()
+                        if (isHorizontal) {
+                            ctx.moveTo(gx1 + start, midY - 3)
+                            ctx.lineTo(gx1 + start + panelLen, midY - 3)
+                        } else {
+                            ctx.moveTo(midX - 3, gy1 + start)
+                            ctx.lineTo(midX - 3, gy1 + start + panelLen)
+                        }
+                        ctx.stroke()
+                    })
                 } else if (isSliding) {
                     // Opening line + a short offset bar showing the panel
                     // parked to one side — standard sliding-door symbol.
@@ -556,13 +597,6 @@ export function draw2D(
         ctx.lineWidth = 2
         ctx.stroke()
         ctx.restore()
-
-        // Label drawn in a SEPARATE, un-rotated-by-wall-angle pass so text is
-        // always upright and legible, offset outward on the wall's normal —
-        // flipped by `faceDir` so labels for opposite-face items don't
-        // stack on top of each other. Uses the shared pill-badge renderer
-        // (dark pill + brass dot) for consistent contrast against any
-        // background, plus a short leader line back to the fixture.
         const normalX = Math.sin(angle) * faceDir, normalZ = -Math.cos(angle) * faceDir
         const labelOffset = 20
         const label = WALL_DECOR_LABELS[d.type]

@@ -283,6 +283,8 @@ function Room3D({
                             const doorBasePos: [number, number, number] = wall.axis === 'x'
                                 ? [room.x + opMid, op.sillHeight + op.height / 2, wPos[2]]
                                 : [wPos[0], op.sillHeight + op.height / 2, room.z + opMid]
+
+
                             panels.push(
                                 <group
                                     key={`door${i}`}

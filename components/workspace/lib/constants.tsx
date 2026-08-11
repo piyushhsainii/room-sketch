@@ -343,6 +343,8 @@ export interface EditorOpening {
     material?: DoorStyle
     isOpen?: boolean
     openAmount?: number
+    bayPanelCount?: number   // defaults to 3
+    bayDoorIndex?: number
 }
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
@@ -456,22 +458,6 @@ export const FLOOR_MATERIALS: { id: FloorMaterial; label: string; preview: strin
     { id: 'brick-white', label: 'White Brick', preview: '🧱', roughness: 0.82, color: '#D8D2C4' },
 ]
 
-
-export type EditorTool =
-    | 'select' | 'pan' | 'room' | 'pencil' | 'line' | 'bend'
-    | 'door-swing-single' | 'door-swing-double' | 'door-sliding' | 'door-pocket' | 'door-folding' | 'door-garage'
-    | 'window-fixed' | 'window-sliding' | 'window-casement' | 'window-bay' | 'window-skylight'
-    | 'opening-archway' | 'opening-passage'
-    | 'stairs-straight' | 'stairs-l' | 'stairs-u' | 'stairs-spiral' | 'stairs-ramp'
-    | 'elevator'
-    | 'delete' | 'annotate' | 'furniture'
-    | 'wall-decor-led' | 'wall-decor-pvc' | 'wall-decor-painting' | 'led_tv'
-    | 'light-ceiling-pendant' | 'light-ceiling-recessed' | 'light-floor-lamp' | 'light-wall-sconce'
-    | 'light-track' | 'light-chandelier' | 'light-shelf-strip' | 'light-spotlight' | 'light-string' | 'light-outdoor-bollard'  // NEW
-    | 'outdoor-crosswalk' | 'outdoor-dustbin' | 'outdoor-bench' | 'outdoor-mailbox'
-    | 'presets'          // NEW — opens PresetsPanel; not itself a canvas drawing tool
-    | 'template-place'   // NEW — armed after picking a room template; next canvas click commits it
-
 export interface ToolLeaf {
     id: EditorTool
     label: string
@@ -499,241 +485,368 @@ export const KEY_TO_DEFAULT_TOOL: Record<string, EditorTool> = {
     f: 'furniture',
 }
 
-// ── Icon set ──────────────────────────────────────────────────────────────
 
-const S = (children: React.ReactNode) => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        {children}
-    </svg>
-)
+import type React from 'react'
 
-export const ICONS: Record<EditorTool, React.ReactNode> = {
-    presets: S(<>
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
-    </>),
-    'template-place': S(<>
-        <path d="M12 2l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-1.5z" />
-    </>),
-    select: S(<path d="M5 3l14 9-7 1-4 7z" />),
-    pan: S(<>
-        <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3" />
-        <path d="M3 12h18M12 3v18" />
-    </>),
-    room: S(<rect x="3" y="3" width="18" height="18" rx="1" />),
-    pencil: S(<>
-        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-    </>),
-    line: S(<>
-        <line x1="4" y1="20" x2="20" y2="4" strokeWidth="2.5" />
-        <circle cx="4" cy="20" r="2" fill="currentColor" />
-        <circle cx="20" cy="4" r="2" fill="currentColor" />
-    </>),
-    bend: S(<>
-        <path d="M4 20 Q12 4 20 20" strokeWidth="2.5" />
-        <circle cx="4" cy="20" r="2" fill="currentColor" />
-        <circle cx="20" cy="20" r="2" fill="currentColor" />
-        <circle cx="12" cy="8" r="2" fill="currentColor" />
-    </>),
+// ── Shared cursor constants ──
+const DOOR_WINDOW_CURSOR = 'crosshair' // keep your existing value/URL here
+
+// ── Small helper for stroke-based icons (same as your old `S`) ──
+function S(children: React.ReactNode): React.ReactNode {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {children}
+        </svg>
+    )
+}
+
+// ── Single source of truth ──
+// Add a new tool by adding ONE entry here. `EditorTool` is derived from these keys,
+// so the type, cursor map, and icon map can never drift out of sync again.
+export const TOOL_CONFIG = {
+    select: { cursor: 'default', icon: S(<path d="M5 3l14 9-7 1-4 7z" />) },
+    pan: {
+        cursor: 'grab',
+        icon: S(<>
+            <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3" />
+            <path d="M3 12h18M12 3v18" />
+        </>),
+    },
+    room: { cursor: 'crosshair', icon: S(<rect x="3" y="3" width="18" height="18" rx="1" />) },
+    pencil: {
+        cursor: 'crosshair',
+        icon: S(<>
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </>),
+    },
+    line: {
+        cursor: 'crosshair',
+        icon: S(<>
+            <line x1="4" y1="20" x2="20" y2="4" strokeWidth="2.5" />
+            <circle cx="4" cy="20" r="2" fill="currentColor" />
+            <circle cx="20" cy="4" r="2" fill="currentColor" />
+        </>),
+    },
+    bend: {
+        cursor: 'crosshair',
+        icon: S(<>
+            <path d="M4 20 Q12 4 20 20" strokeWidth="2.5" />
+            <circle cx="4" cy="20" r="2" fill="currentColor" />
+            <circle cx="20" cy="20" r="2" fill="currentColor" />
+            <circle cx="12" cy="8" r="2" fill="currentColor" />
+        </>),
+    },
 
     // ── Doors ──
-    'door-swing-single': S(<>
-        <rect x="3" y="3" width="13" height="18" rx="1" />
-        <path d="M16 7h4M3 21h18M3 3h18" />
-        <path d="M8 12 Q8 8 12 8" strokeDasharray="2 1" />
-    </>),
-    'door-swing-double': S(<>
-        <rect x="2" y="3" width="9" height="18" rx="1" />
-        <rect x="13" y="3" width="9" height="18" rx="1" />
-        <path d="M11 12 Q11 8 15 8M11 12 Q11 8 7 8" strokeDasharray="2 1" />
-    </>),
-    'door-sliding': S(<>
-        <rect x="2" y="4" width="20" height="16" rx="1" />
-        <path d="M2 12h9" strokeWidth="2.5" />
-        <path d="M13 12h9" strokeDasharray="3 2" />
-        <path d="M6 9l-2 3 2 3" />
-    </>),
-    'door-pocket': S(<>
-        <rect x="2" y="4" width="20" height="16" rx="1" />
-        <path d="M4 12h7" strokeWidth="2.5" />
-        <rect x="15" y="9" width="5" height="6" strokeDasharray="1.5 1.5" />
-    </>),
-    'door-folding': S(<>
-        <rect x="2" y="3" width="20" height="18" rx="1" />
-        <path d="M6 3v18M10 3v18M14 3v18M18 3v18" strokeDasharray="2 1.5" />
-    </>),
-    'door-garage': S(<>
-        <rect x="2" y="4" width="20" height="16" rx="1" />
-        <path d="M2 8h20M2 12h20M2 16h20" />
-    </>),
+    'door-swing-single': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="3" y="3" width="13" height="18" rx="1" />
+            <path d="M16 7h4M3 21h18M3 3h18" />
+            <path d="M8 12 Q8 8 12 8" strokeDasharray="2 1" />
+        </>),
+    },
+    'door-swing-double': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="3" width="9" height="18" rx="1" />
+            <rect x="13" y="3" width="9" height="18" rx="1" />
+            <path d="M11 12 Q11 8 15 8M11 12 Q11 8 7 8" strokeDasharray="2 1" />
+        </>),
+    },
+    'door-sliding': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="4" width="20" height="16" rx="1" />
+            <path d="M2 12h9" strokeWidth="2.5" />
+            <path d="M13 12h9" strokeDasharray="3 2" />
+            <path d="M6 9l-2 3 2 3" />
+        </>),
+    },
+    // NEW — 4-panel telescoping slider (distinct icon: 4 vertical leaves + double-headed slide arrow)
+    'door-sliding-panorama': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="4" width="20" height="16" rx="1" />
+            <path d="M2 4v16M7 4v16M12 4v16M17 4v16M22 4v16" strokeDasharray="1.5 3" />
+            <path d="M5 12l-2.5 3M19 12l2.5 3" />
+        </>),
+    },
+    'door-pocket': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="4" width="20" height="16" rx="1" />
+            <path d="M4 12h7" strokeWidth="2.5" />
+            <rect x="15" y="9" width="5" height="6" strokeDasharray="1.5 1.5" />
+        </>),
+    },
+    'door-folding': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="3" width="20" height="18" rx="1" />
+            <path d="M6 3v18M10 3v18M14 3v18M18 3v18" strokeDasharray="2 1.5" />
+        </>),
+    },
+    'door-garage': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="4" width="20" height="16" rx="1" />
+            <path d="M2 8h20M2 12h20M2 16h20" />
+        </>),
+    },
 
     // ── Windows ──
-    'window-fixed': S(<>
-        <rect x="2" y="6" width="20" height="12" rx="1" />
-        <line x1="12" y1="6" x2="12" y2="18" />
-        <line x1="2" y1="12" x2="22" y2="12" />
-    </>),
-    'window-sliding': S(<>
-        <rect x="2" y="6" width="20" height="12" rx="1" />
-        <line x1="12" y1="6" x2="12" y2="18" />
-        <path d="M4 12h5M15 12h5" strokeDasharray="1.5 1.5" />
-    </>),
-    'window-casement': S(<>
-        <rect x="2" y="6" width="20" height="12" rx="1" />
-        <path d="M12 6 L4 12 L12 6 L20 12" />
-    </>),
-    'window-bay': S(<>
-        <path d="M4 18 L4 10 L9 6 L15 6 L20 10 L20 18" />
-        <path d="M4 18h16M9 6v12M15 6v12" />
-    </>),
-    'window-skylight': S(<>
-        <rect x="4" y="4" width="16" height="16" rx="1" transform="rotate(20 12 12)" />
-        <line x1="12" y1="4" x2="12" y2="20" transform="rotate(20 12 12)" />
-    </>),
+    'window-fixed': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="6" width="20" height="12" rx="1" />
+            <line x1="12" y1="6" x2="12" y2="18" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+        </>),
+    },
+    'window-sliding': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="6" width="20" height="12" rx="1" />
+            <line x1="12" y1="6" x2="12" y2="18" />
+            <path d="M4 12h5M15 12h5" strokeDasharray="1.5 1.5" />
+        </>),
+    },
+    'window-casement': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="6" width="20" height="12" rx="1" />
+            <path d="M12 6 L4 12 L12 6 L20 12" />
+        </>),
+    },
+    'window-bay': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <path d="M4 18 L4 10 L9 6 L15 6 L20 10 L20 18" />
+            <path d="M4 18h16M9 6v12M15 6v12" />
+        </>),
+    },
+    'window-skylight': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="4" y="4" width="16" height="16" rx="1" transform="rotate(20 12 12)" />
+            <line x1="12" y1="4" x2="12" y2="20" transform="rotate(20 12 12)" />
+        </>),
+    },
 
     // ── Openings ──
-    'opening-archway': S(<>
-        <path d="M4 21V10a8 8 0 0 1 16 0v11" />
-        <path d="M4 21h16" />
-    </>),
-    'opening-passage': S(<>
-        <path d="M4 3v18M20 3v18" strokeDasharray="3 2" />
-        <path d="M4 21h16" opacity="0.4" />
-    </>),
+    'opening-archway': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <path d="M4 21V10a8 8 0 0 1 16 0v11" />
+            <path d="M4 21h16" />
+        </>),
+    },
+    'opening-passage': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <path d="M4 3v18M20 3v18" strokeDasharray="3 2" />
+            <path d="M4 21h16" opacity="0.4" />
+        </>),
+    },
 
     // ── Stairs / vertical circulation ──
-    'stairs-straight': S(<path d="M3 21v-3h3v-3h3v-3h3v-3h3v-3h3V3" />),
-    'stairs-l': S(<path d="M3 21v-6h6v-6h9V3" />),
-    'stairs-u': S(<path d="M4 3v6h6v6h-6v6M14 21v-6h6V3" />),
-    'stairs-spiral': S(<>
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 3a9 9 0 0 1 6.36 15.36M12 21a9 9 0 0 1-6.36-15.36" strokeDasharray="2 2" />
-        <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-    </>),
-    'stairs-ramp': S(<>
-        <path d="M3 21h18" />
-        <path d="M3 21L15 5h6" />
-    </>),
-    elevator: S(<>
-        <rect x="4" y="2" width="16" height="20" rx="1" />
-        <path d="M12 8l-3 3h6l-3-3zM12 16l3-3H9l3 3z" />
-    </>),
+    'stairs-straight': { cursor: 'crosshair', icon: S(<path d="M3 21v-3h3v-3h3v-3h3v-3h3v-3h3V3" />) },
+    'stairs-l': { cursor: 'crosshair', icon: S(<path d="M3 21v-6h6v-6h9V3" />) },
+    'stairs-u': { cursor: 'crosshair', icon: S(<path d="M4 3v6h6v6h-6v6M14 21v-6h6V3" />) },
+    'stairs-spiral': {
+        cursor: 'crosshair',
+        icon: S(<>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 3a9 9 0 0 1 6.36 15.36M12 21a9 9 0 0 1-6.36-15.36" strokeDasharray="2 2" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+        </>),
+    },
+    'stairs-ramp': {
+        cursor: 'crosshair',
+        icon: S(<>
+            <path d="M3 21h18" />
+            <path d="M3 21L15 5h6" />
+        </>),
+    },
+    elevator: {
+        cursor: 'crosshair',
+        icon: S(<>
+            <rect x="4" y="2" width="16" height="20" rx="1" />
+            <path d="M12 8l-3 3h6l-3-3zM12 16l3-3H9l3 3z" />
+        </>),
+    },
 
-    annotate: S(<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />),
-    furniture: S(<>
-        <path d="M20 9V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2" />
-        <path d="M2 11v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1z" />
-        <path d="M6 19v2M18 19v2" />
-    </>),
-    delete: S(<>
-        <polyline points="3 6 5 6 21 6" />
-        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-        <path d="M10 11v6M14 11v6" />
-        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-    </>),
-    'wall-decor-led': S(<>
-        <rect x="2" y="9" width="20" height="4" rx="1" />
-        <line x1="2" y1="11" x2="22" y2="11" strokeDasharray="1 2" strokeWidth="1" />
-    </>),
-    'wall-decor-pvc': S(<>
-        <rect x="3" y="3" width="18" height="18" rx="1" />
-        <line x1="7" y1="3" x2="7" y2="21" /><line x1="12" y1="3" x2="12" y2="21" /><line x1="17" y1="3" x2="17" y2="21" />
-    </>),
-    'wall-decor-painting': S(<>
-        <rect x="3" y="3" width="18" height="18" rx="1" />
-        <circle cx="9" cy="9" r="2" />
-        <path d="M21 15l-5-5-8 8" />
-    </>),
-    'light-wall-sconce': S(<>
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v4M12 18v4" strokeDasharray="1 1" opacity="0.5" />
-        <path d="M4 4l2 2M20 4l-2 2M4 20l2-2M20 20l-2-2" strokeWidth="1.5" opacity="0.6" />
-    </>),
-    'light-ceiling-pendant': S(<>
-        <path d="M12 2v6" />
-        <path d="M7 8h10l-2 6H9l-2-6z" />
-        <circle cx="12" cy="17" r="2.5" fill="currentColor" opacity="0.3" />
-    </>),
-    'light-ceiling-recessed': S(<>
-        <circle cx="12" cy="12" r="8" />
-        <circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.3" />
-    </>),
-    'light-floor-lamp': S(<>
-        <path d="M12 2l5 7H7l5-7z" />
-        <line x1="12" y1="9" x2="12" y2="19" />
-        <path d="M8 22h8" />
-        <path d="M10 19h4" />
-    </>),
-    'led_tv': S(<>
-        <rect x="2" y="5" width="20" height="13" rx="1.5" />
-        <line x1="8" y1="21" x2="16" y2="21" />
-        <line x1="12" y1="18" x2="12" y2="21" />
-    </>),
-    'outdoor-crosswalk': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 20L8 4M10 20L14 4M16 20L20 4" strokeLinecap="round" />
-        </svg>
-    ),
-    'outdoor-dustbin': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-9 0l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-    ),
-    'outdoor-bench': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 11h18M5 11v7M19 11v7M8 11V6h8v5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-    ),
-    'outdoor-mailbox': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 12a5 5 0 015-5h9a4 4 0 010 8H8a5 5 0 01-5-5z" />
-            <path d="M8 7v10M4 17h16" strokeLinecap="round" />
-        </svg>
-    ),
-    'light-track': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 6h18" strokeLinecap="round" />
-            <path d="M7 6v3M12 6v3M17 6v3" strokeLinecap="round" />
-            <path d="M6 9l1.5 3M12 9l0 3M18 9l-1.5 3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-    ),
-    'light-chandelier': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 3v3" strokeLinecap="round" />
+    delete: {
+        cursor: 'not-allowed',
+        icon: S(<>
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+        </>),
+    },
+    annotate: { cursor: 'crosshair', icon: S(<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />) },
+    furniture: {
+        cursor: 'copy',
+        icon: S(<>
+            <path d="M20 9V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2" />
+            <path d="M2 11v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1z" />
+            <path d="M6 19v2M18 19v2" />
+        </>),
+    },
+
+    'wall-decor-led': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="2" y="9" width="20" height="4" rx="1" />
+            <line x1="2" y1="11" x2="22" y2="11" strokeDasharray="1 2" strokeWidth="1" />
+        </>),
+    },
+    'wall-decor-pvc': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="3" y="3" width="18" height="18" rx="1" />
+            <line x1="7" y1="3" x2="7" y2="21" /><line x1="12" y1="3" x2="12" y2="21" /><line x1="17" y1="3" x2="17" y2="21" />
+        </>),
+    },
+    'wall-decor-painting': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <rect x="3" y="3" width="18" height="18" rx="1" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="M21 15l-5-5-8 8" />
+        </>),
+    },
+    led_tv: {
+        cursor: 'default',
+        icon: S(<>
+            <rect x="2" y="5" width="20" height="13" rx="1.5" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="18" x2="12" y2="21" />
+        </>),
+    },
+
+    // ── Lighting ──
+    'light-ceiling-pendant': {
+        cursor: 'default',
+        icon: S(<>
+            <path d="M12 2v6" />
+            <path d="M7 8h10l-2 6H9l-2-6z" />
+            <circle cx="12" cy="17" r="2.5" fill="currentColor" opacity="0.3" />
+        </>),
+    },
+    'light-ceiling-recessed': {
+        cursor: 'default',
+        icon: S(<>
+            <circle cx="12" cy="12" r="8" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.3" />
+        </>),
+    },
+    'light-floor-lamp': {
+        cursor: 'default',
+        icon: S(<>
+            <path d="M12 2l5 7H7l5-7z" />
+            <line x1="12" y1="9" x2="12" y2="19" />
+            <path d="M8 22h8" />
+            <path d="M10 19h4" />
+        </>),
+    },
+    'light-wall-sconce': {
+        cursor: 'default',
+        icon: S(<>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v4M12 18v4" strokeDasharray="1 1" opacity="0.5" />
+            <path d="M4 4l2 2M20 4l-2 2M4 20l2-2M20 20l-2-2" strokeWidth="1.5" opacity="0.6" />
+        </>),
+    },
+    'light-track': {
+        cursor: 'default',
+        icon: S(<>
+            <path d="M3 6h18" />
+            <path d="M7 6v3M12 6v3M17 6v3" />
+            <path d="M6 9l1.5 3M12 9l0 3M18 9l-1.5 3" />
+        </>),
+    },
+    'light-chandelier': {
+        cursor: 'default',
+        icon: S(<>
+            <path d="M12 3v3" />
             <circle cx="12" cy="10" r="4" />
-            <path d="M9 13l-2 5M15 13l2 5M12 13v5M6 16h12" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-    ),
-    'light-shelf-strip': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 13l-2 5M15 13l2 5M12 13v5M6 16h12" />
+        </>),
+    },
+    'light-shelf-strip': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
             <rect x="3" y="10" width="18" height="4" rx="1" />
-            <path d="M5 14v2M19 14v2" strokeLinecap="round" />
-        </svg>
-    ),
-    'light-spotlight': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 3h6l2 5H7l2-5z" strokeLinejoin="round" />
-            <path d="M9 8l3 13 3-13" strokeLinejoin="round" />
-        </svg>
-    ),
-    'light-string': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 6c4 6 14 6 18 0" strokeLinecap="round" />
+            <path d="M5 14v2M19 14v2" />
+        </>),
+    },
+    'light-spotlight': {
+        cursor: 'default',
+        icon: S(<>
+            <path d="M9 3h6l2 5H7l2-5z" />
+            <path d="M9 8l3 13 3-13" />
+        </>),
+    },
+    'light-string': {
+        cursor: 'crosshair',
+        icon: S(<>
+            <path d="M3 6c4 6 14 6 18 0" />
             <circle cx="7" cy="9" r="1.3" fill="currentColor" stroke="none" />
             <circle cx="12" cy="11.5" r="1.3" fill="currentColor" stroke="none" />
             <circle cx="17" cy="9" r="1.3" fill="currentColor" stroke="none" />
-        </svg>
-    ),
-    'light-outdoor-bollard': (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        </>),
+    },
+    'light-outdoor-bollard': {
+        cursor: 'default',
+        icon: S(<>
             <rect x="9" y="4" width="6" height="12" rx="1" />
-            <path d="M6 20h12M8 16v4M16 16v4" strokeLinecap="round" />
-        </svg>
-    ),
-}
+            <path d="M6 20h12M8 16v4M16 16v4" />
+        </>),
+    },
+
+    // ── Outdoor ──
+    'outdoor-crosswalk': { cursor: 'crosshair', icon: S(<path d="M4 20L8 4M10 20L14 4M16 20L20 4" />) },
+    'outdoor-dustbin': {
+        cursor: 'crosshair',
+        icon: S(<path d="M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-9 0l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />),
+    },
+    'outdoor-bench': { cursor: 'crosshair', icon: S(<path d="M3 11h18M5 11v7M19 11v7M8 11V6h8v5" />) },
+    'outdoor-mailbox': {
+        cursor: 'crosshair',
+        icon: S(<>
+            <path d="M3 12a5 5 0 015-5h9a4 4 0 010 8H8a5 5 0 01-5-5z" />
+            <path d="M8 7v10M4 17h16" />
+        </>),
+    },
+
+    presets: {
+        cursor: 'default', // opens a panel, doesn't draw on canvas
+        icon: S(<>
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+        </>),
+    },
+    'template-place': {
+        cursor: 'copy', // armed placement, mirrors 'furniture'
+        icon: S(<path d="M12 2l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-1.5z" />),
+    },
+} as const satisfies Record<string, { cursor: string; icon: React.ReactNode }>
+
+// ── Derived type — the ONLY place `EditorTool` is defined now ──
+export type EditorTool = keyof typeof TOOL_CONFIG
+
+// ── Derived maps for drop-in compatibility with existing call sites ──
+export const TOOL_CURSORS: Record<EditorTool, string> =
+    Object.fromEntries(Object.entries(TOOL_CONFIG).map(([k, v]) => [k, v.cursor])) as Record<EditorTool, string>
+
+export const ICONS: Record<EditorTool, React.ReactNode> =
+    Object.fromEntries(Object.entries(TOOL_CONFIG).map(([k, v]) => [k, v.icon])) as Record<EditorTool, React.ReactNode>
 
 // ── Tool groups (drives the toolbar layout) ────────────────────────────────
 

@@ -3,13 +3,14 @@ import { DoorMat } from './doormat' // adjust path if different
 import { EditorOpening } from '../lib/constants';
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { AluminumMat, GlassConfig, PanoramaGlassFace } from './doors/door-glass';
 
 
-const T = 0.045 // panel thickness
+export const T = 0.045 // panel thickness
 
 // Central material helper — every plain (non-glass) mesh in this file goes
 // through this so item-level ghosting (opacity < 1) is applied consistently.
-function m(color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}, itemOpacity = 1, itemTransparent = false) {
+export function m(color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}, itemOpacity = 1, itemTransparent = false) {
     return <meshStandardMaterial color={color} {...extra} opacity={itemOpacity} transparent={itemTransparent || !!extra.transparent} />
 }
 
@@ -502,8 +503,128 @@ export function DoorVariant3D({
                 </group>
             )
         }
+        case 'door-sliding-quad': const panelCount = (op as any).panelCount ?? 4
+            const slidingIndices: number[] = (op as any).slidingPanels ?? [panelCount - 1]
+            const glassConfig: GlassConfig = (op as any).glass ?? { finish: 'clear' }
 
-        case 'door-sliding':
+            const panelW = op.width / panelCount
+            const panels = Array.from({ length: panelCount }, (_, i) => i)
+
+            return (
+                <group>
+                    <SlidingSideJambs width={op.width} height={op.height} basePos={basePos} angle={angle} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+
+                    <group position={basePos} rotation={[0, -angle, 0]}>
+                        <mesh position={[0, op.height + 0.025, 0]}>
+                            <boxGeometry args={[op.width + 0.1, 0.05, 0.09]} />
+                            <AluminumMat itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                        </mesh>
+                        <mesh position={[0, 0.015, 0]}>
+                            <boxGeometry args={[op.width + 0.1, 0.03, 0.09]} />
+                            <AluminumMat itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                        </mesh>
+                    </group>
+
+                    {panels.map((i) => {
+                        const centerOffset = -op.width / 2 + panelW * (i + 0.5)
+                        const isSliding = slidingIndices.includes(i)
+
+                        if (!isSliding) {
+                            const pos: [number, number, number] = [
+                                basePos[0] + dirX * centerOffset,
+                                basePos[1],
+                                basePos[2] + dirZ * centerOffset,
+                            ]
+                            return (
+                                <group key={`fixed${i}`} position={pos} rotation={[0, -angle, 0]}>
+                                    <PanoramaGlassFace width={panelW} height={op.height} glass={glassConfig} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                                </group>
+                            )
+                        }
+
+                        const slideDir = i === 0 ? -1 : 1
+                        const openOffset = centerOffset + slideDir * panelW * 0.92
+                        return (
+                            <SlidingLeaf key={`slide${i}`} basePos={basePos} dirX={dirX} dirZ={dirZ} angle={angle}
+                                centerOffset={centerOffset} panelWidth={panelW} openOffset={openOffset}
+                                isOpen={isOpen} interactive={interactive}
+                                onToggleOpen={onToggleOpen ? () => onToggleOpen(op.id) : undefined}>
+                                <PanoramaGlassFace width={panelW} height={op.height} glass={glassConfig} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                            </SlidingLeaf>
+                        )
+                    })}
+                </group>
+            )
+        case 'door-sliding-panorama': {
+            const effectiveWidth = op.width   // bumped from 1.15 — tune further if still too narrow
+            const panelCount = (op as any).panelCount ?? 2
+            const slidingIndices: number[] = (op as any).slidingPanels ?? [panelCount - 1]
+            const glassConfig: GlassConfig = (op as any).glass ?? { finish: 'clear' }
+            const invertGlassSide = !!(op as any).invertGlassSide
+            const secondaryGlass: GlassConfig = (op as any).glassSecondary ?? glassConfig
+
+            const PANEL_GAP = Math.max(0.015, effectiveWidth * 0.008)  // ← ADD THIS — declared once, before panelW
+            const panelW = (effectiveWidth - PANEL_GAP * (panelCount - 1)) / panelCount   // ← REPLACE old panelW line with this
+            const panels = Array.from({ length: panelCount }, (_, i) => i)
+
+            return (
+                <group>
+                    <SlidingSideJambs width={effectiveWidth} height={op.height} basePos={basePos} angle={angle} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+
+                    <group position={basePos} rotation={[0, -angle, 0]}>
+                        <mesh position={[0, op.height / 2 + 0.025, 0]}>
+                            <boxGeometry args={[effectiveWidth + 0.1, 0.05, 0.09]} />
+                            <AluminumMat itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                        </mesh>
+                        <mesh position={[0, -op.height / 2 + 0.015, 0]}>
+                            <boxGeometry args={[effectiveWidth + 0.1, 0.03, 0.09]} />
+                            <AluminumMat itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
+                        </mesh>
+                    </group>
+
+                    {panels.map((i) => {
+                        const centerOffset = -effectiveWidth / 2 + panelW / 2 + i * (panelW + PANEL_GAP)   // ← REPLACES old centerOffset line, INSIDE the map callback
+                        const isSliding = slidingIndices.includes(i)
+                        const isLeftHalf = i < panelCount / 2
+                        const useSecondary = invertGlassSide ? isLeftHalf : !isLeftHalf
+                        const panelGlass = useSecondary ? secondaryGlass : glassConfig
+
+                        if (!isSliding) {
+                            const pos: [number, number, number] = [
+                                basePos[0] + dirX * centerOffset,
+                                basePos[1],
+                                basePos[2] + dirZ * centerOffset,
+                            ]
+                            return (
+                                <group key={`fixed${i}`} position={pos} rotation={[0, -angle, 0]}>
+                                    <PanoramaGlassFace width={panelW} height={op.height} glass={panelGlass}
+                                        itemOpacity={itemOpacity} itemTransparent={itemTransparent} showHandle={false} />
+                                </group>
+                            )
+                        }
+
+                        const fixedIndices = panels.filter(p => !slidingIndices.includes(p))
+                        const nearestFixed = fixedIndices.length
+                            ? fixedIndices.reduce((a, b) => Math.abs(a - i) < Math.abs(b - i) ? a : b)
+                            : (i === 0 ? panelCount - 1 : 0)
+                        const slideDir = nearestFixed > i ? 1 : -1
+                        const openOffset = slideDir * panelW * 1.0
+
+                        return (
+                            <SlidingLeaf key={`slide${i}`}
+                                basePos={basePos}
+                                dirX={dirX} dirZ={dirZ} angle={angle}
+                                centerOffset={centerOffset} panelWidth={panelW} openOffset={openOffset}
+                                isOpen={isOpen} interactive={interactive}
+                                onToggleOpen={onToggleOpen ? () => onToggleOpen(op.id) : undefined}>
+                                <PanoramaGlassFace width={panelW} height={op.height} glass={panelGlass}
+                                    itemOpacity={itemOpacity} itemTransparent={itemTransparent} showHandle={true} />
+                            </SlidingLeaf>
+                        )
+                    })}
+                </group>
+            )
+        }
         case 'door-pocket': {
             const slideFrac = variant === 'door-pocket' ? 0.88 : 0.5
             const offset = op.width * slideFrac

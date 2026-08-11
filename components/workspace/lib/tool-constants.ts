@@ -57,6 +57,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
         icon: ICONS["door-folding"],
       },
       { id: "door-garage", label: "Garage Door", icon: ICONS["door-garage"] },
+      {
+        id: "door-sliding-panorama",
+        label: "Door Sliding Double",
+        icon: ICONS["door-sliding-panorama"],
+      },
     ],
   },
 

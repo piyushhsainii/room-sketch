@@ -108,6 +108,13 @@ export const TOOL_GROUPS: ToolGroup[] = [
         label: "Open Passage",
         icon: ICONS["opening-passage"],
       },
+      {
+        id: "railing-partial",
+        label: "Partial Railing",
+        icon: ICONS["railing-partial"],
+
+        /* or pick/add an appropriate icon */
+      },
     ],
   },
 

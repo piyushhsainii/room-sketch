@@ -1,15 +1,8 @@
 import React, { useMemo } from 'react'
-import { FloorPlanState, LineSegment } from './lib/constants'
+import { ClosedShape, FloorPlanState, LineSegment } from './lib/constants'
 
-export type QuickAction = 'move' | 'bend' | 'duplicate' | 'delete' | 'properties'
+export type QuickAction = 'move' | 'bend' | 'duplicate' | 'delete' | 'properties' | 'cutout'
 
-// "move" is intentionally omitted everywhere below — drag-to-move already
-// works via click-drag on the canvas (handleMouseDown sets up the relevant
-// dragRef the instant you click-and-hold an entity), so a redundant
-// "enter move mode" button doesn't add anything a precise nudge wouldn't
-// already get you via arrow keys if that exists elsewhere. If you want it
-// back for some entity type, add 'move' to that type's array below and
-// wire an onMove handler — the menu itself doesn't care.
 const ACTIONS_BY_ENTITY: Record<
     'room' | 'wall' | 'segment' | 'furniture' | 'stairs' | 'outdoor' | 'wallDecor' | 'opening' | 'shape' | 'node' | 'light',
     QuickAction[]
@@ -21,8 +14,8 @@ const ACTIONS_BY_ENTITY: Record<
     stairs: ['properties', 'move', 'duplicate', 'delete'],
     outdoor: ['properties', 'move', 'duplicate', 'delete'],
     wallDecor: ['properties', 'duplicate', 'delete'],
-    opening: ['properties', 'move', 'duplicate', 'delete'],   // CHANGED — doors/windows now get Move too
-    shape: ['properties', 'move', 'duplicate', 'delete'],
+    opening: ['properties', 'move', 'duplicate', 'delete'],
+    shape: ['properties', 'move', 'duplicate', 'cutout', 'delete'],
     node: ['properties', 'delete'],
     light: ['properties', 'move', 'duplicate', 'delete'],
 }
@@ -49,6 +42,11 @@ const ICONS: Record<QuickAction, React.ReactNode> = {
             <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
         </svg>
     ),
+    cutout: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 3" />
+        </svg>
+    ),
     properties: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h13M20 18h0" />
@@ -70,9 +68,7 @@ export function classifySelection(fp: FloorPlanState, selectedId: string | null)
     if ((fp.stairs ?? []).some(s => s.id === selectedId)) return 'stairs'
     if ((fp.outdoorObjects ?? []).some(o => o.id === selectedId)) return 'outdoor'
     if ((fp.wallDecor ?? []).some(d => d.id === selectedId)) return 'wallDecor'
-    if ((fp.lights ?? []).some(l => l.id === selectedId)) return 'light'   // NEW — was missing entirely, so the
-    // menu's `actions.length === 0` guard silently rendered nothing for
-    // any selected light fixture.
+    if ((fp.lights ?? []).some(l => l.id === selectedId)) return 'light'
     if (fp.openings.some(o => o.id === selectedId)) return 'opening'
     if (fp.lineNodes.some(n => n.id === selectedId)) return 'node'
     if ((fp.closedShapes ?? []).some(s => s.id === selectedId)) return 'shape'
@@ -89,7 +85,7 @@ export function getSelectionAnchorWorld(
     switch (kind) {
         case 'room': {
             const r = fp.rooms.find(r => r.id === selectedId)!
-            return { x: r.x + r.width / 2, z: r.z } // anchor just above the top edge
+            return { x: r.x + r.width / 2, z: r.z }
         }
         case 'wall': {
             const [roomId, wall] = selectedId.split('::wall::')
@@ -104,9 +100,6 @@ export function getSelectionAnchorWorld(
             const seg = fp.lineSegments.find(s => s.id === selectedId)!
             const nodes = seg.nodeIds.map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean) as { x: number; z: number }[]
             if (nodes.length === 0) return null
-            // Midpoint of the middle edge for odd-length chains, or the
-            // single edge's midpoint for a plain 2-node segment — matches
-            // the screenshot's anchor-at-midpoint behavior.
             const mid = nodes[Math.floor((nodes.length - 1) / 2)]!
             const next = nodes[Math.min(Math.floor((nodes.length - 1) / 2) + 1, nodes.length - 1)]!
             return { x: (mid.x + next.x) / 2, z: (mid.z + next.z) / 2 }
@@ -154,12 +147,9 @@ export function getSelectionAnchorWorld(
         case 'light': {
             const light = (fp.lights ?? []).find(l => l.id === selectedId)
             if (!light) return null
-            // Free-point light (x/z set directly)
             if (light.x !== undefined && light.z !== undefined) {
                 return { x: light.x, z: light.z }
             }
-            // segmentNodeIds checked before wall/roomId — same reasoning as
-            // the opening/wallDecor case above.
             if (light.segmentNodeIds) {
                 const a = fp.lineNodes.find(n => n.id === light.segmentNodeIds![0])
                 const b = fp.lineNodes.find(n => n.id === light.segmentNodeIds![1])
@@ -213,7 +203,7 @@ export function bendSegment(fp: FloorPlanState, segId: string, uid: () => string
 }
 
 /* ------------------------------------------------------------------ */
-/* The menu itself (Plan steps 3, 6, 8)                                 */
+/* The menu itself                                                     */
 /* ------------------------------------------------------------------ */
 
 const PILL = {
@@ -235,9 +225,12 @@ export function QuickActionMenu({
     onBend,
     onOpenProperties,
     onMove,
-    /** True while a click-to-relocate move is currently armed for this
-     *  selection — lets the menu show the Move button as active/pressed. */
+    onArmCutoutDraw,
     moveArmed = false,
+    /** True while a cutout draw-session is currently armed for this
+     *  selection — the NEXT closed loop drawn on the canvas (via the line
+     *  tool) gets auto-tagged as a cutout. Mirrors moveArmed's pattern. */
+    cutoutArmed = false,
 }: {
     fp: FloorPlanState
     selectedId: string | null
@@ -248,15 +241,14 @@ export function QuickActionMenu({
     onDelete: () => void
     onBend: (segId: string) => void
     onOpenProperties: () => void
-    /** Arms click-to-relocate mode for the current selection. Clicking Move
-     *  does NOT move anything by itself — it puts the editor into a state
-     *  where the NEXT click on the canvas (not a drag) commits the new
-     *  position, using the exact same apply() logic as the pointer-drag
-     *  dispatch table in handleMouseMove (see drag-controller.ts), so
-     *  there's one source of truth for "how does this entity kind
-     *  translate," not two. */
     onMove: () => void
+    /** Arms cutout-draw mode for the current selection. Does NOT toggle
+     *  cutout on the selected shape itself — it switches the editor into
+     *  the line tool so the user draws a NEW closed loop, which gets
+     *  tagged cutout.enabled=true automatically the moment it closes. */
+    onArmCutoutDraw: () => void
     moveArmed?: boolean
+    cutoutArmed?: boolean
 }) {
     const kind = useMemo(() => classifySelection(fp, selectedId), [fp, selectedId])
     const actions = kind ? ACTIONS_BY_ENTITY[kind] : []
@@ -266,8 +258,6 @@ export function QuickActionMenu({
     const bendDisabled = kind === 'segment' && !canBendSegment(fp, selectedId)
 
     const handle = (action: QuickAction) => (e: React.MouseEvent) => {
-        // Plan step 6 — stop this from also registering as a canvas
-        // click, which would otherwise deselect or start a drag.
         e.stopPropagation()
         e.preventDefault()
         switch (action) {
@@ -276,20 +266,18 @@ export function QuickActionMenu({
             case 'bend': if (kind === 'segment' && !bendDisabled) onBend(selectedId); break
             case 'properties': onOpenProperties(); break
             case 'move': onMove(); break
+            case 'cutout': onArmCutoutDraw(); break
         }
     }
 
     return (
         <div
-            // Also swallow mousedown so the canvas's own onMouseDown (which
-            // does hit-testing and can deselect on an empty-canvas click)
-            // never sees this as a canvas-level event.
             onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
             style={{
                 position: 'fixed',
                 left: screenX,
                 top: screenY,
-                transform: 'translate(-50%, calc(-100% - 14px))', // sits above the anchor point
+                transform: 'translate(-50%, calc(-100% - 14px))',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,
@@ -305,7 +293,7 @@ export function QuickActionMenu({
             {actions.map((action, i) => {
                 const isBend = action === 'bend'
                 const disabled = isBend && bendDisabled
-                const pressed = action === 'move' && moveArmed
+                const pressed = (action === 'move' && moveArmed) || (action === 'cutout' && cutoutArmed)
                 return (
                     <React.Fragment key={action}>
                         {i > 0 && <div style={{ width: 1, height: 16, background: PILL.divider, margin: '0 2px' }} />}
@@ -318,7 +306,8 @@ export function QuickActionMenu({
                                         : action === 'bend' ? (disabled ? 'Already bent — drag its middle node' : 'Add a bend point')
                                             : action === 'properties' ? 'Open properties'
                                                 : action === 'move' ? (pressed ? 'Click on the canvas to place — click Move again to cancel' : 'Move (click destination)')
-                                                    : 'Move'
+                                                    : action === 'cutout' ? (pressed ? 'Drawing cutout — click canvas points, close the loop to finish' : 'Draw a floor cutout')
+                                                        : 'Move'
                             }
                             style={{
                                 width: 30, height: 30, borderRadius: '50%',

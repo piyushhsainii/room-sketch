@@ -331,7 +331,7 @@ export interface EditorOpening {
     id: string
     roomId: string
     wall: 'north' | 'south' | 'east' | 'west'
-    type: 'door' | 'window' | 'opening'
+    type: 'door' | 'window' | 'opening' | 'railing'
     variant: string
     position: number
     width: number
@@ -345,6 +345,14 @@ export interface EditorOpening {
     openAmount?: number
     bayPanelCount?: number   // defaults to 3
     bayDoorIndex?: number
+
+    railingStyle?: 'baluster' | 'glass' | 'cable' | 'solid-panel' | 'criss-cross'
+    railingHeight?: number
+    railingPostSpacing?: number
+    railingWidthDim?: number
+    railingColor?: string
+    railingSolidAbove?: boolean
+    railingWallStart?: number
 }
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
@@ -438,7 +446,11 @@ export type ClosedShape = {
     exteriorWallMaterial?: WallMaterial
     exteriorWallColor?: string
     wallMaterialSide?: 'interior' | 'exterior' | 'both'
-
+    cutout?: {
+        enabled: boolean,
+        toLevel?: string,        // which floor this hole opens INTO (floor above, typically)
+        openingOffset?: number,  // margin beyond the shape's own boundary, defaults 0.1–0.2
+    }
 }
 
 export type Annotation = { id: string; x: number; z: number; text: string; fontSize: number }
@@ -648,6 +660,14 @@ export const TOOL_CONFIG = {
         icon: S(<>
             <path d="M4 3v18M20 3v18" strokeDasharray="3 2" />
             <path d="M4 21h16" opacity="0.4" />
+        </>),
+    },
+    'railing-partial': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <path d="M4 21h16" />
+            <path d="M6 21V11M9.5 21V11M13 21V11M16.5 21V11M20 21V11" strokeWidth="1.5" />
+            <path d="M4 11h16" opacity="0.6" />
         </>),
     },
 

@@ -22,22 +22,38 @@ type FloorGeometryProps = {
     renderCap?: boolean
     floorAboveFp?: FloorPlanState
     shadowEligibleIds?: Set<string>
+    floorAboveId?: string,
+    cutoutDrawInProgress: boolean
 }
 
 export function FloorGeometry({
     fp, cfg, exportRootRef, interactive, selectedId, onSelect, onToggleDoorOpen,
-    opacity, overlappingIds, renderCap, floorAboveFp, shadowEligibleIds
+    opacity, overlappingIds, renderCap, floorAboveFp, shadowEligibleIds, floorAboveId, cutoutDrawInProgress
 }: FloorGeometryProps) {
     const transparent = opacity < 1
-
+    console.log('[FP ROOMS CHECK]', fp.rooms.map(r => ({ id: r.id, label: r.label, x: r.x, x2: r.x + r.width, z: r.z, z2: r.z + r.depth })))
     return (
         <>
             {renderCap && floorAboveFp && (
-                <FloorCap fp={fp} height={fp.roomHeight} floorAbove={floorAboveFp} />
+                <FloorCap fp={fp} height={fp.roomHeight} floorAbove={floorAboveFp} floorAboveId={floorAboveId} />
             )}
             <group ref={exportRootRef}>
                 {fp.rooms.map(room => {
                     const roomCfg = cfg.rooms.find(r => r.roomId === room.id)
+                    const roomCutouts = (fp.closedShapes ?? [])
+                        .filter(sh => sh.cutout?.enabled)
+                        .map(sh => sh.nodeIds.map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean) as { x: number; z: number }[])
+                        .filter(poly => poly.some(p => p.x >= room.x && p.x <= room.x + room.width && p.z >= room.z && p.z <= room.z + room.depth))
+
+
+                    console.log('[CUTOUT DEBUG]', room.label, {
+                        roomBounds: { x: room.x, x2: room.x + room.width, z: room.z, z2: room.z + room.depth },
+                        allCutoutShapes: (fp.closedShapes ?? []).filter(sh => sh.cutout?.enabled).map(sh => ({
+                            id: sh.id,
+                            points: sh.nodeIds.map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean),
+                        })),
+                        matchedForThisRoom: roomCutouts,
+                    })
                     return (
                         <Room3D
                             key={room.id}
@@ -59,6 +75,7 @@ export function FloorGeometry({
                             roomWallOverrides={roomCfg?.wallOverrides}
                             opacity={opacity}
                             transparent={transparent}
+                            cutouts={roomCutouts}
                         />
                     )
                 })}
@@ -96,6 +113,7 @@ export function FloorGeometry({
                     roomSceneConfigs={cfg.rooms}
                     opacity={opacity}
                     transparent={transparent}
+                    cutoutDrawInProgress={cutoutDrawInProgress}
                 />
             </group>
             {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (

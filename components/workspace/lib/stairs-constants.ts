@@ -54,34 +54,11 @@ export type PlacedStairs = {
   // ── Geometry ──
   rise?: number; // total vertical height in meters; defaults to roomHeight
   steps?: number; // step count; defaults to stairsMesh's existing auto-calc
-
-  // ── L/U flight step counts ──
-  // Per-flight step count overrides for L-Stairs and U-Stairs. `steps`
-  // above still applies to Straight and Spiral; these are separate because
-  // an L/U stair has two independent runs that can each need a different
-  // count. Optional — falls back to LStairs'/UStairs' existing
-  // auto-computed count (based on rise) when omitted, same as `steps` does.
   steps1?: number; // flight 1 (lower run) step count
   steps2?: number; // flight 2 (upper run) step count
-
-  // ── L-Stairs flight/landing sizing ──
-  // Optional overrides for the shared width of both flights + the landing,
-  // and the landing slab's thickness. Falls back to LStairs' internal
-  // defaults (derived from width/depth) when omitted.
   flightWidth?: number;
   landingThickness?: number;
-
-  // ── U-Stairs center wall ──
-  // Toggles the solid dividing wall between the two U-Stairs flights.
-  // Defaults to true (matches current always-on behavior) when omitted,
-  // so existing saves render exactly as before.
   showCenterWall?: boolean;
-
-  // ── Tread style ──
-  // Primary config going forward, same pattern as `railing`/`skirt`:
-  // optional so in-memory objects built before migration runs don't fail
-  // type checks; always read through resolveTreadConfig()/DEFAULT_TREAD
-  // rather than assuming this is populated.
   tread?: TreadConfig;
 
   // ── Railing / Skirt ──
@@ -126,3 +103,37 @@ export const STAIRS_LABELS: Record<StairsType, string> = {
   "stairs-ramp": "Ramp",
   elevator: "Elevator",
 };
+
+export // For a given floor `f` and stair `s`, does s cut a hole in f's slab?
+function stairCutsFloor(
+  s: PlacedStairs,
+  floorId: string,
+): "floor-above" | "ceiling-below" | null {
+  if (s.openingMode === "none" || s.autoCutout === false) return null;
+  // openingMode defaults to 'destination' when undefined — treat as on
+  if (s.toLevel === floorId) return "ceiling-below"; // the hole you fall through, viewed from above
+  if (s.fromLevel === floorId) return "floor-above"; // the hole in the floor the stair sits on
+  return null;
+}
+
+export type Point = { x: number; z: number };
+
+export function stairCutoutFootprint(s: PlacedStairs): Point[] {
+  const m = s.openingOffset ?? 0.5;
+  const w = s.width + m * 2,
+    d = s.depth + m * 2;
+  const cx = s.x + s.width / 2,
+    cz = s.z + s.depth / 2;
+  const corners = [
+    { x: -w / 2, z: -d / 2 },
+    { x: w / 2, z: -d / 2 },
+    { x: w / 2, z: d / 2 },
+    { x: -w / 2, z: d / 2 },
+  ];
+  const cos = Math.cos(s.rotation),
+    sin = Math.sin(s.rotation);
+  return corners.map((p) => ({
+    x: cx + p.x * cos - p.z * sin,
+    z: cz + p.x * sin + p.z * cos,
+  }));
+}

@@ -1203,3 +1203,20 @@ export function applyShapeExteriorMaterial(
 
   return { ...fp, closedShapes: nextShapes };
 }
+
+export function segmentsForShape(
+  shape: ClosedShape,
+  allSegments: LineSegment[],
+): LineSegment[] {
+  const boundaryPairs = new Set<string>();
+  for (let i = 0; i < shape.nodeIds.length; i++) {
+    const a = shape.nodeIds[i]!;
+    const b = shape.nodeIds[(i + 1) % shape.nodeIds.length]!;
+    boundaryPairs.add([a, b].sort().join("|"));
+  }
+  return allSegments.filter((seg) => {
+    if (seg.nodeIds.length !== 2) return false; // skip multi-node chains, or handle separately if needed
+    const key = [seg.nodeIds[0], seg.nodeIds[1]].sort().join("|");
+    return boundaryPairs.has(key);
+  });
+}

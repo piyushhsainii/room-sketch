@@ -32,6 +32,7 @@ type Scene3DProps = {
     onSelect?: (id: string | null) => void
     onToggleDoorOpen?: (openingId: string) => void
     overlappingIds?: Set<string>
+    cutoutDrawInProgress: boolean
 }
 
 const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
@@ -48,7 +49,8 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         onSelect,
         onToggleDoorOpen,
         overlappingIds,
-        activeFp: liveFp
+        activeFp: liveFp,
+        cutoutDrawInProgress
     },
     ref
 ) {
@@ -223,16 +225,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     useEffect(() => {
         invalidate()
     }, [viewMode, floors, showUnderlay, activeFloorId, invalidate])
-
-    console.log('stack debug', {
-        activeFloorId,
-        activeElevation,
-        floors: floorsToRender.map(({ floor }) => ({
-            id: floor.id,
-            rawElevation: floor.elevation,
-            groupY: floor.elevation - activeElevation,
-        })),
-    })
     return (
         <>
             <color attach="background" args={['#FFFFFF']} />
@@ -284,24 +276,38 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 </mesh>
             )}
 
-            {floorsToRender.map(({ floor, opacity, renderCap }) => (
-                <group key={floor.id} position={[0, floor.elevation - activeElevation, 0]}>
-                    <FloorGeometry
-                        fp={floor.id === activeFloorId ? activeFp : floor.state}
-                        cfg={cfg}
-                        exportRootRef={floor.id === activeFloorId ? exportRootRef : undefined}
-                        interactive={interactiveMode && floor.id === activeFloorId}
-                        selectedId={floor.id === activeFloorId ? selectedId : null}
-                        onSelect={floor.id === activeFloorId ? onSelect : undefined}
-                        onToggleDoorOpen={floor.id === activeFloorId ? onToggleDoorOpen : undefined}
-                        opacity={opacity}
-                        renderCap={renderCap}
-                        overlappingIds={overlappingIds}
-                        shadowEligibleIds={shadowEligibleIds}
-                    />
-                </group>
-            ))}
+            {floorsToRender.map(({ floor, opacity, renderCap }) => {
+                const floorAbove = renderCap
+                    ? floors
+                        .filter(f => f.visible && f.order > floor.order)
+                        .sort((a, b) => a.order - b.order)[0]
+                    : undefined
 
+                const floorAboveFp = floorAbove
+                    ? (floorAbove.id === activeFloorId ? activeFp : floorAbove.state)
+                    : undefined
+
+                return (
+                    <group key={floor.id} position={[0, floor.elevation - activeElevation, 0]}>
+                        <FloorGeometry
+                            fp={floor.id === activeFloorId ? activeFp : floor.state}
+                            cfg={cfg}
+                            exportRootRef={floor.id === activeFloorId ? exportRootRef : undefined}
+                            interactive={interactiveMode && floor.id === activeFloorId}
+                            selectedId={floor.id === activeFloorId ? selectedId : null}
+                            onSelect={floor.id === activeFloorId ? onSelect : undefined}
+                            onToggleDoorOpen={floor.id === activeFloorId ? onToggleDoorOpen : undefined}
+                            opacity={opacity}
+                            renderCap={renderCap}
+                            floorAboveFp={floorAboveFp}
+                            floorAboveId={floorAbove?.id}
+                            overlappingIds={overlappingIds}
+                            shadowEligibleIds={shadowEligibleIds}
+                            cutoutDrawInProgress={floor.id === activeFloorId ? cutoutDrawInProgress : false}
+                        />
+                    </group>
+                )
+            })}
             {walkMode ? (
                 <WalkModeControls />
             ) : (

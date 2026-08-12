@@ -125,6 +125,7 @@ export default function FloorPlanEditor({
     const spaceHeldRef = useRef(false)
     const spacePanRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
     const panToolRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
+    const pendingCutoutRef = useRef(false)
     // ─────────────────────────────────────────────────────────────────────────
     // Floor plan data + scene config
     // ─────────────────────────────────────────────────────────────────────────
@@ -649,25 +650,6 @@ export default function FloorPlanEditor({
         return next
     }
 
-    function zoomAtPoint(cursorCanvasX: number, cursorCanvasY: number, newZoom: number) {
-        // world point currently under the cursor, at the OLD zoom/pan
-        const worldX = toWorld(cursorCanvasX, panRef.current.x, zoomRef.current)
-        const worldY = toWorld(cursorCanvasY, panRef.current.y, zoomRef.current)
-
-        const clampedZoom = Math.max(0.1, Math.min(newZoom, 3))
-
-        // solve for the new pan so that worldX/worldY still lands under the cursor at the NEW zoom
-        const newPan = {
-            x: cursorCanvasX - worldX * PX_PER_M * clampedZoom,
-            y: cursorCanvasY - worldY * PX_PER_M * clampedZoom,
-        }
-
-        panRef.current = newPan
-        setPan(newPan)
-        zoomRef.current = clampedZoom
-        setZoom(clampedZoom)
-    }
-
     function getShapesIndex(fp: FloorPlanState) {
         const cache = shapesIndexCacheRef.current
         if (cache && cache.shapes === fp.closedShapes) return cache.map
@@ -705,11 +687,6 @@ export default function FloorPlanEditor({
     const roomsByIdRef = useRef(roomsById)
     useEffect(() => { roomsByIdRef.current = roomsById }, [roomsById])
 
-    // ── Live-gesture refs — NOT React state. Written directly during
-    // pointermove so a drag doesn't trigger a re-render (and therefore doesn't
-    // tear down/rebuild scheduleRedraw) on every mouse-move tick. ────────────
-    // const drawRectRef = useRef<{ x: number; z: number; w: number; d: number } | null>(null)
-    // const pencilPointsRef = useRef<{ x: number; z: number }[]>([])
     const previewRef = useRef<{ x: number; z: number } | null>(null)
 
     const scheduleRedraw = useCallback(() => {
@@ -875,14 +852,6 @@ export default function FloorPlanEditor({
 
     useEffect(() => { panRef.current = pan }, [pan])
     useEffect(() => { zoomRef.current = zoom }, [zoom])
-
-    const [fp3D, setFp3D] = useState(fp)
-    const raf3DRef = useRef<number>(0)
-    useEffect(() => {
-        cancelAnimationFrame(raf3DRef.current)
-        raf3DRef.current = requestAnimationFrame(() => setFp3D(fp))
-        return () => cancelAnimationFrame(raf3DRef.current)
-    }, [fp])
 
     const evWorld = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const rect = canvasRef.current!.getBoundingClientRect()
@@ -1064,21 +1033,34 @@ export default function FloorPlanEditor({
 
     const hitClosedShape = useCallback((wx: number, wz: number) => {
         const polygons = deriveClosedPolygons(fpRef.current.lineNodes, fpRef.current.lineSegments)
+
+        let best: { nodeIds: string[]; area: number } | null = null
+
         for (const nodeIds of polygons) {
             const nodes = nodeIds.map(nid => fpRef.current.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
             if (nodes.length < 3) continue
+
             let inside = false
             for (let i = 0, j = nodes.length - 1; i < nodes.length; j = i++) {
                 const xi = nodes[i]!.x, zi = nodes[i]!.z, xj = nodes[j]!.x, zj = nodes[j]!.z
                 if ((zi > wz) !== (zj > wz) && wx < ((xj - xi) * (wz - zi)) / (zj - zi) + xi) inside = !inside
             }
-            if (inside) {
-                const existing = matchClosedShape(nodeIds, fpRef.current.lineNodes, fpRef.current.closedShapes ?? [])
-                if (existing) return existing
-                return { id: `unconfigured::${[...nodeIds].sort().join(',')}`, nodeIds, label: undefined } as ClosedShape
+            if (!inside) continue
+
+            let area2 = 0
+            for (let i = 0, j = nodes.length - 1; i < nodes.length; j = i++) {
+                area2 += (nodes[j]!.x + nodes[i]!.x) * (nodes[j]!.z - nodes[i]!.z)
             }
+            const area = Math.abs(area2) / 2
+
+            if (!best || area < best.area) best = { nodeIds, area }
         }
-        return null
+
+        if (!best) return null
+
+        const existing = matchClosedShape(best.nodeIds, fpRef.current.lineNodes, fpRef.current.closedShapes ?? [])
+        if (existing) return existing
+        return { id: `unconfigured::${[...best.nodeIds].sort().join(',')}`, nodeIds: best.nodeIds, label: undefined } as ClosedShape
     }, [])
     const commitMove = useCallback((id: string, wx: number, wz: number) => {
         const currentFp = fpRef.current
@@ -1339,6 +1321,33 @@ export default function FloorPlanEditor({
             closedShapes: nextShapes,
         }
     }
+    const [cutoutArmed, setCutoutArmed] = useState(false)
+    const handleArmCutoutDraw = () => {
+        setCutoutArmed(true)
+        setTool('line')
+        setSelectedId(null)
+    }
+
+    const prevShapeCountRef = useRef(fp.closedShapes?.length ?? 0)
+
+    useEffect(() => {
+        const count = fp.closedShapes?.length ?? 0
+        if (cutoutArmed && count > prevShapeCountRef.current) {
+            const newShape = fp.closedShapes![fp.closedShapes!.length - 1]
+            if (!newShape.cutout?.enabled) {
+                setFp(prev => ({
+                    ...prev,
+                    closedShapes: prev.closedShapes!.map(s =>
+                        s.id === newShape.id ? { ...s, cutout: { enabled: true, openingOffset: 0.15 } } : s
+                    ),
+                }))
+            }
+            setCutoutArmed(false)
+            setTool('select')
+            setSelectedId(newShape.id)
+        }
+        prevShapeCountRef.current = count
+    }, [fp.closedShapes, cutoutArmed])
 
     const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         isMouseDownRef.current = true
@@ -1774,8 +1783,26 @@ export default function FloorPlanEditor({
                     setFp(prev => {
                         const withSplit = splitUpdate ? { ...prev, ...splitUpdate } : prev
                         const w = { ...withSplit, lineSegments: [...withSplit.lineSegments, newSeg] }
-                        return tryConvertClosedLineShape(w, newSeg.id)
+                        const result = tryConvertClosedLineShape(w, newSeg.id)
+
+                        const prevCount = (prev.closedShapes ?? []).length
+                        const newCount = (result.closedShapes ?? []).length
+
+                        if (cutoutArmed && newCount === prevCount + 1) {
+                            const newShape = result.closedShapes![result.closedShapes!.length - 1]
+                            return {
+                                ...result,
+                                closedShapes: result.closedShapes!.map(s =>
+                                    s.id === newShape.id ? { ...s, cutout: { enabled: true, openingOffset: 0.15 } } : s
+                                ),
+                            }
+                        }
+                        return result
                     })
+                    if (cutoutArmed) {
+                        setCutoutArmed(false)
+                        setTool('select')
+                    }
                 } else {
                     // Place new node and continue chain
                     const newNode: LineNode = { id: uid(), x: snapX, z: snapZ }
@@ -2076,7 +2103,8 @@ export default function FloorPlanEditor({
             setSelectedId(newStairs.id)
             return
         }
-        if (isOpeningTool) {
+        if (isOpeningTool || tool === 'railing-partial') {
+            const isRailing = tool === 'railing-partial'
             const room = hitRoom(wx, wz)
             if (room) {
                 const wallDir = getWallHit(room, wx, wz, 0.5)
@@ -2084,22 +2112,30 @@ export default function FloorPlanEditor({
                 const isH = wallDir === 'north' || wallDir === 'south'
                 const wallLen = isH ? room.width : room.depth
                 const rawPos = isH ? wx - room.x : wz - room.z
-                const opW = tool === 'opening-archway' ? 1.1 : 1.5
+                const opW = isRailing ? 1.5 : (tool === 'opening-archway' ? 1.1 : 1.5)
                 const clampedPos = Math.max(opW / 2, Math.min(wallLen - opW / 2, rawPos))
                 const op: EditorOpening = {
                     id: uid(),
                     roomId: room.id,
                     wall: wallDir,
-                    type: 'opening',
-                    variant: tool,
+                    type: isRailing ? 'railing' : 'opening',
+                    variant: isRailing ? 'railing-partial' : tool,
                     position: parseFloat(clampedPos.toFixed(2)),
                     width: opW,
                     height:
-                        tool === 'opening-archway'
-                            ? Math.max(2.1, fp.roomHeight - 0.45)
-                            : fp.roomHeight,
+                        isRailing
+                            ? fp.roomHeight
+                            : tool === 'opening-archway'
+                                ? Math.max(2.1, fp.roomHeight - 0.45)
+                                : fp.roomHeight,
                     sillHeight: 0,
                     swingDirection: 'inward',
+                    ...(isRailing ? {
+                        railingStyle: 'baluster' as const,
+                        railingHeight: 0.9,
+                        railingSolidAbove: true,
+                        railingWallStart: 1.9,
+                    } : {}),
                 }
                 pushHistory()
                 setFp(prev => ({ ...prev, openings: [...prev.openings, op] })); setSelectedId(op.id); return
@@ -2110,7 +2146,7 @@ export default function FloorPlanEditor({
                 const a = fpRef.current.lineNodes.find(n => n.id === fromId)!
                 const b = fpRef.current.lineNodes.find(n => n.id === toId)!
                 const segLen = Math.hypot(b.x - a.x, b.z - a.z)
-                const opW = tool === 'opening-archway' ? 1.1 : 1.5
+                const opW = isRailing ? 1.5 : (tool === 'opening-archway' ? 1.1 : 1.5)
                 const rawPos = t * segLen
                 const clampedPos = Math.max(opW / 2, Math.min(segLen - opW / 2, rawPos))
                 const clampedT = clampedPos / segLen
@@ -2118,18 +2154,26 @@ export default function FloorPlanEditor({
                     id: uid(),
                     roomId: seg.id,
                     wall: 'north',
-                    type: 'opening',
-                    variant: tool,
+                    type: isRailing ? 'railing' : 'opening',
+                    variant: isRailing ? 'railing-partial' : tool,
                     position: parseFloat(clampedPos.toFixed(2)),
                     width: opW,
                     height:
-                        tool === 'opening-archway'
-                            ? Math.max(2.1, fp.roomHeight - 0.45)
-                            : fp.roomHeight,
+                        isRailing
+                            ? fp.roomHeight
+                            : tool === 'opening-archway'
+                                ? Math.max(2.1, fp.roomHeight - 0.45)
+                                : fp.roomHeight,
                     sillHeight: 0,
                     swingDirection: 'inward',
                     segmentNodeIds: [fromId, toId],
                     segmentT: clampedT,
+                    ...(isRailing ? {
+                        railingStyle: 'baluster' as const,
+                        railingHeight: 0.9,
+                        railingSolidAbove: true,
+                        railingWallStart: 1.9,
+                    } : {}),
                 }
                 pushHistory()
                 setFp(prev => ({ ...prev, openings: [...prev.openings, op] }))
@@ -3680,6 +3724,7 @@ export default function FloorPlanEditor({
                                         onSelect={handleSceneSelect}
                                         onToggleDoorOpen={(openingId) => setFp(prev => ({ ...prev, openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o) }))}
                                         overlappingIds={overlappingIds}
+                                        cutoutDrawInProgress={cutoutArmed}
                                     />
                                 </ResilientCanvas>
                             </div>
@@ -3917,6 +3962,8 @@ export default function FloorPlanEditor({
                         onBend={handleBendSelectedSegment}
                         onMove={handleArmMove}
                         moveArmed={moveArmedForId === selectedId}
+                        cutoutArmed={cutoutArmed}
+                        onArmCutoutDraw={handleArmCutoutDraw}
                         onOpenProperties={() => {
                             if (sheetOpen && rightTab === 'properties') {
                                 setSheetOpen(false)
@@ -3986,16 +4033,6 @@ export default function FloorPlanEditor({
                                         if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
                                         if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
                                         if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-
-                                        // NEW — was: `if (isShape) return { ...prev, closedShapes: filter(...) }`,
-                                        // which only removed the label/material sidecar and left the actual
-                                        // wall geometry (lineNodes/lineSegments) untouched, so the area kept
-                                        // rendering via deriveClosedPolygons. Now resolves the real polygon
-                                        // (works whether selectedId is a real ClosedShape id OR the
-                                        // synthetic `unconfigured::${sortedNodeIds}` id hitClosedShape hands
-                                        // out for an unconfigured/just-deleted area) and removes only the
-                                        // edges exclusive to it, preserving any wall shared with a
-                                        // neighboring area.
                                         if (isShape || isUnconfiguredShape) {
                                             const allPolys = deriveClosedPolygons(prev.lineNodes, prev.lineSegments)
                                             const targetNodeIds = isUnconfiguredShape
@@ -4015,8 +4052,7 @@ export default function FloorPlanEditor({
                                         if (isAnn) return { ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== selectedId) }
                                         return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
                                     })
-                                    setSelectedId(null)     // NEW — this was missing; PropsPanel and the hit-test
-                                    // chain both key off this, not selectedIds
+                                    setSelectedId(null)
                                     setSelectedIds([])
                                 }}
                                 sceneConfig={sceneConfig}

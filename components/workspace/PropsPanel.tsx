@@ -1,4 +1,4 @@
-import { applyShapeExteriorMaterial, deriveClosedPolygons, snapFurniture, snapM, uid } from "@/lib/helpers"
+import { applyShapeExteriorMaterial, deriveClosedPolygons, segmentsForShape, snapFurniture, snapM, uid } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
 import { ClosedShape, EditorOpening, EditorRoom, FloorMaterial, FloorPlanState, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
@@ -250,7 +250,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             : wallDecor ? WALL_DECOR_LABELS[wallDecor.type]
                                 : light ? LIGHT_FIXTURE_LABELS[light.type]
                                     : outdoorObj ? OUTDOOR_OBJECT_LABELS[outdoorObj.type]
-                                        : 'Wall Segment'
+                                        : shape ? (shape.label || 'Area')
+                                            : 'Wall Segment'
 
     return (
         <div style={{ padding: SPACE.md, display: 'flex', flexDirection: 'column', gap: SPACE.md, background: COLOR.bg }}>
@@ -306,6 +307,59 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     </Card>
                 </>
             )}
+
+            {shape && !wallRoom && (
+                <>
+                    <Card>
+                        <PropField label="Label">
+                            <input
+                                value={shape.label ?? ''}
+                                onChange={e => {
+                                    const exists = (fp.closedShapes ?? []).some(sh => sh.id === shape.id)
+                                    const patch = { label: e.target.value }
+                                    onChange({
+                                        ...fp,
+                                        closedShapes: exists
+                                            ? (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, ...patch } : sh)
+                                            : [...(fp.closedShapes ?? []), { ...shape, ...patch }],
+                                    })
+                                }}
+                                style={{ /* match your existing text input styling */ }}
+                            />
+                        </PropField>
+                    </Card>
+
+                    <Card>
+                        <SectionLabel>Floor Cutout</SectionLabel>
+                        <PropField label="Enabled">
+                            <Button
+                                variant="secondary"
+                                onClick={() => {
+                                    const exists = (fp.closedShapes ?? []).some(sh => sh.id === shape.id)
+                                    const patch = { cutout: { enabled: !(shape.cutout?.enabled ?? false), openingOffset: shape.cutout?.openingOffset ?? 0.15 } }
+                                    onChange({
+                                        ...fp,
+                                        closedShapes: exists
+                                            ? (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, ...patch } : sh)
+                                            : [...(fp.closedShapes ?? []), { ...shape, ...patch }],
+                                    })
+                                }}
+                            >
+                                {(shape.cutout?.enabled ?? false) ? '☑ On (hole in floor)' : '☐ Off'}
+                            </Button>
+                        </PropField>
+                        {(shape.cutout?.enabled ?? false) && (
+                            <PropField label="Opening margin (m)">
+                                <NumInput value={shape.cutout?.openingOffset ?? 0.15} min={0} max={1} step={0.05}
+                                    onChange={v => onChange({
+                                        ...fp,
+                                        closedShapes: (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, cutout: { ...(sh.cutout ?? { enabled: true }), openingOffset: v } } : sh)
+                                    })} />
+                            </PropField>
+                        )}
+                    </Card>
+                </>
+            )}
             {shape && <>
                 <Card>
                     <PropField label="Label">
@@ -313,7 +367,39 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             style={{ height: 34, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 13, padding: '0 10px', outline: 'none' }} />
                     </PropField>
                 </Card>
-
+                <Card>
+                    <SectionLabel>Walls</SectionLabel>
+                    <PropField label="Wall height (m)">
+                        <NumInput
+                            value={segmentsForShape(shape, fp.lineSegments)[0]?.height ?? fp.roomHeight}
+                            min={0.5} max={6} step={0.1}
+                            onChange={v => {
+                                const targetIds = new Set(segmentsForShape(shape, fp.lineSegments).map(s => s.id))
+                                onChange({
+                                    ...fp,
+                                    lineSegments: fp.lineSegments.map(s => targetIds.has(s.id) ? { ...s, height: v } : s)
+                                })
+                            }}
+                        />
+                    </PropField>
+                    <PropField label="Wall type">
+                        <SegmentedControl
+                            options={[
+                                { value: 'solid', label: 'Solid' },
+                                { value: 'railing', label: 'Railing' },
+                                { value: 'open', label: 'Open' },
+                            ] as const}
+                            value={segmentsForShape(shape, fp.lineSegments)[0]?.wallType ?? 'solid'}
+                            onChange={wallType => {
+                                const targetIds = new Set(segmentsForShape(shape, fp.lineSegments).map(s => s.id))
+                                onChange({
+                                    ...fp,
+                                    lineSegments: fp.lineSegments.map(s => targetIds.has(s.id) ? { ...s, wallType } : s)
+                                })
+                            }}
+                        />
+                    </PropField>
+                </Card>
                 <Card>
                     <SectionLabel>Wall Texture</SectionLabel>
                     <PropField label="Side">
@@ -577,6 +663,63 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                 ))}
                             </select>
                         </PropField>
+                    )}
+                    {opening && opening.type === 'railing' && (
+                        <Card>
+                            <PropField label="Style">
+                                <SegmentedControl
+                                    options={[
+                                        { value: 'baluster', label: 'Baluster' },
+                                        { value: 'glass', label: 'Glass' },
+                                        { value: 'cable', label: 'Cable' },
+                                        { value: 'solid-panel', label: 'Solid' },
+                                        { value: 'criss-cross', label: 'Criss-Cross' },
+                                    ] as const}
+                                    value={opening.railingStyle ?? 'baluster'}
+                                    onChange={style => patchOpening({ railingStyle: style })}
+                                />
+                            </PropField>
+                            <PropField label="Height (m)">
+                                <NumInput value={opening.railingHeight ?? 0.9} min={0.6} max={1.2} step={0.05}
+                                    onChange={v => patchOpening({ railingHeight: v })} />
+                            </PropField>
+                            <PropField label="Rail width (m)">
+                                <NumInput value={opening.railingWidthDim ?? 0.05} min={0.02} max={0.12} step={0.01}
+                                    onChange={v => patchOpening({ railingWidthDim: v })} />
+                            </PropField>
+                            {(opening.railingStyle === 'baluster' || opening.railingStyle === 'cable') && (
+                                <PropField label="Post spacing (m)">
+                                    <NumInput value={opening.railingPostSpacing ?? 0.12} min={0.05} max={0.3} step={0.01}
+                                        onChange={v => patchOpening({ railingPostSpacing: v })} />
+                                </PropField>
+                            )}
+                            <PropField label="Color">
+                                <ColorSwatchInput
+                                    value={opening.railingColor ?? '#6B5B4E'}
+                                    onChange={v => patchOpening({ railingColor: v })}
+                                />
+                            </PropField>
+                            {opening.railingSolidAbove && (
+                                <PropField label="Wall starts (m)">
+                                    <NumInput
+                                        value={opening.railingWallStart ?? opening.railingHeight ?? 0.9}
+                                        min={opening.railingHeight ?? 0.9}
+                                        max={fp.roomHeight - 0.1}
+                                        step={0.05}
+                                        onChange={v => patchOpening({ railingWallStart: v })}
+                                    />
+                                </PropField>
+                            )}
+                            {/* NEW — wall above the railing vs open to ceiling */}
+                            <PropField label="Above rail">
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => patchOpening({ railingSolidAbove: !opening.railingSolidAbove })}
+                                >
+                                    {opening.railingSolidAbove ? '▭ Wall' : '▢ Open'}
+                                </Button>
+                            </PropField>
+                        </Card>
                     )}
                     {opening.type === 'door' && (opening.variant ?? 'door-swing-single') === 'door-sliding-panorama' && (
                         <Card>
@@ -1410,6 +1553,38 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     </PropField>
                 </Card>
             )}
+            {
+                shape?.cutout &&
+                <Card>
+                    <SectionLabel>Floor Cutout</SectionLabel>
+                    <PropField label="Enabled">
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                const exists = (fp.closedShapes ?? []).some(sh => sh.id === shape.id)
+                                const patch = { cutout: { enabled: !(shape.cutout?.enabled ?? false), openingOffset: shape.cutout?.openingOffset ?? 0.15 } }
+                                onChange({
+                                    ...fp,
+                                    closedShapes: exists
+                                        ? (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, ...patch } : sh)
+                                        : [...(fp.closedShapes ?? []), { ...shape, ...patch }],
+                                })
+                            }}
+                        >
+                            {(shape.cutout?.enabled ?? false) ? '☑ On (hole in floor)' : '☐ Off'}
+                        </Button>
+                    </PropField>
+                    {(shape.cutout?.enabled ?? false) && (
+                        <PropField label="Opening margin (m)">
+                            <NumInput value={shape.cutout?.openingOffset ?? 0.15} min={0} max={1} step={0.05}
+                                onChange={v => onChange({
+                                    ...fp,
+                                    closedShapes: (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, cutout: { ...(sh.cutout ?? { enabled: true }), openingOffset: v } } : sh)
+                                })} />
+                        </PropField>
+                    )}
+                </Card>
+            }
 
             <Button
                 variant="danger"

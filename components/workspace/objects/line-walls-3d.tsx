@@ -868,23 +868,20 @@ function LineWalls3DImpl({
                                 const headerH = effH - openingTop
                                 const isPassage = op.type === 'opening' && op.variant === 'opening-passage'
                                 const isArchway = op.type === 'opening' && op.variant === 'opening-archway'
-                                // NEW — a partial railing span should never get a solid
-                                // header slab above it, same reasoning as a passage: it's
-                                // meant to be open to the ceiling, not boxed in.
-                                const isRailingSpan = op.type === 'railing'
+                                const isRailingSpan = op.type === 'railing' && !op.railingSolidAbove
 
-                                /*
-                                 * ------------------------------------------------
-                                 * HEADER
-                                 * ------------------------------------------------
-                                 */
-                                if (!isPassage && !isRailingSpan && headerH > 0.02) {
+                                const effOpeningTop = op.type === 'railing' && op.railingSolidAbove
+                                    ? (op.railingWallStart ?? op.railingHeight ?? 0.9)
+                                    : openingTop
+                                const effHeaderH = effH - effOpeningTop
+
+                                if (!isPassage && !isRailingSpan && effHeaderH > 0.02) {
                                     const hx = a.x + (dx / len) * opPos2
                                     const hz = a.z + (dz / len) * opPos2
 
                                     if (isArchway) {
                                         panels.push(
-                                            <group key={`${seg.id}_${i}_h${si}`} position={[hx, openingTop, hz]}>
+                                            <group key={`${seg.id}_${i}_h${si}`} position={[hx, effOpeningTop, hz]}>
                                                 <ArchHeader3D
                                                     width={op.width}
                                                     headerH={headerH}
@@ -900,13 +897,13 @@ function LineWalls3DImpl({
                                         panels.push(
                                             <mesh
                                                 key={`${seg.id}_${i}_h${si}`}
-                                                position={[hx, openingTop + headerH / 2, hz]}
+                                                position={[hx, effOpeningTop + effHeaderH / 2, hz]}
                                                 rotation={[0, -angle, 0]}
                                                 castShadow
                                                 receiveShadow
                                                 {...handlers}
                                             >
-                                                <boxGeometry args={[op.width, headerH, segT]} />
+                                                <boxGeometry args={[op.width, effHeaderH, segT]} />
                                                 <WallMat attach="material-0" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
                                                 <WallMat attach="material-1" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />
                                                 <WallMat attach="material-2" mat={interior.mat} color={interior.color} roughness={wallRoughness} width={op.width} height={headerH} depth={segT} opacity={opacity} transparent={transparent} />

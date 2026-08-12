@@ -146,7 +146,10 @@ export function RealTextureWallMat({
         const prep = (t: THREE.Texture) => {
             const c = t.clone()
             c.wrapS = c.wrapT = THREE.RepeatWrapping
-            c.repeat.set(width * def.repeatScale, height * def.repeatScale)
+            c.repeat.set(
+                Math.max(1, width * def.repeatScale),
+                Math.max(1, height * def.repeatScale)
+            )
             c.needsUpdate = true
             c.generateMipmaps = true
             c.minFilter = THREE.LinearMipmapLinearFilter
@@ -219,10 +222,9 @@ export function WallMat({
 
         if (tex) {
             tex.repeat.set(
-                repeatW * def.repeatScale,
-                repeatH * def.repeatScale
+                Math.max(1, repeatW * def.repeatScale),
+                Math.max(1, repeatH * def.repeatScale)
             )
-
             tex.needsUpdate = true
         }
 

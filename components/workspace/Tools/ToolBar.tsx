@@ -67,6 +67,7 @@ export const TOOL_CURSORS: Record<EditorTool, string> = {
     'window-skylight': DOOR_WINDOW_CURSOR,
     'opening-archway': DOOR_WINDOW_CURSOR,
     'opening-passage': DOOR_WINDOW_CURSOR,
+    'railing-partial': DOOR_WINDOW_CURSOR,
     'stairs-straight': 'crosshair',
     'stairs-l': 'crosshair',
     'stairs-u': 'crosshair',

@@ -263,6 +263,37 @@ floating overlay mesh for wall faces.** If a mesh with `<WallMat>` +
 `planeGeometry` (or a `<WallMat>` with no geometry at all, i.e. dead code
 left mid-refactor) shows up again in this file, it's regressing.
 
+## 4h. Partial railings (balcony openings) — NEW
+
+- Not a new entity — rides `EditorOpening` (`fp.openings`) with `type: 'railing'`, same mechanism as doors/windows.
+- Different from full-segment railing (`LineSegment.wallType === 'railing'`, §4g) — that's a whole wall piece; this is a span cut into an otherwise-solid wall. Never overlap: `wallType` only applies when a segment has zero openings.
+- `Tools/constants.ts` — `EditorOpening.type` includes `'railing'`. New fields (only used when `type === 'railing'`): `railingStyle`, `railingHeight`, `railingPostSpacing`, `railingWidthDim`, `railingColor`, `railingSolidAbove`, `railingWallStart`.
+- `objects/railing-3d.tsx` — `Railing3D` component, unchanged. Renders the actual rail mesh (posts/infill by style). Its `RailingStyleConfig` (`style`/`postSpacing`/`railingWidth`) is what the `EditorOpening.railing*` fields map onto.
+- `FloorPlanEditor.tsx` (pointer-down handler) — placement lives in `if (isOpeningTool || tool === 'railing-partial') {...}`. `isOpeningTool` (`tool.startsWith('opening-')`) does NOT include `railing-partial` — any other code gating on `isOpeningTool` alone needs the same `|| tool === 'railing-partial'` addition. Defaults on creation: `railingStyle: 'baluster'`, `railingHeight: 0.9`, `railingSolidAbove: true`, `railingWallStart: 1.9`.
+- `mesh/line-walls-3d.tsx` and `Room3D.tsx` — both independently implement the railing render branch (no shared opening-render helper between the two wall systems). Any render change must be made in both.
+  - `isRailingSpan = op.type === 'railing' && !op.railingSolidAbove` — when true, skips the header block (open to ceiling), same as passage/archway.
+  - When `railingSolidAbove` is true, the existing header-slab code fills from rail to ceiling via `effOpeningTop`/`effHeaderH`, computed once and used only inside the header block — nothing else in the opening loop uses these two.
+  - Rail mesh itself is a separate `else if (op.type === 'railing')` branch next to the `window`/`door` branches.
+  - Rotation convention differs by file (line-walls: `-angle` from `Math.atan2`; Room3D: `wall.axis === 'x' ? 0 : Math.PI/2`) — don't cross-copy.
+- `objects/wallmat.tsx` — `Math.max(1, ...)` floor added to `tex.repeat` on both axes (procedural path and `RealTextureWallMat.prep()`), needed because short header pieces (e.g. small gap between `railingHeight` and `railingWallStart`) could produce repeat < 1, which THREE stretches instead of tiling.
+- `Tools/PropsPanel.tsx` — dedicated card gated on `opening.type === 'railing'`, alongside the generic opening block. Fields: Style, Height, Rail width, Post spacing (baluster/cable only), Color, Above-rail toggle, Wall-starts (only shown when Above-rail is on).
+- Toolbar — icon entry keyed `'railing-partial'` in the same config map as `opening-passage`/`opening-archway`.
+
+### 4i. Floor cutouts + partial railings — NEW
+
+`ClosedShape.cutout?: { enabled, toLevel?, openingOffset? }` marks a shape
+as a void: no walls render on its boundary, no floor fill of its own, and
+it punches a hole into any overlapping room/area floor (`Room3D` for
+rectangular rooms, `LineWalls3D`'s `DerivedFloorShape` for irregular
+areas) plus the stacked-view ceiling cap below (`FloorCap`, scoped by
+`toLevel`). 2D shows a dashed-red void outline, not an Area label.
+Toggle lives in `PropsPanel`'s shape section (Floor Cutout card).
+Known gap: irregular-area hole-punching has an unresolved polygon-
+matching bug (see §7) — rectangular rooms work correctly.
+
+Per-wall type (`solid`/`railing`/`open`) already existed on `LineSegment`;
+a bulk "set for whole area" control in `PropsPanel` is scoped, not yet built.
+
 **Two independent axes, do not conflate them:**
 
 1. **Geometry — which box face is "interior" vs "exterior".** This is a

@@ -225,16 +225,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     useEffect(() => {
         invalidate()
     }, [viewMode, floors, showUnderlay, activeFloorId, invalidate])
-
-    console.log('stack debug', {
-        activeFloorId,
-        activeElevation,
-        floors: floorsToRender.map(({ floor }) => ({
-            id: floor.id,
-            rawElevation: floor.elevation,
-            groupY: floor.elevation - activeElevation,
-        })),
-    })
     return (
         <>
             <color attach="background" args={['#FFFFFF']} />
@@ -287,10 +277,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             )}
 
             {floorsToRender.map(({ floor, opacity, renderCap }) => {
-                // Resolve the floor immediately above this one, by order, among
-                // visible floors — same visibility rule floorsToRender itself uses,
-                // so a hidden floor never contributes a cap-punching cutout for a
-                // floor nobody can currently see.
                 const floorAbove = renderCap
                     ? floors
                         .filter(f => f.visible && f.order > floor.order)

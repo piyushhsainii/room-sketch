@@ -2103,7 +2103,8 @@ export default function FloorPlanEditor({
             setSelectedId(newStairs.id)
             return
         }
-        if (isOpeningTool) {
+        if (isOpeningTool || tool === 'railing-partial') {
+            const isRailing = tool === 'railing-partial'
             const room = hitRoom(wx, wz)
             if (room) {
                 const wallDir = getWallHit(room, wx, wz, 0.5)
@@ -2111,22 +2112,30 @@ export default function FloorPlanEditor({
                 const isH = wallDir === 'north' || wallDir === 'south'
                 const wallLen = isH ? room.width : room.depth
                 const rawPos = isH ? wx - room.x : wz - room.z
-                const opW = tool === 'opening-archway' ? 1.1 : 1.5
+                const opW = isRailing ? 1.5 : (tool === 'opening-archway' ? 1.1 : 1.5)
                 const clampedPos = Math.max(opW / 2, Math.min(wallLen - opW / 2, rawPos))
                 const op: EditorOpening = {
                     id: uid(),
                     roomId: room.id,
                     wall: wallDir,
-                    type: 'opening',
-                    variant: tool,
+                    type: isRailing ? 'railing' : 'opening',
+                    variant: isRailing ? 'railing-partial' : tool,
                     position: parseFloat(clampedPos.toFixed(2)),
                     width: opW,
                     height:
-                        tool === 'opening-archway'
-                            ? Math.max(2.1, fp.roomHeight - 0.45)
-                            : fp.roomHeight,
+                        isRailing
+                            ? fp.roomHeight
+                            : tool === 'opening-archway'
+                                ? Math.max(2.1, fp.roomHeight - 0.45)
+                                : fp.roomHeight,
                     sillHeight: 0,
                     swingDirection: 'inward',
+                    ...(isRailing ? {
+                        railingStyle: 'baluster' as const,
+                        railingHeight: 0.9,
+                        railingSolidAbove: true,
+                        railingWallStart: 1.9,
+                    } : {}),
                 }
                 pushHistory()
                 setFp(prev => ({ ...prev, openings: [...prev.openings, op] })); setSelectedId(op.id); return
@@ -2137,7 +2146,7 @@ export default function FloorPlanEditor({
                 const a = fpRef.current.lineNodes.find(n => n.id === fromId)!
                 const b = fpRef.current.lineNodes.find(n => n.id === toId)!
                 const segLen = Math.hypot(b.x - a.x, b.z - a.z)
-                const opW = tool === 'opening-archway' ? 1.1 : 1.5
+                const opW = isRailing ? 1.5 : (tool === 'opening-archway' ? 1.1 : 1.5)
                 const rawPos = t * segLen
                 const clampedPos = Math.max(opW / 2, Math.min(segLen - opW / 2, rawPos))
                 const clampedT = clampedPos / segLen
@@ -2145,18 +2154,26 @@ export default function FloorPlanEditor({
                     id: uid(),
                     roomId: seg.id,
                     wall: 'north',
-                    type: 'opening',
-                    variant: tool,
+                    type: isRailing ? 'railing' : 'opening',
+                    variant: isRailing ? 'railing-partial' : tool,
                     position: parseFloat(clampedPos.toFixed(2)),
                     width: opW,
                     height:
-                        tool === 'opening-archway'
-                            ? Math.max(2.1, fp.roomHeight - 0.45)
-                            : fp.roomHeight,
+                        isRailing
+                            ? fp.roomHeight
+                            : tool === 'opening-archway'
+                                ? Math.max(2.1, fp.roomHeight - 0.45)
+                                : fp.roomHeight,
                     sillHeight: 0,
                     swingDirection: 'inward',
                     segmentNodeIds: [fromId, toId],
                     segmentT: clampedT,
+                    ...(isRailing ? {
+                        railingStyle: 'baluster' as const,
+                        railingHeight: 0.9,
+                        railingSolidAbove: true,
+                        railingWallStart: 1.9,
+                    } : {}),
                 }
                 pushHistory()
                 setFp(prev => ({ ...prev, openings: [...prev.openings, op] }))

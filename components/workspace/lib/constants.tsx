@@ -351,6 +351,8 @@ export interface EditorOpening {
     railingPostSpacing?: number
     railingWidthDim?: number
     railingColor?: string
+    railingSolidAbove?: boolean
+    railingWallStart?: number
 }
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
@@ -658,6 +660,14 @@ export const TOOL_CONFIG = {
         icon: S(<>
             <path d="M4 3v18M20 3v18" strokeDasharray="3 2" />
             <path d="M4 21h16" opacity="0.4" />
+        </>),
+    },
+    'railing-partial': {
+        cursor: DOOR_WINDOW_CURSOR,
+        icon: S(<>
+            <path d="M4 21h16" />
+            <path d="M6 21V11M9.5 21V11M13 21V11M16.5 21V11M20 21V11" strokeWidth="1.5" />
+            <path d="M4 11h16" opacity="0.6" />
         </>),
     },
 

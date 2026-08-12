@@ -5,6 +5,7 @@ import { WallMat } from "./objects/wallmat";
 import { WindowVariant3D } from "./objects/window-variant3d";
 import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial } from "./lib/constants";
 import { DoorVariant3D } from "./objects/door-variants";
+import { Railing3D } from "./objects/railing-3d";
 import * as THREE from 'three'
 import { useMemo } from 'react'
 
@@ -208,14 +209,20 @@ function Room3D({
                     if (op) {
                         const isPassage = op.type === 'opening' && op.variant === 'opening-passage'
                         const isArchway = op.type === 'opening' && op.variant === 'opening-archway'
+                        const isRailingSpan = op.type === 'railing' && !op.railingSolidAbove
                         const openingTop = op.sillHeight + op.height
                         const headerH = H - openingTop
 
-                        if (!isPassage && headerH > 0.02) {
+                        const effOpeningTop = op.type === 'railing' && op.railingSolidAbove
+                            ? (op.railingWallStart ?? op.railingHeight ?? 0.9)
+                            : openingTop
+                        const effHeaderH = H - effOpeningTop
+
+                        if (!isPassage && !isRailingSpan && effHeaderH > 0.02) {
                             const opMid = op.position
                             const basePos: [number, number, number] = wall.axis === 'x'
-                                ? [room.x + opMid, openingTop, wPos[2]]
-                                : [wPos[0], openingTop, room.z + opMid]
+                                ? [room.x + opMid, effOpeningTop, wPos[2]]
+                                : [wPos[0], effOpeningTop, room.z + opMid]
 
                             if (isArchway) {
                                 panels.push(
@@ -234,10 +241,10 @@ function Room3D({
                                     </group>
                                 )
                             } else {
-                                const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, headerH, T] : [T, headerH, op.width]
+                                const hSize: [number, number, number] = wall.axis === 'x' ? [op.width, effHeaderH, T] : [T, effHeaderH, op.width]
 
                                 panels.push(
-                                    <mesh key={`h${i}`} position={[basePos[0], openingTop + headerH / 2, basePos[2]]} castShadow receiveShadow {...wallClickHandlers}>
+                                    <mesh key={`h${i}`} position={[basePos[0], effOpeningTop + effHeaderH / 2, basePos[2]]} castShadow receiveShadow {...wallClickHandlers}>
                                         <boxGeometry args={hSize} />
                                         <WallMat
                                             mat={resolvedWallMaterial}
@@ -285,9 +292,6 @@ function Room3D({
                                 op.height
                             )
 
-                            const WINDOW_FACE_OFFSET = T / 2 + 0.045
-
-
                             panels.push(
                                 <group
                                     key={`g${i}`}
@@ -326,6 +330,36 @@ function Room3D({
                                 </group>
                             )
                         }
+                        if (op.type === 'railing') {
+                            const opMid = op.position
+                            const angle = wall.axis === 'x' ? 0 : Math.PI / 2
+                            const railBasePos: [number, number, number] = wall.axis === 'x'
+                                ? [room.x + opMid, 0, wPos[2]]
+                                : [wPos[0], 0, room.z + opMid]
+
+                            panels.push(
+                                <group
+                                    key={`rail${i}`}
+                                    position={railBasePos}
+                                    rotation={[0, angle, 0]}
+                                    onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(op.id) } : undefined}
+                                    onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
+                                    onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
+                                >
+                                    <Railing3D
+                                        from={[-op.width / 2, 0, 0]}
+                                        to={[op.width / 2, 0, 0]}
+                                        wallRoughness={wallRoughness}
+                                        color={op.railingColor ?? (isWallSelected ? '#A5A6F5' : resolvedWallColor)}
+                                        height={op.railingHeight ?? 0.9}
+                                        style={op.railingStyle ?? 'baluster'}
+                                        postSpacing={op.railingPostSpacing}
+                                        railingWidth={op.railingWidthDim}
+                                    />
+                                </group>
+                            )
+                        }
+
                         cursor = op.position + op.width / 2
                     }
                 }

@@ -440,44 +440,48 @@ export function matchClosedShape(
     lineNodes: LineNode[],
     closedShapes: ClosedShape[],
 ): ClosedShape | undefined {
-    const nodeIdSet = new Set(nodeIds)
-
-    const exact = closedShapes.find(s =>
-        s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIdSet.has(id))
-    )
-    if (exact) return exact
-
-    const nodeMap = new Map(lineNodes.map(n => [n.id, n]))
-    const pts = nodeIds.map(id => nodeMap.get(id)).filter(Boolean) as LineNode[]
+    const nodesById = new Map(lineNodes.map(n => [n.id, n]))
+    const pts = nodeIds.map(id => nodesById.get(id)).filter(Boolean) as LineNode[]
     if (pts.length < 3) return undefined
 
-    const centroidAndArea = (points: LineNode[]) => {
-        const cx = points.reduce((s, p) => s + p.x, 0) / points.length
-        const cz = points.reduce((s, p) => s + p.z, 0) / points.length
-        let area = 0
-        for (let i = 0; i < points.length; i++) {
-            const a = points[i]!, b = points[(i + 1) % points.length]!
-            area += a.x * b.z - b.x * a.z
+    const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length
+    const cz = pts.reduce((s, p) => s + p.z, 0) / pts.length
+
+    const shapeArea = (shape: ClosedShape) => {
+        const spts = shape.nodeIds.map(id => nodesById.get(id)).filter(Boolean) as LineNode[]
+        let a = 0
+        for (let i = 0; i < spts.length; i++) {
+            const p1 = spts[i]!, p2 = spts[(i + 1) % spts.length]!
+            a += p1.x * p2.z - p2.x * p1.z
         }
-        return { cx, cz, area: Math.abs(area) / 2 }
+        return Math.abs(a) / 2
     }
 
-    const target = centroidAndArea(pts)
+    // Exact nodeId-set match wins outright (unambiguous — this IS that shape)
+    const exact = closedShapes.find(s => {
+        if (s.nodeIds.length !== nodeIds.length) return false
+        const a = new Set(s.nodeIds), b = new Set(nodeIds)
+        if (a.size !== b.size) return false
+        for (const id of a) if (!b.has(id)) return false
+        return true
+    })
+    if (exact) return exact
 
-    let best: ClosedShape | undefined
-    let bestScore = Infinity
-    for (const s of closedShapes) {
-        const sPts = s.nodeIds.map(id => nodeMap.get(id)).filter(Boolean) as LineNode[]
-        if (sPts.length < 3) continue
-        const candidate = centroidAndArea(sPts)
-
-        const centroidDist = Math.hypot(target.cx - candidate.cx, target.cz - candidate.cz)
-        const areaDiff = Math.abs(target.area - candidate.area)
-
-        if (centroidDist < 0.5 && areaDiff < Math.max(0.5, target.area * 0.1)) {
-            const score = centroidDist + areaDiff
-            if (score < bestScore) { bestScore = score; best = s }
+    // Otherwise: candidates whose polygon contains this centroid, smallest area wins
+    const candidates = closedShapes.filter(s => {
+        const spts = s.nodeIds.map(id => nodesById.get(id)).filter(Boolean) as LineNode[]
+        let inside = false
+        for (let i = 0, j = spts.length - 1; i < spts.length; j = i++) {
+            const xi = spts[i]!.x, zi = spts[i]!.z, xj = spts[j]!.x, zj = spts[j]!.z
+            const intersect = ((zi > cz) !== (zj > cz)) &&
+                (cx < (xj - xi) * (cz - zi) / (zj - zi) + xi)
+            if (intersect) inside = !inside
         }
-    }
-    return best
+        return inside
+    })
+
+    if (candidates.length === 0) return undefined
+    return candidates.reduce((smallest, s) =>
+        shapeArea(s) < shapeArea(smallest) ? s : smallest
+    )
 }

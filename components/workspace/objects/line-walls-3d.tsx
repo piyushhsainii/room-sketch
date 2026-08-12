@@ -77,6 +77,7 @@ function LineWalls3DImpl({
     roomSceneConfigs,
     opacity = 1,
     transparent = false,
+    cutoutDrawInProgress = false,
 }: {
     fp: FloorPlanState; wallRoughness?: number; floorMaterial?: string; doorStyle?: string; closedShapes?: ClosedShape[]; wallColor?: string;
     wallMaterial?: WallMaterial;
@@ -85,6 +86,7 @@ function LineWalls3DImpl({
     roomSceneConfigs?: RoomSceneConfig[]
     opacity?: number
     transparent?: boolean
+    cutoutDrawInProgress?: boolean
 }) {
     const H = fp.roomHeight
     const T = 0.15
@@ -146,37 +148,33 @@ function LineWalls3DImpl({
 
                     const dx = b.x - a.x
                     const dz = b.z - a.z
-
                     const len = Math.hypot(dx, dz)
-
                     if (len < 0.05) continue
 
                     const mcx = (a.x + b.x) / 2
                     const mcz = (a.z + b.z) / 2
-
                     const angle = Math.atan2(dz, dx)
 
-                    /*
-                     * --------------------------------------------------------
-                     * OPENINGS
-                     * --------------------------------------------------------
-                     */
                     const segOpenings = fp.openings.filter(op =>
                         op.roomId === seg.id &&
                         op.segmentNodeIds?.[0] === a.id &&
                         op.segmentNodeIds?.[1] === b.id
                     )
-
-                    /*
-                     * --------------------------------------------------------
-                     * FIND WHICH ROOM IS ON WHICH SIDE OF THE WALL
-                     * --------------------------------------------------------
-                     */
                     const matchingShapes = shapesForSegment(
                         [a.id, b.id],
                         closedShapes ?? fp.closedShapes ?? []
                     )
+                    // NEW — skip building a wall for this piece entirely if every shape
+                    // bordering it is a cutout.
+                    const anyBorderingShapeIsCutout =
+                        matchingShapes.length > 0 &&
+                        matchingShapes.some(s => s?.cutout?.enabled)
 
+                    if (anyBorderingShapeIsCutout) continue
+                    const isUnclosedCutoutInProgress =
+                        cutoutDrawInProgress && matchingShapes.length === 0
+
+                    if (anyBorderingShapeIsCutout || isUnclosedCutoutInProgress) continue
                     const nx = Math.sin(angle)
                     const nz = -Math.cos(angle)
                     const probeDist = 0.3
@@ -466,7 +464,7 @@ function LineWalls3DImpl({
 
                             /*
                              * ----------------------------------------------------
-                             * RAILING
+                             * RAILING (full-segment)
                              * ----------------------------------------------------
                              */
                         } else if (wallType === 'railing') {
@@ -870,13 +868,17 @@ function LineWalls3DImpl({
                                 const headerH = effH - openingTop
                                 const isPassage = op.type === 'opening' && op.variant === 'opening-passage'
                                 const isArchway = op.type === 'opening' && op.variant === 'opening-archway'
+                                // NEW — a partial railing span should never get a solid
+                                // header slab above it, same reasoning as a passage: it's
+                                // meant to be open to the ceiling, not boxed in.
+                                const isRailingSpan = op.type === 'railing'
 
                                 /*
                                  * ------------------------------------------------
                                  * HEADER
                                  * ------------------------------------------------
                                  */
-                                if (!isPassage && headerH > 0.02) {
+                                if (!isPassage && !isRailingSpan && headerH > 0.02) {
                                     const hx = a.x + (dx / len) * opPos2
                                     const hz = a.z + (dz / len) * opPos2
 
@@ -1006,6 +1008,67 @@ function LineWalls3DImpl({
                                             }
                                         />
                                     )
+                                    /*
+                                     * ------------------------------------------------
+                                     * PARTIAL RAILING (balcony) — NEW
+                                     * ------------------------------------------------
+                                     * Same span-in-wall mechanism as doors/windows above
+                                     * (ox/oz already computed, header/sill already
+                                     * skipped via isRailingSpan), but renders a Railing3D
+                                     * run instead of a door/window mesh, leaving the rest
+                                     * of the segment as ordinary solid wall.
+                                     */
+                                } else if (op.type === 'railing') {
+                                    panels.push(
+                                        <group
+                                            key={`${seg.id}_${i}_r${si}`}
+                                            position={[ox, 0, oz]}
+                                            rotation={[0, -angle, 0]}
+                                        >
+                                            <group {...handlers}>
+                                                <Railing3D
+                                                    from={[-op.width / 2, 0, 0]}
+                                                    to={[op.width / 2, 0, 0]}
+                                                    wallRoughness={wallRoughness}
+                                                    color={op.railingColor ?? interior.color}
+                                                    height={op.railingHeight ?? 0.9}
+                                                    style={op.railingStyle ?? 'baluster'}
+                                                    postSpacing={op.railingPostSpacing}
+                                                    railingWidth={op.railingWidthDim}
+                                                />
+                                            </group>
+
+                                            {showOutline && (
+                                                <mesh
+                                                    position={[0, effH / 2, 0]}
+                                                    renderOrder={999}
+                                                >
+                                                    <boxGeometry
+                                                        args={[
+                                                            op.width * 1.01,
+                                                            effH * 1.01,
+                                                            segT * 1.4,
+                                                        ]}
+                                                    />
+                                                    <meshBasicMaterial
+                                                        color={
+                                                            isPieceSelected || isRoomSelected
+                                                                ? '#3B82F6'
+                                                                : '#93C5FD'
+                                                        }
+                                                        wireframe
+                                                        transparent
+                                                        opacity={
+                                                            isPieceSelected || isRoomSelected
+                                                                ? 0.9
+                                                                : 0.5
+                                                        }
+                                                        depthTest={false}
+                                                    />
+                                                </mesh>
+                                            )}
+                                        </group>
+                                    )
                                 }
 
                                 cursor =
@@ -1024,9 +1087,7 @@ function LineWalls3DImpl({
             })}
 
             {derivedPolygons.map((nodeIds, idx) => {
-                const nodes = nodeIds
-                    .map(nid => fp.lineNodes.find(n => n.id === nid))
-                    .filter(Boolean) as LineNode[]
+                const nodes = nodeIds.map(nid => fp.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
                 if (nodes.length < 3) return null
 
                 let area2 = 0
@@ -1042,17 +1103,50 @@ function LineWalls3DImpl({
                 const worldW = maxX - minX
                 const worldD = maxZ - minZ
                 const matchedShape = matchClosedShape(nodeIds, fp.lineNodes, closedShapes ?? fp.closedShapes ?? [])
+                console.log('[LINEWALLS POLY]', idx, {
+                    label: matchedShape?.label,
+                    id: matchedShape?.id,
+                    cutoutEnabled: matchedShape?.cutout?.enabled,
+                    bbox: { minX, maxX, minZ, maxZ },
+                    nodeIds,
+                })
+
+                // NEW — this polygon IS a cutout: don't render it as floor at all
+                if (matchedShape?.cutout?.enabled) return null
+
                 const shapeMat = matchedShape?.floorMaterial ?? floorMaterial
                 const centroidX = xs.reduce((s, x) => s + x, 0) / xs.length
                 const centroidZ = zs.reduce((s, z) => s + z, 0) / zs.length
                 const shapeLabel = matchedShape?.label || 'Area'
                 const nodeIdSet = new Set(nodeIds)
                 const matchedSeg = (fp.lineSegments ?? []).find(s =>
-                    s.nodeIds.length === nodeIds.length &&
-                    s.nodeIds.every(id => nodeIdSet.has(id))
+                    s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIdSet.has(id))
                 )
                 const floorRoomId = matchedSeg?.id ?? matchedShape?.id ?? null
                 const isFloorSelected = interactive && !!floorRoomId && selectedId === floorRoomId
+
+                // NEW — any OTHER polygon on this floor that's a cutout AND whose
+                // points fall inside this polygon's bounding box becomes a hole here
+                const holesForThisFloor = derivedPolygons
+                    .filter(otherIds => otherIds !== nodeIds)
+                    .map(otherIds => ({
+                        shape: matchClosedShape(otherIds, fp.lineNodes, closedShapes ?? fp.closedShapes ?? []),
+                        points: otherIds.map(id => nodesById.get(id)).filter(Boolean) as { x: number; z: number }[],
+                        rawIdCount: otherIds.length,
+                    }))
+                    .filter(o => o.shape?.cutout?.enabled)
+                    .filter(o => o.points.some(p => p.x >= minX && p.x <= maxX && p.z >= minZ && p.z <= maxZ))
+
+                if (matchedShape?.label === 'Area 1') {
+                    console.log('[HOLE POINT RESOLUTION]', holesForThisFloor.map(h => ({
+                        label: h.shape?.label,
+                        rawIdCount: h.rawIdCount,
+                        resolvedPointCount: h.points.length,
+                        points: h.points,
+                    })))
+                }
+
+                const holePointArrays = holesForThisFloor.map(o => o.points)
 
                 return (
                     <React.Fragment key={`floor_derived_${idx}`}>
@@ -1070,18 +1164,9 @@ function LineWalls3DImpl({
                             onSelect={onSelect}
                             opacity={opacity}
                             transparent={transparent}
+                            holes={holePointArrays}
                         />
-                        <Text
-                            position={[centroidX, 0.05, centroidZ]}
-                            rotation={[-Math.PI / 2, 0, 0]}
-                            fontSize={0.35}
-                            color="#6B5B4E"
-                            anchorX="center"
-                            anchorY="middle"
-                            outlineWidth={0.01}
-                            outlineColor="#FFFFFF"
-                            fillOpacity={opacity}
-                        >
+                        <Text position={[centroidX, 0.05, centroidZ]} rotation={[-Math.PI / 2, 0, 0]} fontSize={0.35} color="#6B5B4E" anchorX="center" anchorY="middle" outlineWidth={0.01} outlineColor="#FFFFFF" fillOpacity={opacity}>
                             {shapeLabel}
                         </Text>
                     </React.Fragment>
@@ -1185,6 +1270,7 @@ function DerivedFloorShape({
     nodeIds, nodes, minX, minZ, worldW, worldD,
     shapeMat, interactive, roomId, selected, onSelect,
     opacity = 1, transparent = false,
+    holes,
 }: {
     nodeIds: string[]
     nodes: LineNode[]
@@ -1196,8 +1282,10 @@ function DerivedFloorShape({
     onSelect?: (id: string) => void
     opacity?: number
     transparent?: boolean
+    holes?: { x: number; z: number }[][]
 }) {
     const geometry = React.useMemo(() => {
+        console.log('[GEOMETRY REBUILD]', nodeIds[0], 'holeCount:', holes?.length ?? 0, holes)
         const shape = new THREE.Shape()
         shape.moveTo(nodes[0]!.x, -nodes[0]!.z)
         for (let i = 1; i < nodes.length; i++) {
@@ -1205,7 +1293,27 @@ function DerivedFloorShape({
         }
         shape.closePath()
 
+        if (holes && holes.length > 0) {
+            for (const holePts of holes) {
+                if (holePts.length < 3) continue
+                const path = new THREE.Path()
+                path.moveTo(holePts[0]!.x, -holePts[0]!.z)
+                for (let i = 1; i < holePts.length; i++) {
+                    path.lineTo(holePts[i]!.x, -holePts[i]!.z)
+                }
+                path.closePath()
+                shape.holes.push(path)
+            }
+        }
+
+        console.log('[SHAPE HOLES CHECK]', {
+            outerPointCount: shape.getPoints().length,
+            holesCount: shape.holes.length,
+            holePointsEach: shape.holes.map(h => h.getPoints().length),
+        })
+
         const geo = new THREE.ShapeGeometry(shape)
+        console.log('[GEOMETRY VERTEX COUNT]', geo.attributes.position.count)
 
         const posAttr = geo.attributes.position
         const uvArr = new Float32Array(posAttr.count * 2)
@@ -1222,6 +1330,7 @@ function DerivedFloorShape({
         nodeIds.join(','),
         nodes.map(n => `${n.x},${n.z}`).join('|'),
         minX, minZ, worldW, worldD,
+        holes ? holes.map(h => h.map(p => `${p.x},${p.z}`).join(';')).join('|') : '',
     ])
 
     return (

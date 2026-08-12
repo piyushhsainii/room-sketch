@@ -331,7 +331,7 @@ export interface EditorOpening {
     id: string
     roomId: string
     wall: 'north' | 'south' | 'east' | 'west'
-    type: 'door' | 'window' | 'opening'
+    type: 'door' | 'window' | 'opening' | 'railing'
     variant: string
     position: number
     width: number
@@ -345,6 +345,12 @@ export interface EditorOpening {
     openAmount?: number
     bayPanelCount?: number   // defaults to 3
     bayDoorIndex?: number
+
+    railingStyle?: 'baluster' | 'glass' | 'cable' | 'solid-panel' | 'criss-cross'
+    railingHeight?: number
+    railingPostSpacing?: number
+    railingWidthDim?: number
+    railingColor?: string
 }
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
@@ -438,7 +444,11 @@ export type ClosedShape = {
     exteriorWallMaterial?: WallMaterial
     exteriorWallColor?: string
     wallMaterialSide?: 'interior' | 'exterior' | 'both'
-
+    cutout?: {
+        enabled: boolean,
+        toLevel?: string,        // which floor this hole opens INTO (floor above, typically)
+        openingOffset?: number,  // margin beyond the shape's own boundary, defaults 0.1–0.2
+    }
 }
 
 export type Annotation = { id: string; x: number; z: number; text: string; fontSize: number }

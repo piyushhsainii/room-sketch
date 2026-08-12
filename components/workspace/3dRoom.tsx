@@ -5,6 +5,8 @@ import { WallMat } from "./objects/wallmat";
 import { WindowVariant3D } from "./objects/window-variant3d";
 import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, WallMaterial } from "./lib/constants";
 import { DoorVariant3D } from "./objects/door-variants";
+import * as THREE from 'three'
+import { useMemo } from 'react'
 
 function Room3D({
     room,
@@ -25,7 +27,7 @@ function Room3D({
     roomWallOverrides,   // NEW
     opacity = 1,          // NEW
     transparent = false,  // NEW
-
+    cutouts
 }: {
     room: EditorRoom;
     openings?: EditorOpening[];
@@ -45,7 +47,7 @@ function Room3D({
     roomWallOverrides?: Partial<Record<'north' | 'south' | 'east' | 'west', { color?: string; material?: WallMaterial }>>
     opacity?: number
     transparent?: boolean
-
+    cutouts?: { x: number; z: number }[][]
 
 }) {
     const cx = room.x + room.width / 2
@@ -116,6 +118,27 @@ function Room3D({
         }
     }
 
+    const floorShape = useMemo(() => {
+        const s = new THREE.Shape()
+        const hx = W / 2 - T, hz = D / 2 - T // half-extents matching the old plane's W-T*2 / D-T*2 size
+        s.moveTo(-hx, -hz)
+        s.lineTo(hx, -hz)
+        s.lineTo(hx, hz)
+        s.lineTo(-hx, hz)
+        s.closePath()
+
+        for (const poly of cutouts ?? []) {
+            if (poly.length < 3) continue
+            const hole = new THREE.Path()
+            // convert world coords to this shape's local space (centered on cx, cz)
+            hole.moveTo(poly[0]!.x - cx, poly[0]!.z - cz)
+            for (let i = 1; i < poly.length; i++) hole.lineTo(poly[i]!.x - cx, poly[i]!.z - cz)
+            hole.closePath()
+            s.holes.push(hole)
+        }
+        return s
+    }, [W, D, T, cx, cz, cutouts])
+
     return (
         <group>
             {/* Floor */}
@@ -124,7 +147,7 @@ function Room3D({
                 onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
                 onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
             >
-                <planeGeometry args={[W - T * 2, D - T * 2]} />
+                <shapeGeometry args={[floorShape]} />
                 <FloorMat mat={floorMat} opacity={opacity} transparent={transparent} />
             </mesh>
 

@@ -33,7 +33,7 @@ export type FlatWallSegmentPiece = {
 
 export type FlatOpening = {
   id: string;
-  kind: "door" | "window" | "opening";
+  kind: "door" | "window" | "opening" | "railing";
   variant?: string;
   width: number;
   height: number;

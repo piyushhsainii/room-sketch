@@ -988,17 +988,38 @@ export function draw2D(
     // ── Closed shapes ──────────────────────────────────────────────────────────
     for (const nodeIds of closedPolygons) {
         const nodes = nodeIds.map(nid => nodesById.get(nid)).filter(Boolean) as LineNode[]
-
         if (nodes.length < 3) continue
-        // was: fp.closedShapes?.find(s => s.nodeIds.length === nodeIds.length && s.nodeIds.every(id => nodeIds.includes(id)))
-        // now: O(1) map lookup via sorted-id key instead of an O(shapes) scan per polygon
         const shapeKey = [...nodeIds].sort().join(',')
         const shapeMatch = shapesIndex.get(shapeKey)
+        const isCutout = !!shapeMatch?.cutout?.enabled
         const isSel = shapeMatch && selectedIds.includes(shapeMatch.id)
         const isHov = shapeMatch && hoveredId === shapeMatch.id
+
         ctx.save(); ctx.beginPath(); ctx.moveTo(cx(nodes[0]!.x), cy(nodes[0]!.z))
         for (let i = 1; i < nodes.length; i++) ctx.lineTo(cx(nodes[i]!.x), cy(nodes[i]!.z))
         ctx.closePath()
+
+        if (isCutout) {
+            // No fill at all — reads as an actual gap, not a room. Just a
+            // dashed red boundary marking where the hole is, no label.
+            ctx.strokeStyle = isSel ? '#DC2626' : 'rgba(220,38,38,0.6)'
+            ctx.lineWidth = isSel ? 2.5 : 1.5
+            ctx.setLineDash([5, 4])
+            ctx.stroke()
+            ctx.setLineDash([])
+            // small corner ticks at each node instead of a center label —
+            // "marks those points" per your ask, without implying it's a room
+            for (const n of nodes) {
+                ctx.beginPath()
+                ctx.arc(cx(n.x), cy(n.z), 3, 0, Math.PI * 2)
+                ctx.fillStyle = '#DC2626'
+                ctx.fill()
+            }
+            ctx.restore()
+            continue // skip the fill + Area-label code below entirely
+        }
+
+        // existing non-cutout rendering unchanged
         ctx.fillStyle = isSel ? 'rgba(99,102,241,0.15)' : 'rgba(139,123,107,0.12)'
         ctx.fill()
         ctx.strokeStyle = isSel ? 'rgba(99,102,241,0.85)' : isHov ? 'rgba(165,168,255,0.6)' : 'rgba(139,123,107,0.5)'
@@ -1008,11 +1029,7 @@ export function draw2D(
         ctx.setLineDash([])
         const cx_ = nodes.reduce((s, n) => s + n.x, 0) / nodes.length
         const cz_ = nodes.reduce((s, n) => s + n.z, 0) / nodes.length
-        drawPlainLabel(ctx, cx(cx_), cy(cz_), shapeMatch?.label || 'Area', {
-            fontSize: Math.max(9, 11 * zoom),
-            weight: 700,
-            color: isSel ? '#4F46E5' : '#1a1a1a',
-        })
+        drawPlainLabel(ctx, cx(cx_), cy(cz_), shapeMatch?.label || 'Area', { fontSize: Math.max(9, 11 * zoom), weight: 700, color: isSel ? '#4F46E5' : '#1a1a1a' })
         ctx.restore()
     }
     // ── Line nodes ─────────────────────────────────────────────────────────────

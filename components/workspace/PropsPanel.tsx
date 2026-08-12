@@ -250,7 +250,8 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             : wallDecor ? WALL_DECOR_LABELS[wallDecor.type]
                                 : light ? LIGHT_FIXTURE_LABELS[light.type]
                                     : outdoorObj ? OUTDOOR_OBJECT_LABELS[outdoorObj.type]
-                                        : 'Wall Segment'
+                                        : shape ? (shape.label || 'Area')
+                                            : 'Wall Segment'
 
     return (
         <div style={{ padding: SPACE.md, display: 'flex', flexDirection: 'column', gap: SPACE.md, background: COLOR.bg }}>
@@ -303,6 +304,59 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             onClear={() => patchSpecificWall({ material: null })}
                             theme={pickerTheme}
                         />
+                    </Card>
+                </>
+            )}
+
+            {shape && !wallRoom && (
+                <>
+                    <Card>
+                        <PropField label="Label">
+                            <input
+                                value={shape.label ?? ''}
+                                onChange={e => {
+                                    const exists = (fp.closedShapes ?? []).some(sh => sh.id === shape.id)
+                                    const patch = { label: e.target.value }
+                                    onChange({
+                                        ...fp,
+                                        closedShapes: exists
+                                            ? (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, ...patch } : sh)
+                                            : [...(fp.closedShapes ?? []), { ...shape, ...patch }],
+                                    })
+                                }}
+                                style={{ /* match your existing text input styling */ }}
+                            />
+                        </PropField>
+                    </Card>
+
+                    <Card>
+                        <SectionLabel>Floor Cutout</SectionLabel>
+                        <PropField label="Enabled">
+                            <Button
+                                variant="secondary"
+                                onClick={() => {
+                                    const exists = (fp.closedShapes ?? []).some(sh => sh.id === shape.id)
+                                    const patch = { cutout: { enabled: !(shape.cutout?.enabled ?? false), openingOffset: shape.cutout?.openingOffset ?? 0.15 } }
+                                    onChange({
+                                        ...fp,
+                                        closedShapes: exists
+                                            ? (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, ...patch } : sh)
+                                            : [...(fp.closedShapes ?? []), { ...shape, ...patch }],
+                                    })
+                                }}
+                            >
+                                {(shape.cutout?.enabled ?? false) ? '☑ On (hole in floor)' : '☐ Off'}
+                            </Button>
+                        </PropField>
+                        {(shape.cutout?.enabled ?? false) && (
+                            <PropField label="Opening margin (m)">
+                                <NumInput value={shape.cutout?.openingOffset ?? 0.15} min={0} max={1} step={0.05}
+                                    onChange={v => onChange({
+                                        ...fp,
+                                        closedShapes: (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, cutout: { ...(sh.cutout ?? { enabled: true }), openingOffset: v } } : sh)
+                                    })} />
+                            </PropField>
+                        )}
                     </Card>
                 </>
             )}
@@ -1410,6 +1464,38 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                     </PropField>
                 </Card>
             )}
+            {
+                shape?.cutout &&
+                <Card>
+                    <SectionLabel>Floor Cutout</SectionLabel>
+                    <PropField label="Enabled">
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                const exists = (fp.closedShapes ?? []).some(sh => sh.id === shape.id)
+                                const patch = { cutout: { enabled: !(shape.cutout?.enabled ?? false), openingOffset: shape.cutout?.openingOffset ?? 0.15 } }
+                                onChange({
+                                    ...fp,
+                                    closedShapes: exists
+                                        ? (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, ...patch } : sh)
+                                        : [...(fp.closedShapes ?? []), { ...shape, ...patch }],
+                                })
+                            }}
+                        >
+                            {(shape.cutout?.enabled ?? false) ? '☑ On (hole in floor)' : '☐ Off'}
+                        </Button>
+                    </PropField>
+                    {(shape.cutout?.enabled ?? false) && (
+                        <PropField label="Opening margin (m)">
+                            <NumInput value={shape.cutout?.openingOffset ?? 0.15} min={0} max={1} step={0.05}
+                                onChange={v => onChange({
+                                    ...fp,
+                                    closedShapes: (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, cutout: { ...(sh.cutout ?? { enabled: true }), openingOffset: v } } : sh)
+                                })} />
+                        </PropField>
+                    )}
+                </Card>
+            }
 
             <Button
                 variant="danger"

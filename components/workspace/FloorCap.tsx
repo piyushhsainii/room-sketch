@@ -3,14 +3,15 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { deriveClosedPolygons } from '@/lib/helpers'
-import { FloorPlanState } from './lib/constants'
+import { FloorPlanState, LineNode } from './lib/constants'
 
 type FloorCapProps = {
-    fp: FloorPlanState        // the floor BELOW (being capped)
-    floorAbove?: FloorPlanState // NEW — the floor ABOVE, whose footprint determines where a cap is needed at all
+    fp: FloorPlanState
+    floorAbove?: FloorPlanState
     height: number
     color?: string
-    stairPadding?: number     // extra margin around each stair opening, in meters
+    stairPadding?: number
+    floorAboveId?: string
 }
 
 type AABB = { minX: number; maxX: number; minZ: number; maxZ: number }
@@ -48,7 +49,7 @@ function pathFromAABB(box: AABB): THREE.Path {
     return p
 }
 
-export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPadding = 0.3 }: FloorCapProps) {
+export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPadding = 0.3, floorAboveId }: FloorCapProps) {
     const nodesById = useMemo(
         () => new Map(fp.lineNodes.map(n => [n.id, n])),
         [fp.lineNodes]
@@ -59,22 +60,25 @@ export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPaddi
         [fp.lineNodes, fp.lineSegments]
     )
 
-    // ── Stair openings on the floor ABOVE — these always punch a hole,
-    // regardless of what's above them, so a stair is always climbable
-    // through to the next floor.
-    const stairHoles: AABB[] = useMemo(() => {
-        if (!floorAbove) return []
-        return (floorAbove.stairs ?? []).map(s => ({
-            minX: s.x - stairPadding,
-            maxX: s.x + s.width + stairPadding,
-            minZ: s.z - stairPadding,
-            maxZ: s.z + s.depth + stairPadding,
-        }))
-    }, [floorAbove, stairPadding])
 
-    // ── Rectangular rooms below, capped ONLY where the floor above has an
-    // occupied room footprint over them (an intersection, not the full
-    // room-below extent) — no floor above means no cap, i.e. an open void.
+
+    const cutoutHoles: AABB[] = useMemo(() => {
+        return (fp.closedShapes ?? [])
+            .filter(sh => sh.cutout?.enabled && (!sh.cutout.toLevel || sh.cutout.toLevel === floorAboveId))
+            .map(sh => {
+                const nodes = sh.nodeIds.map(id => nodesById.get(id)).filter(Boolean) as LineNode[]
+                if (nodes.length < 3) return null
+                const pad = sh.cutout?.openingOffset ?? 0.15
+                const xs = nodes.map(n => n.x), zs = nodes.map(n => n.z)
+                return {
+                    minX: Math.min(...xs) - pad, maxX: Math.max(...xs) + pad,
+                    minZ: Math.min(...zs) - pad, maxZ: Math.max(...zs) + pad,
+                }
+            })
+            .filter(Boolean) as AABB[]
+    }, [fp.closedShapes, nodesById, floorAboveId])
+
+
     const roomCapShapes = useMemo(() => {
         if (!floorAbove) return [] // nothing above => nothing to stand on => no cap
         const shapes: THREE.Shape[] = []
@@ -85,7 +89,7 @@ export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPaddi
                 if (!overlap) continue
                 const shape = shapeFromAABB(overlap)
                 // Punch stair holes that fall inside this overlap region
-                for (const hole of stairHoles) {
+                for (const hole of cutoutHoles) {
                     const holeOverlap = aabbIntersect(overlap, hole)
                     if (holeOverlap) shape.holes.push(pathFromAABB(holeOverlap))
                 }
@@ -93,7 +97,7 @@ export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPaddi
             }
         }
         return shapes
-    }, [fp.rooms, floorAbove, stairHoles])
+    }, [fp.rooms, floorAbove, cutoutHoles])
 
     // ── Irregular line-drawn areas — LIMITATION: this still caps the
     // full closed-shape extent rather than intersecting with what's above,
@@ -125,7 +129,7 @@ export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPaddi
             for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i]!.x, pts[i]!.z)
             shape.closePath()
 
-            for (const hole of stairHoles) {
+            for (const hole of cutoutHoles) {
                 const holeOverlap = aabbIntersect(bbox, hole)
                 if (holeOverlap) shape.holes.push(pathFromAABB(holeOverlap))
             }
@@ -133,7 +137,7 @@ export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPaddi
             shapes.push(shape)
         }
         return shapes
-    }, [closedPolygons, nodesById, floorAbove, stairHoles])
+    }, [closedPolygons, nodesById, floorAbove, cutoutHoles])
 
     const allShapes = [...roomCapShapes, ...lineShapes]
     if (allShapes.length === 0) return null

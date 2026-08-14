@@ -1,23 +1,24 @@
 import * as React from "react"
 import * as Icons from "lucide-react" // adjust to your actual icon lib import if different
-import { CATEGORY_LABELS } from "./furniture-constants" // adjust path
+import { CATEGORY_LABELS, FurnitureType } from "./furniture-constants" // adjust path
 
 import { EditorTool, FurnitureCatalogEntry, FurnitureCategory, ICONS, ToolGroup } from "./constants"
 import { PresetsPanel } from "@/components/ui/PresetPanel"
 import { THEME } from "../FloorPlanEditor"
 import { ScrollableList } from "@/components/ui/ScrollableList"
+import { RoomTemplate, WallPreset } from "./presets"
 
 export interface ToolGroupsContext {
   furnitureByCategory: Record<FurnitureCategory, FurnitureCatalogEntry[]>
   openFurnitureCats: Set<FurnitureCategory>
   setOpenFurnitureCats: React.Dispatch<React.SetStateAction<Set<FurnitureCategory>>>
-  selectedFurnitureType: EditorTool | null
-  setSelectedFurnitureType: (id: EditorTool) => void
+  selectedFurnitureType: FurnitureType | null
+  setSelectedFurnitureType: (id: FurnitureType) => void
   isFurnitureNew: (entry: FurnitureCatalogEntry) => boolean
   armedWallPresetId: string | null
   armedTemplateId: string | null
-  armWallPreset: (id: string) => void
-  armRoomTemplate: (id: string) => void
+  armWallPreset: (preset: WallPreset) => void
+  armRoomTemplate: (template: RoomTemplate) => void
 }
 
 export function getToolGroups(ctx: ToolGroupsContext): ToolGroup[] {

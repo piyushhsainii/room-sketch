@@ -298,7 +298,7 @@ export default function FloorPlanEditor({
     // Furniture placement + collisions
     // ─────────────────────────────────────────────────────────────────────────
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
-    const [openFurnitureCats, setOpenFurnitureCats] = useState<Set<string>>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
+    const [openFurnitureCats, setOpenFurnitureCats] = useState<any>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
     const { checkCollisions, overlappingRef, hasChanged, clear } = useFurnitureCollisions()
     const [overlappingIds, setOverlappingIds] = useState<Set<string>>(new Set())
     const furnitureByCategory = useMemo(() => getFurnitureByCategory(), [])
@@ -3475,7 +3475,7 @@ export default function FloorPlanEditor({
                                                         }}
                                                     >
                                                         <button
-                                                            onClick={() => setOpenFurnitureCats(prev => {
+                                                            onClick={() => setOpenFurnitureCats((prev: any) => {
                                                                 const next = new Set(prev)
                                                                 next.has(catId) ? next.delete(catId) : next.add(catId)
                                                                 return next

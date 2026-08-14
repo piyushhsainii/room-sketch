@@ -12,6 +12,7 @@ import { Railing3D } from './railing-3d';
 import { matchClosedShape } from '../MaterialsPanel';
 import { Text } from '@react-three/drei';
 import { ArchHeader3D } from './arch-header';
+import { CutoutGuard3D } from './CutoutGuard';
 
 type WallSideOverride = {
     material?: WallMaterial | null
@@ -93,16 +94,19 @@ function LineWalls3DImpl({
     const FACE_EPS = 0.003
     const [hovered, setHovered] = React.useState(false)
 
-    // FIX #2 — hoisted out of render-time inline call, memoized on the
-    // actual geometry inputs. Was previously called fresh on every render
-    // with no memoization at all.
+    // REVERTED — back to reading fp.lineNodes/fp.lineSegments directly.
+    // The blanket coordinate-based merge (mergeCoincidentNodes) fused
+    // unrelated rooms whose corners happened to be close together
+    // (e.g. Area 8 + Area 10) and desynced fp.closedShapes' nodeIds
+    // from the merged ids, which broke cutout matching. Do NOT
+    // reintroduce a global epsilon merge here — any dedup fix needs to
+    // target only the specific known-duplicate node ids AND remap them
+    // inside closedShapes at the same time.
     const derivedPolygons = React.useMemo(
         () => deriveClosedPolygons(fp.lineNodes, fp.lineSegments),
         [fp.lineNodes, fp.lineSegments]
     )
 
-    // FIX #3 — hoisted out of the innermost per-piece loop. Was previously
-    // rebuilt from scratch for every wall piece on every segment.
     const nodesById = React.useMemo(
         () => new Map(fp.lineNodes.map(n => [n.id, n])),
         [fp.lineNodes]
@@ -114,20 +118,17 @@ function LineWalls3DImpl({
         string,
         'interior' | 'exterior' | 'both'
     >()
-    // const segExteriorWallMaterial = new Map<string, WallMaterial | undefined>()
-    // const segExteriorWallColor = new Map<string, string | undefined>()
 
-    // in LineWalls3D, alongside the existing maps
-    // alongside the existing maps, near segWallMaterial/segWallColor
     const segWallExteriorMaterial = new Map<string, WallMaterial | undefined>()
 
     for (const seg of fp.lineSegments ?? []) {
         const segCfg = roomSceneConfigs?.find(r => r.roomId === seg.id)
         segWallMaterial.set(seg.id, segCfg?.wallMaterial)
-        segWallExteriorMaterial.set(seg.id, segCfg?.exteriorWallMaterial)   // NEW
+        segWallExteriorMaterial.set(seg.id, segCfg?.exteriorWallMaterial)
         segWallColor.set(seg.id, segCfg?.wallColor)
         segWallMaterialSide.set(seg.id, segCfg?.wallMaterialSide ?? 'interior')
     }
+
     return (
         <>
             {(fp.lineSegments ?? []).map(seg => {
@@ -164,8 +165,6 @@ function LineWalls3DImpl({
                         [a.id, b.id],
                         closedShapes ?? fp.closedShapes ?? []
                     )
-                    // NEW — skip building a wall for this piece entirely if every shape
-                    // bordering it is a cutout.
                     const anyBorderingShapeIsCutout =
                         matchingShapes.length > 0 &&
                         matchingShapes.some(s => s?.cutout?.enabled)
@@ -230,16 +229,6 @@ function LineWalls3DImpl({
 
                     const exteriorFaceAttach = EXTERIOR_ATTACH
 
-                    console.log('[WALL FACE ORIENTATION]', {
-                        segment: seg.id,
-                        piece: i,
-                        shapeFacingA: shapeFacingA?.id,
-                        shapeFacingB: shapeFacingB?.id,
-                        interiorIsPlusNormal,
-                        interiorFaceAttach,
-                        exteriorFaceAttach,
-                    })
-
                     const selectedWallSide =
                         segWallMaterialSide.get(seg.id) ?? 'interior'
 
@@ -249,48 +238,11 @@ function LineWalls3DImpl({
                     const selectedWallColor =
                         segWallColor.get(seg.id)
 
-                    console.group(
-                        `%c[WALL MATERIAL DEBUG] ${seg.id} piece ${i}`,
-                        'color: #00aaff; font-weight: bold;'
-                    )
-
-                    console.log('SEGMENT:', {
-                        id: seg.id,
-                        nodeIds: seg.nodeIds,
-                        angle,
-                        rotationY: -angle,
-                    })
-
-                    console.log('SELECTED SIDE:', selectedWallSide)
-
-                    console.log('SELECTED MATERIAL:', {
-                        material: selectedWallMaterial,
-                        color: selectedWallColor,
-                    })
-
-                    console.log('SHAPES:', {
-                        matchingShapes: matchingShapes.length,
-                        shapeFacingA: shapeFacingA?.id,
-                        shapeFacingB: shapeFacingB?.id,
-                    })
-
-                    console.log('OVERRIDES:', {
-                        overrideA,
-                        overrideB,
-                    })
-
-                    console.groupEnd()
                     /*
                      * --------------------------------------------------------
                      * BASE MATERIALS
                      * --------------------------------------------------------
-                     *
-                     * Start with the material belonging to each side's room.
-                     *
-                     * If there is a segment-level material selection, it
-                     * replaces ONLY the selected physical face.
                      */
-                    // Default wall on both sides
                     let interiorMat: WallMaterial = wallMaterial
                     let exteriorMat: WallMaterial = wallMaterial
                     let interiorColor: string = wallColor
@@ -308,23 +260,11 @@ function LineWalls3DImpl({
                         const soloShape = shapeFacingA ?? shapeFacingB
                         exteriorMat = soloShape?.exteriorWallMaterial ?? exteriorMat
                     }
-                    /*
-                     * --------------------------------------------------------
-                     * SEGMENT SIDE SELECTION
-                     * --------------------------------------------------------
-                     *
-                     * IMPORTANT:
-                     *
-                     * We do NOT apply selectedWallMaterial to both faces
-                     * unless the user explicitly selected "both".
-                     */
 
-                    // replace the old side-gated if/else block with:
                     const selectedWallExteriorMaterial = segWallExteriorMaterial.get(seg.id)
                     if (selectedWallMaterial) interiorMat = selectedWallMaterial
                     if (selectedWallExteriorMaterial) exteriorMat = selectedWallExteriorMaterial
 
-                    // ── FINAL FACE MATERIALS ──
                     const interior = {
                         mat: overrideA?.material ?? interiorMat,
                         color: overrideA?.color ?? interiorColor,
@@ -334,25 +274,6 @@ function LineWalls3DImpl({
                         color: overrideB?.color ?? overrideA?.exteriorColor ?? exteriorColor,
                     }
 
-                    console.group(
-                        `%c FINAL MATERIALS — ${seg.id} / piece ${i}`,
-                        'color: #ff9900; font-weight: bold;'
-                    )
-
-                    console.log('INTERIOR:', interior)
-
-                    console.log('EXTERIOR:', exterior)
-
-                    console.log('SIDE SELECTED:', selectedWallSide)
-
-                    console.groupEnd()
-
-                    console.groupEnd()
-                    /*
-                     * --------------------------------------------------------
-                     * SELECTION / INTERACTION
-                     * --------------------------------------------------------
-                     */
                     const pieceId = `${seg.id}::piece::${i}`
 
                     const isPieceSelected =
@@ -461,12 +382,6 @@ function LineWalls3DImpl({
                                     {showOutline && outlineMesh}
                                 </group>
                             )
-
-                            /*
-                             * ----------------------------------------------------
-                             * RAILING (full-segment)
-                             * ----------------------------------------------------
-                             */
                         } else if (wallType === 'railing') {
                             panels.push(
                                 <group
@@ -542,12 +457,6 @@ function LineWalls3DImpl({
                                     )}
                                 </group>
                             )
-
-                            /*
-                             * ----------------------------------------------------
-                             * SOLID WALL
-                             * ----------------------------------------------------
-                             */
                         } else {
                             panels.push(
                                 <group key={`${seg.id}_${i}`}>
@@ -573,7 +482,6 @@ function LineWalls3DImpl({
                                                 segT,
                                             ]}
                                         />
-                                        {/* End cap +X */}
                                         <WallMat
                                             attach="material-0"
                                             mat={interior.mat}
@@ -586,7 +494,6 @@ function LineWalls3DImpl({
                                             transparent={transparent}
                                         />
 
-                                        {/* End cap -X */}
                                         <WallMat
                                             attach="material-1"
                                             mat={interior.mat}
@@ -599,7 +506,6 @@ function LineWalls3DImpl({
                                             transparent={transparent}
                                         />
 
-                                        {/* Top */}
                                         <WallMat
                                             attach="material-2"
                                             mat={interior.mat}
@@ -612,7 +518,6 @@ function LineWalls3DImpl({
                                             transparent={transparent}
                                         />
 
-                                        {/* Bottom */}
                                         <WallMat
                                             attach="material-3"
                                             mat={interior.mat}
@@ -625,7 +530,6 @@ function LineWalls3DImpl({
                                             transparent={transparent}
                                         />
 
-                                        {/* +Z = EXTERIOR */}
                                         <WallMat
                                             attach={exteriorFaceAttach}
                                             mat={exterior.mat}
@@ -638,7 +542,6 @@ function LineWalls3DImpl({
                                             transparent={transparent}
                                         />
 
-                                        {/* -Z = INTERIOR */}
                                         <WallMat
                                             attach={interiorFaceAttach}
                                             mat={interior.mat}
@@ -656,12 +559,6 @@ function LineWalls3DImpl({
                                 </group>
                             )
                         }
-
-                        /*
-                         * ========================================================
-                         * WALL HAS OPENINGS
-                         * ========================================================
-                         */
                     } else {
                         const sorted = [...segOpenings].sort(
                             (a, b) =>
@@ -689,11 +586,6 @@ function LineWalls3DImpl({
                             const segLen =
                                 segEnd - cursor
 
-                            /*
-                             * ------------------------------------------------
-                             * WALL SECTION BETWEEN OPENINGS
-                             * ------------------------------------------------
-                             */
                             if (segLen > 0.02) {
                                 const segMid =
                                     cursor + segLen / 2
@@ -733,7 +625,6 @@ function LineWalls3DImpl({
                                                 ]}
                                             />
 
-                                            {/* End cap +X */}
                                             <WallMat
                                                 attach="material-0"
                                                 mat={interior.mat}
@@ -746,7 +637,6 @@ function LineWalls3DImpl({
                                                 transparent={transparent}
                                             />
 
-                                            {/* End cap -X */}
                                             <WallMat
                                                 attach="material-1"
                                                 mat={interior.mat}
@@ -759,7 +649,6 @@ function LineWalls3DImpl({
                                                 transparent={transparent}
                                             />
 
-                                            {/* Top */}
                                             <WallMat
                                                 attach="material-2"
                                                 mat={interior.mat}
@@ -772,7 +661,6 @@ function LineWalls3DImpl({
                                                 transparent={transparent}
                                             />
 
-                                            {/* Bottom */}
                                             <WallMat
                                                 attach="material-3"
                                                 mat={interior.mat}
@@ -785,7 +673,6 @@ function LineWalls3DImpl({
                                                 transparent={transparent}
                                             />
 
-                                            {/* +Z = EXTERIOR */}
                                             <WallMat
                                                 attach={exteriorFaceAttach}
                                                 mat={exterior.mat}
@@ -798,7 +685,6 @@ function LineWalls3DImpl({
                                                 transparent={transparent}
                                             />
 
-                                            {/* -Z = INTERIOR */}
                                             <WallMat
                                                 attach={interiorFaceAttach}
                                                 mat={interior.mat}
@@ -856,11 +742,6 @@ function LineWalls3DImpl({
                                 )
                             }
 
-                            /*
-                             * ------------------------------------------------
-                             * OPENING
-                             * ------------------------------------------------
-                             */
                             if (op) {
                                 const opPos2 = (op.segmentT ?? 0) * len
                                 const openingBottom = op.sillHeight ?? 0
@@ -915,11 +796,6 @@ function LineWalls3DImpl({
                                     }
                                 }
 
-                                /*
-                                 * ------------------------------------------------
-                                 * SILL
-                                 * ------------------------------------------------
-                                 */
                                 if ((op.type === 'window' || op.type === 'door') && openingBottom > 0.02) {
                                     const sx = a.x + (dx / len) * opPos2
                                     const sz = a.z + (dz / len) * opPos2
@@ -947,11 +823,6 @@ function LineWalls3DImpl({
                                 const ox = a.x + (dx / len) * opPos2
                                 const oz = a.z + (dz / len) * opPos2
 
-                                /*
-                                 * ------------------------------------------------
-                                 * WINDOW
-                                 * ------------------------------------------------
-                                 */
                                 if (op.type === 'window') {
                                     const glazingCenterY =
                                         op.sillHeight +
@@ -1005,16 +876,6 @@ function LineWalls3DImpl({
                                             }
                                         />
                                     )
-                                    /*
-                                     * ------------------------------------------------
-                                     * PARTIAL RAILING (balcony) — NEW
-                                     * ------------------------------------------------
-                                     * Same span-in-wall mechanism as doors/windows above
-                                     * (ox/oz already computed, header/sill already
-                                     * skipped via isRailingSpan), but renders a Railing3D
-                                     * run instead of a door/window mesh, leaving the rest
-                                     * of the segment as ordinary solid wall.
-                                     */
                                 } else if (op.type === 'railing') {
                                     panels.push(
                                         <group
@@ -1100,15 +961,30 @@ function LineWalls3DImpl({
                 const worldW = maxX - minX
                 const worldD = maxZ - minZ
                 const matchedShape = matchClosedShape(nodeIds, fp.lineNodes, closedShapes ?? fp.closedShapes ?? [])
-                console.log('[LINEWALLS POLY]', idx, {
-                    label: matchedShape?.label,
-                    id: matchedShape?.id,
-                    cutoutEnabled: matchedShape?.cutout?.enabled,
-                    bbox: { minX, maxX, minZ, maxZ },
-                    nodeIds,
-                })
 
-                // NEW — this polygon IS a cutout: don't render it as floor at all
+                // RESTORED — this polygon IS a cutout: don't render it as floor at all.
+                // (Was temporarily commented out while debugging Area 10; re-enabled
+                // now that the blanket node merge that broke matching is reverted.)
+
+                if (matchedShape?.cutout?.enabled) {
+                    return (
+                        <CutoutGuard3D
+                            key={`cutout_guard_${idx}`}
+                            shape={matchedShape}
+                            nodesById={nodesById}
+                            wallMaterial={wallMaterial}
+                            wallColor={wallColor}
+                            wallRoughness={wallRoughness}
+                            height={fp.roomHeight}
+                            opacity={opacity}
+                            transparent={transparent}
+                            interactive={interactive}
+                            selectedId={selectedId}
+                            onSelect={onSelect}
+                        />
+                    )
+                }
+
                 if (matchedShape?.cutout?.enabled) return null
 
                 const shapeMat = matchedShape?.floorMaterial ?? floorMaterial
@@ -1122,8 +998,6 @@ function LineWalls3DImpl({
                 const floorRoomId = matchedSeg?.id ?? matchedShape?.id ?? null
                 const isFloorSelected = interactive && !!floorRoomId && selectedId === floorRoomId
 
-                // NEW — any OTHER polygon on this floor that's a cutout AND whose
-                // points fall inside this polygon's bounding box becomes a hole here
                 const holesForThisFloor = derivedPolygons
                     .filter(otherIds => otherIds !== nodeIds)
                     .map(otherIds => ({
@@ -1133,15 +1007,6 @@ function LineWalls3DImpl({
                     }))
                     .filter(o => o.shape?.cutout?.enabled)
                     .filter(o => o.points.some(p => p.x >= minX && p.x <= maxX && p.z >= minZ && p.z <= maxZ))
-
-                if (matchedShape?.label === 'Area 1') {
-                    console.log('[HOLE POINT RESOLUTION]', holesForThisFloor.map(h => ({
-                        label: h.shape?.label,
-                        rawIdCount: h.rawIdCount,
-                        resolvedPointCount: h.points.length,
-                        points: h.points,
-                    })))
-                }
 
                 const holePointArrays = holesForThisFloor.map(o => o.points)
 
@@ -1282,7 +1147,6 @@ function DerivedFloorShape({
     holes?: { x: number; z: number }[][]
 }) {
     const geometry = React.useMemo(() => {
-        console.log('[GEOMETRY REBUILD]', nodeIds[0], 'holeCount:', holes?.length ?? 0, holes)
         const shape = new THREE.Shape()
         shape.moveTo(nodes[0]!.x, -nodes[0]!.z)
         for (let i = 1; i < nodes.length; i++) {
@@ -1303,14 +1167,7 @@ function DerivedFloorShape({
             }
         }
 
-        console.log('[SHAPE HOLES CHECK]', {
-            outerPointCount: shape.getPoints().length,
-            holesCount: shape.holes.length,
-            holePointsEach: shape.holes.map(h => h.getPoints().length),
-        })
-
         const geo = new THREE.ShapeGeometry(shape)
-        console.log('[GEOMETRY VERTEX COUNT]', geo.attributes.position.count)
 
         const posAttr = geo.attributes.position
         const uvArr = new Float32Array(posAttr.count * 2)

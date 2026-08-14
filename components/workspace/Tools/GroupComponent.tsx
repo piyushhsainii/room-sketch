@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useId } from "react"
 import { createPortal } from "react-dom"
 import { EditorTool, ToolGroup } from "../lib/constants"
+import { useHoverFlyout } from "../hooks/useHoverFlyout"
+import { FlyoutPanel } from "../FlyoutPanel"
 
 // ── Hook: track a ref's bounding rect, recompute on open ────────────────────
 
@@ -75,77 +77,81 @@ function Tooltip({ label, shortcut, children }: { label: string; shortcut?: stri
 
 // ── GroupButton (flyout via portal) ──────────────────────────────────────────
 
+
+// ─────────────────────────────────────────────────────────────────────────
+// CHANGES vs. the version you pasted:
+//
+// 1. Open/close-timer + outside-click logic extracted to `useHoverFlyout`
+//    (identical behavior, just shared now instead of living only here).
+// 2. NEW: `group.renderFlyout` escape hatch. If present, it's used instead
+//    of the default 3-column icon grid — this is what lets furniture and
+//    presets render their own content through the SAME hover mechanism as
+//    every other tool group, instead of FloorPlanEditor.tsx maintaining
+//    separate `furnitureAnchorRect`/`presetsAnchorRect` state + a
+//    `tool === 'furniture'` effect.
+// 3. Flyout now opens whenever `hasVariants || group.renderFlyout` is true
+//    (previously gated on `hasVariants` alone, which is why furniture/
+//    presets — single-leaf groups — never got a flyout via this component).
+// 4. Visual shell swapped to `FlyoutPanel` (COLOR/SPACE tokens), so this
+//    now matches PropsPanel's palette instead of the old inline THEME
+//    styling. The trigger button itself (48px icon square) is UNCHANGED —
+//    only flagging this in case you want the button restyled too; wasn't
+//    asked for, so left as-is.
+//
+// REQUIRED type addition (wherever `ToolGroup` is defined, likely
+// `lib/tool-constants.ts` or `lib/constants.ts`):
+//
+//   export type ToolGroup = {
+//     id: string
+//     label: string
+//     leaves: { id: EditorTool; label: string; icon: ReactNode; key?: string }[]
+//     renderFlyout?: (ctx: { onSelect: (tool: EditorTool) => void; close: () => void }) => ReactNode
+//     flyoutWidth?: number   // optional, defaults to 200 (grid) / 280 (custom)
+//   }
+// ─────────────────────────────────────────────────────
+
+
+
 export function GroupButton({
     group,
     activeTool,
     lastUsed,
     onSelect,
-    registerAnchor, // NEW
+    registerAnchor,
 }: {
     group: ToolGroup
     activeTool: EditorTool
     lastUsed: Record<string, EditorTool>
     onSelect: (tool: EditorTool) => void
-    registerAnchor?: (groupId: string, el: HTMLDivElement | null) => void // NEW
+    registerAnchor?: (groupId: string, el: HTMLDivElement | null) => void
 }) {
     const [hover, setHover] = useState(false)
     const [pressed, setPressed] = useState(false)
-    const [flyoutOpen, setFlyoutOpen] = useState(false)
-    const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const anchorRef = useRef<HTMLDivElement>(null)
-    const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
 
-    // NEW — merges the existing anchorRef with reporting the node up to
-    // whoever's rendering <Toolbar>, so external panels (like the furniture
-    // flyout) can portal-anchor to this exact button too.
+    const hasVariants = group.leaves.length > 1
+    const hasFlyout = hasVariants || !!group.renderFlyout
+
+    const { open, anchorRect, setOpen, anchorProps, flyoutTriggerProps } =
+        useHoverFlyout({ id: group.id, enabled: hasFlyout })
+
     const setAnchorNode = (el: HTMLDivElement | null) => {
-        ; (anchorRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+        anchorProps.ref.current = el
         registerAnchor?.(group.id, el)
     }
 
-    useEffect(() => {
-        if (flyoutOpen && anchorRef.current) {
-            setAnchorRect(anchorRef.current.getBoundingClientRect())
-        }
-    }, [flyoutOpen])
-
-    const hasVariants = group.leaves.length > 1
     const currentLeaf = hasVariants
         ? group.leaves.find(l => l.id === lastUsed[group.id]) ?? group.leaves[0]
         : group.leaves[0]
     const isActive = group.leaves.some(l => l.id === activeTool)
 
-    useEffect(() => {
-        if (!flyoutOpen) return
-        const handler = (e: MouseEvent) => {
-            const target = e.target as Node
-            if (anchorRef.current?.contains(target)) return
-            const flyoutEl = document.getElementById(`flyout-${group.id}`)
-            if (flyoutEl?.contains(target)) return
-            setFlyoutOpen(false)
-        }
-        document.addEventListener('mousedown', handler)
-        return () => document.removeEventListener('mousedown', handler)
-    }, [flyoutOpen, group.id])
-
-    const scheduleOpen = () => {
-        if (!hasVariants) return
-        if (closeTimer.current) clearTimeout(closeTimer.current)
-        openTimer.current = setTimeout(() => setFlyoutOpen(true), 220)
-    }
-    const scheduleClose = () => {
-        if (openTimer.current) clearTimeout(openTimer.current)
-        closeTimer.current = setTimeout(() => setFlyoutOpen(false), 150)
-    }
-    const cancelClose = () => { if (closeTimer.current) clearTimeout(closeTimer.current) }
+    const closeFlyout = () => setOpen(false)
 
     return (
         <div
-            ref={setAnchorNode}
             style={{ position: 'relative' }}
-            onMouseEnter={scheduleOpen}
-            onMouseLeave={() => { setHover(false); setPressed(false); scheduleClose() }}
+            onMouseEnter={anchorProps.onMouseEnter}
+            onMouseLeave={() => { setHover(false); setPressed(false); anchorProps.onMouseLeave() }}
+            ref={setAnchorNode}
         >
             <Tooltip label={currentLeaf.label} shortcut={currentLeaf.key}>
                 <button
@@ -183,7 +189,7 @@ export function GroupButton({
                     <span style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: '0.04em', opacity: 0.7, color: 'inherit' }}>
                         {currentLeaf.key ?? ''}
                     </span>
-                    {hasVariants && (
+                    {hasFlyout && (
                         <span style={{
                             position: 'absolute', bottom: 2, right: 2,
                             width: 0, height: 0,
@@ -194,55 +200,45 @@ export function GroupButton({
                 </button>
             </Tooltip>
 
-            {hasVariants && anchorRect && typeof document !== 'undefined' && createPortal(
-                <div
-                    id={`flyout-${group.id}`}
-                    onMouseEnter={cancelClose}
-                    onMouseLeave={scheduleClose}
-                    style={{
-                        position: 'fixed',
-                        top: anchorRect.top,
-                        left: anchorRect.right + 10,
-                        transform: `translateX(${flyoutOpen ? '0' : '-6px'}) scale(${flyoutOpen ? 1 : 0.94})`,
-                        transformOrigin: 'left top',
-                        opacity: flyoutOpen ? 1 : 0,
-                        pointerEvents: flyoutOpen ? 'auto' : 'none',
-                        transition: 'opacity 130ms ease, transform 130ms cubic-bezier(0.34,1.56,0.64,1)',
-                        background: '#FFFFFF', border: '1px solid rgba(15,15,15,0.1)',
-                        borderRadius: 12, padding: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.12)',
-                        zIndex: 9999, width: 200,
-                    }}
+            {hasFlyout && anchorRect && typeof document !== 'undefined' && createPortal(
+                <FlyoutPanel
+                    anchorRect={anchorRect}
+                    open={open}
+                    width={group.flyoutWidth ?? (group.renderFlyout ? 280 : 200)}
+                    title={group.renderFlyout ? undefined : group.label}
+                    flyoutTriggerProps={flyoutTriggerProps}
                 >
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: 'rgba(26,26,26,0.5)', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 2 }}>
-                        {group.label}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                        {group.leaves.map(leaf => {
-                            const selected = leaf.id === currentLeaf.id
-                            return (
-                                <button
-                                    key={leaf.id}
-                                    title={leaf.label}
-                                    onClick={() => { onSelect(leaf.id); setFlyoutOpen(false) }}
-                                    style={{
-                                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                                        padding: '8px 4px', borderRadius: 8,
-                                        border: selected ? '1px solid rgba(99,102,241,0.6)' : '1px solid transparent',
-                                        background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
-                                        color: '#1A1A1A', cursor: 'pointer', transition: 'background 120ms, transform 120ms',
-                                    }}
-                                    onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.06)')}
-                                    onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-                                >
-                                    {leaf.icon}
-                                    <span style={{ fontSize: 8, fontWeight: 500, textAlign: 'center', lineHeight: 1.15, opacity: 0.75, color: 'inherit' }}>
-                                        {leaf.label}
-                                    </span>
-                                </button>
-                            )
-                        })}
-                    </div>
-                </div>,
+                    {group.renderFlyout ? (
+                        group.renderFlyout({ onSelect, close: closeFlyout })
+                    ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                            {group.leaves.map(leaf => {
+                                const selected = leaf.id === currentLeaf.id
+                                return (
+                                    <button
+                                        key={leaf.id}
+                                        title={leaf.label}
+                                        onClick={() => { onSelect(leaf.id); closeFlyout() }}
+                                        style={{
+                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                                            padding: '8px 4px', borderRadius: 8,
+                                            border: selected ? '1px solid rgba(99,102,241,0.6)' : '1px solid transparent',
+                                            background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
+                                            color: '#1A1A1A', cursor: 'pointer', transition: 'background 120ms, transform 120ms',
+                                        }}
+                                        onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.06)')}
+                                        onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                                    >
+                                        {leaf.icon}
+                                        <span style={{ fontSize: 8, fontWeight: 500, textAlign: 'center', lineHeight: 1.15, opacity: 0.75, color: 'inherit' }}>
+                                            {leaf.label}
+                                        </span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    )}
+                </FlyoutPanel>,
                 document.body
             )}
         </div>

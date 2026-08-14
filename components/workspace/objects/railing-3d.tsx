@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { RailingStyle } from '../lib/stairs-constants'
 
 export interface RailingStyleConfig {
     style?: 'baluster' | 'glass' | 'cable' | 'solid-panel' | 'criss-cross'
@@ -31,7 +32,10 @@ export function Railing3D({
     color?: string
     wallRoughness?: number
     height?: number
-} & RailingStyleConfig) {
+    style?: RailingStyle
+    postSpacing?: number
+    railingWidth?: number
+}) {
     const dx = to[0] - from[0]
     const dy = to[1] - from[1]
     const dz = to[2] - from[2]

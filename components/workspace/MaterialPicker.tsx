@@ -402,40 +402,53 @@ function TextureTile({
     thumbnail?: string
     theme: { border: string; borderStrong: string; textMuted: string }
     title: string
-    // Extra padding around the swatch/thumbnail square, shrinking just the
-    // preview visual while the button keeps the same grid-cell footprint as
-    // every other tile. Used for the Default (checkerboard) tile, which read
-    // as oversized next to real material swatches.
     previewInset?: number
 }) {
+    // Hover state drives the pulse — separate from `selected` so the two
+    // visual languages (persistent selection ring vs. transient hover pulse)
+    // don't fight each other.
+    const [hovered, setHovered] = useState(false)
+    const [pulseKey, setPulseKey] = useState(0)
+
+    const handleMouseEnter = () => {
+        setHovered(true)
+        setPulseKey(k => k + 1) // retrigger the pulse animation every hover-in
+        onHover?.()
+    }
+
     return (
         <button
             onClick={onClick}
-            onMouseEnter={onHover}
+            onMouseEnter={handleMouseEnter}
             title={title}
             style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                // Fills its CSS grid cell (grid columns are fixed-size and shared
-                // across every row — see the grid containers below — so this no
-                // longer needs its own width logic or a flex-basis to avoid
-                // stretching on under-filled rows).
                 width: '100%',
                 padding: '4px 2px', borderRadius: RADIUS.md, cursor: 'pointer',
-                border: selected ? `2px solid ${COLOR.accent}` : 'none',
+                border: selected
+                    ? `2px solid ${COLOR.accent}`
+                    : hovered
+                        ? `2px solid ${theme.borderStrong}`
+                        : '2px solid transparent',
                 background: selected ? COLOR.accentSoft : 'transparent',
                 boxShadow: selected ? `0 0 0 3px ${COLOR.accentSoft}` : 'none',
                 transition: `border-color 180ms ${EASE}, box-shadow 180ms ${EASE}, transform 180ms ${EASE}`,
+                // Retriggerable pulse: keyed by pulseKey so re-hovering after
+                // leaving replays it, rather than a static hover state.
+                animation: !selected && hovered ? `swatchPulse 420ms ${EASE}` : 'none',
             }}
             onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.96)')}
             onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
-            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
+            onMouseLeave={e => {
+                e.currentTarget.style.transform = 'scale(1)'
+                setHovered(false)
+            }}
+            key={pulseKey}
         >
             <div
                 style={{
                     position: 'relative',
                     width: '100%', aspectRatio: '1 / 1', borderRadius: RADIUS.sm,
-                    // No more white card background/border behind the preview —
-                    // the swatch or thumbnail now fills the tile directly.
                     background: 'transparent',
                     overflow: 'hidden',
                     padding: previewInset,
@@ -452,12 +465,6 @@ function TextureTile({
                         position: 'relative',
                     }}
                 >
-                    {/* NOTE: m.thumbnail currently equals the full-res textureUrl for every
-                        registry entry with a real texture (see thumbnailFromDef in
-                        textureCategorize.ts — there's no lighter preview asset yet).
-                        loading="lazy" defers fetch until the tile is in/near the viewport,
-                        but any tile that *is* visible still pulls the full-res file.
-                        Generating real thumbnail-sized previews is a separate follow-up. */}
                     {thumbnail && (
                         <img
                             src={thumbnail}

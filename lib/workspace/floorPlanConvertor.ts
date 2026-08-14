@@ -1,35 +1,80 @@
 // ─────────────────────────────────────────────────────────────────────────
-// `SceneFloorJSON` defined HERE, not just described — a previous version of
-// this file used it as a type annotation without ever declaring it, which
-// doesn't compile ("Cannot find name 'SceneFloorJSON'"). Defining it locally
-// means this file compiles standalone regardless of whether your shared
-// SceneJSON type has been updated yet.
+// CHANGES IN THIS PASS (see chat for full rationale):
 //
-// Structural typing means this doesn't have to be nominally "the same"
-// type as anything in your types file — as long as the shape matches,
-// TypeScript treats them as compatible. So the ONLY change actually
-// required in your SceneJSON type definition is adding the new optional
-// fields below; you do not need to import this exact type:
+// 1. `ClosedShape.cutout` now round-trips through `closed_shapes[].cutout`.
+// 2. `LineSegment.wallType` now round-trips through `line_segments[].wall_type`.
+// 3. Railings now round-trip. Two anchor kinds exist on `EditorOpening`
+//    (room-wall via `roomId`+`wall`, OR line-wall via `segmentNodeIds`+
+//    `segmentT`) — previously ONLY room-anchored doors/windows were ever
+//    serialized (`fp.openings.filter(o => o.roomId === room.id)`), so
+//    line-wall-anchored openings of ANY type (door/window/railing) were
+//    silently dropped. Fixed generically:
+//      - room-anchored openings still nest under their room as before
+//        (`doors`/`windows`/`railings` arrays on each `SceneRoom`)
+//      - segment-anchored openings (no roomId) now serialize to a new
+//        top-level `segment_openings[]` array on the scene JSON, keyed by
+//        `segment_node_ids`/`segment_t` instead of `roomId`+`wall`.
+//    This fixes railings AND closes the pre-existing door/window-on-
+//    line-wall gap in the same pass.
 //
-//   export type SceneJSON = {
-//     // ...all existing fields, unchanged...
-//     floors?: SceneFloorJSON[];   // <- if you want to reuse this exact
-//                                  //    type, import it from this file:
-//                                  //    import type { SceneFloorJSON } from '@/lib/workspace/floorPlanConvertor'
-//     active_floor_id?: string;
-//     view_mode?: "single" | "stacked" | "stacked-full";
-//     show_underlay?: boolean;
-//     roof?: RoofConfig;
+// REQUIRED type additions elsewhere (not in this file):
+//
+//   // types/workspace.ts
+//   export type RoomRailing = {
+//     wall: "north" | "south" | "east" | "west";
+//     position: number;
+//     width: number;
+//     railing_style?: string;
+//     railing_height?: number;
+//     railing_post_spacing?: number;
+//     railing_width_dim?: number;
+//     railing_color?: string;
+//     railing_solid_above?: boolean;
+//     railing_wall_start?: number;
 //   };
 //
-// Top-level `rooms`/`furniture`/`lights`/etc. stay mandatory on SceneJSON for
-// back-compat with any old reader that doesn't know about `floors` — when we
-// write a multi-floor payload we mirror the active floor's data into those
-// top-level fields too (see `projectFloorPlanToSceneJSON` below).
+//   export interface SceneRoom {
+//     // ...existing fields...
+//     railings?: RoomRailing[];
+//   }
+//
+//   // A segment-anchored opening (door/window/railing on a line-drawn
+//   // wall, not a rectangular room wall). Mirrors EditorOpening's
+//   // segment-anchor fields + the union of door/window/railing fields.
+//   export type SceneSegmentOpening = {
+//     id: string;
+//     type: "door" | "window" | "opening" | "railing";
+//     segment_node_ids: string[];
+//     segment_t: number;
+//     width: number;
+//     height: number;
+//     sill_height?: number;
+//     material?: DoorMaterial;
+//     railing_style?: string;
+//     railing_height?: number;
+//     railing_post_spacing?: number;
+//     railing_width_dim?: number;
+//     railing_color?: string;
+//     railing_solid_above?: boolean;
+//     railing_wall_start?: number;
+//   };
+//
+//   export type SceneJSON = {
+//     // ...existing fields...
+//     segment_openings?: SceneSegmentOpening[];
+//   };
+//
+//   // components/workspace/lib/constants.ts
+//   export type ClosedShape = {
+//     // ...existing fields...
+//     cutout?: { enabled: boolean; toLevel?: string; openingOffset?: number };
+//   };
+//   export type LineSegment = {
+//     // ...existing fields...
+//     wallType?: WallType;
+//   };
 // ─────────────────────────────────────────────────────────────────────────
 
-// ADJUST PATH if DEFAULT_ROOF lives elsewhere — this matches where your
-// earlier-shown migrateToMultiFloor.ts appears to reference it from.
 import {
   RoomSceneConfig,
   SceneConfig,
@@ -57,10 +102,12 @@ import {
 import { normalizeDoorMaterialOverride } from "@/components/workspace/mesh/door-style-migration";
 import {
   RoomDoor,
+  RoomRailing,
   RoomWindow,
   SceneJSON,
   SceneOutdoorObject,
   SceneRoom,
+  SceneSegmentOpening,
 } from "@/types/workspace";
 import { uid } from "../helpers";
 import { PlacedFurniture } from "@/components/workspace/lib/furniture-constants";
@@ -75,10 +122,6 @@ export type SceneFloorJSON = SceneFloorContent & {
   visible: boolean;
 };
 
-// Local widened type — lets this file compile even before `SceneJSON`
-// itself has been updated with the `floors`/`active_floor_id`/etc. fields.
-// Once your shared SceneJSON type has them for real, this becomes a no-op
-// and can be removed (or left — it's harmless either way).
 type SceneJSONWithFloors = SceneJSON & {
   floors?: SceneFloorJSON[];
   active_floor_id?: string;
@@ -87,10 +130,6 @@ type SceneJSONWithFloors = SceneJSON & {
   roof?: ProjectFloorPlan["roof"];
 };
 
-// What `convertSingleFloorJSON` actually reads — deliberately narrower than
-// full `SceneJSON` so both a legacy top-level payload (SceneJSON) and a
-// single entry from `floors[]` (SceneFloorJSON, which omits extracted_at/
-// floorplan_url/floors/etc.) can both be passed in without a cast.
 type SceneFloorContent = Omit<
   SceneJSON,
   | "floors"
@@ -102,8 +141,7 @@ type SceneFloorContent = Omit<
   | "floorplan_url"
 >;
 
-// ── Shared conversion core, extracted so single-floor and multi-floor ─────
-// serialization can't drift out of sync with each other.
+// ── Shared conversion core ────────────────────────────────────────────────
 
 function floorStateToSceneFields(
   fp: FloorPlanState,
@@ -124,7 +162,13 @@ function floorStateToSceneFields(
     const serializedRoomId = `room_${idx + 1}`;
     roomIdMap.set(room.id, serializedRoomId);
 
-    const roomOpenings = fp.openings.filter((o) => o.roomId === room.id);
+    // Only room-anchored openings (segmentNodeIds unset) belong here.
+    // Segment-anchored openings are collected separately, once, below —
+    // see `segment_openings`.
+    const roomOpenings = fp.openings.filter(
+      (o) => o.roomId === room.id && !o.segmentNodeIds,
+    );
+
     const doors: RoomDoor[] = roomOpenings
       .filter((o) => o.type === "door")
       .map((o) => ({
@@ -141,6 +185,20 @@ function floorStateToSceneFields(
         width: o.width,
         height: o.height,
         sillHeight: o.sillHeight,
+      }));
+    const railings: RoomRailing[] = roomOpenings
+      .filter((o) => o.type === "railing")
+      .map((o) => ({
+        wall: o.wall,
+        position: o.position,
+        width: o.width,
+        railing_style: o.railingStyle,
+        railing_height: o.railingHeight,
+        railing_post_spacing: o.railingPostSpacing,
+        railing_width_dim: o.railingWidthDim,
+        railing_color: o.railingColor,
+        railing_solid_above: o.railingSolidAbove,
+        railing_wall_start: o.railingWallStart,
       }));
 
     const roomCfg = cfg.rooms.find((r) => r.roomId === room.id);
@@ -161,8 +219,32 @@ function floorStateToSceneFields(
       wall_color: roomCfg?.wallColor ?? "#FFFFFF",
       doors,
       windows,
+      railings,
     };
   });
+
+  // Segment-anchored openings — any door/window/railing NOT tied to a room
+  // (i.e. placed on a line-drawn wall). Previously dropped entirely for
+  // every opening type; now captured once, independent of the rooms loop.
+  const segment_openings: SceneSegmentOpening[] = fp.openings
+    .filter((o) => !!o.segmentNodeIds)
+    .map((o) => ({
+      id: o.id,
+      type: o.type,
+      segment_node_ids: o.segmentNodeIds!,
+      segment_t: o.segmentT ?? 0,
+      width: o.width,
+      height: o.height,
+      sill_height: o.sillHeight,
+      material: o.material,
+      railing_style: o.railingStyle,
+      railing_height: o.railingHeight,
+      railing_post_spacing: o.railingPostSpacing,
+      railing_width_dim: o.railingWidthDim,
+      railing_color: o.railingColor,
+      railing_solid_above: o.railingSolidAbove,
+      railing_wall_start: o.railingWallStart,
+    }));
 
   const line_nodes = (fp.lineNodes ?? []).map((n) => ({
     id: n.id,
@@ -174,6 +256,7 @@ function floorStateToSceneFields(
     node_ids: s.nodeIds,
     thickness: s.thickness,
     height: s.height,
+    wall_type: s.wallType,
   }));
   const closed_shapes = (fp.closedShapes ?? []).map((s) => ({
     id: s.id,
@@ -182,15 +265,9 @@ function floorStateToSceneFields(
     floor_material: s.floorMaterial,
     wall_material: s.wallMaterial,
     wall_overrides: s.wallOverrides,
+    cutout: s.cutout,
   }));
 
-  // BUG FIX: was serializing `l.roomId` (the internal editor uid) directly.
-  // On load, `sceneJSONToFloorPlanState`'s `roomIdReverseMap` is keyed by the
-  // *serialized* room id ("room_1", not the uid), so the lookup always
-  // missed and every light silently lost its room association on a
-  // save → share → load round trip. Route it through `roomIdMap` (built
-  // above, from the same rooms this light array belongs to) so the id
-  // written out actually matches what the reverse map expects.
   const lights: SceneLight[] = (fp.lights ?? []).map((l) => ({
     id: l.id,
     type: l.type,
@@ -258,6 +335,7 @@ function floorStateToSceneFields(
     line_segments,
     closed_shapes,
     outdoor_objects,
+    segment_openings,
     ground_material: cfg.groundMaterial,
     saved_views: fp.savedViews?.map((v) => ({
       id: v.id,
@@ -268,7 +346,7 @@ function floorStateToSceneFields(
   };
 }
 
-// ── Single-floor save (legacy path / non-multi-floor projects) ────────────
+// ── Single-floor save ──────────────────────────────────────────────────
 
 export function floorPlanStateToSceneJSON(
   fp: FloorPlanState,
@@ -281,12 +359,7 @@ export function floorPlanStateToSceneJSON(
   };
 }
 
-// ── Multi-floor save ────────────────────────────────────────────────────
-// `sceneConfig.rooms`/`sceneConfig.lights` are expected to be the MERGED
-// union across all floors (see `sceneJSONToFloorPlanState` below) — each
-// room/light id is globally unique (uid()'d per floor at load time), so
-// `floorStateToSceneFields` looking them up out of the merged cfg per-floor
-// still resolves correctly without needing to pre-split cfg per floor.
+// ── Multi-floor save ─────────────────────────────────────────────────────
 
 export function projectFloorPlanToSceneJSON(
   projectFloorPlan: ProjectFloorPlan,
@@ -309,9 +382,6 @@ export function projectFloorPlanToSceneJSON(
     sortedFloors.find((f) => f.id === projectFloorPlan.activeFloorId) ??
     sortedFloors[0];
 
-  // Mirror the active floor's fields into the legacy top-level shape too,
-  // so any older reader that doesn't know about `floors` yet still gets a
-  // sane (if single-floor) result instead of an empty scene.
   const emptyFp: FloorPlanState = {
     rooms: [],
     lineNodes: [],
@@ -344,7 +414,7 @@ export function projectFloorPlanToSceneJSON(
   };
 }
 
-// ── Deserialize back into editor state ─────────────────────────────────
+// ── Deserialize back into editor state ───────────────────────────────────
 
 export function sceneJSONToFloorPlanState(
   jsonInput: SceneJSON,
@@ -356,7 +426,6 @@ export function sceneJSONToFloorPlanState(
 } {
   const json = jsonInput as SceneJSONWithFloors;
 
-  // ── Multi-floor payload ──────────────────────────────────────────────
   if (json.floors && json.floors.length > 0) {
     const convertedFloors = json.floors
       .map((floorJson) => ({
@@ -388,11 +457,6 @@ export function sceneJSONToFloorPlanState(
       (f) => f.meta.id === activeFloor.id,
     )!.converted;
 
-    // Merge per-floor sceneConfig.rooms/.lights across ALL floors — see
-    // prior fix note. Each floor's room/light ids are globally unique
-    // (freshly uid()'d per convertSingleFloorJSON call), so this union is
-    // safe and lets Scene3D resolve materials/lights correctly for every
-    // floor, not just whichever one happens to be active.
     const mergedRoomConfigs: RoomSceneConfig[] = convertedFloors.flatMap(
       (f) => f.converted.sceneConfig.rooms,
     );
@@ -413,15 +477,12 @@ export function sceneJSONToFloorPlanState(
     };
   }
 
-  // ── Legacy single-floor payload ──────────────────────────────────────
   const { fp, sceneConfig } = convertSingleFloorJSON(json, defaultRoomHeight);
   const projectFloorPlan = migrateToMultiFloor(fp);
 
   return { fp, sceneConfig, projectFloorPlan };
 }
 
-// Per-floor conversion, unchanged logic from before — used for both the
-// legacy single-floor payload and each entry in a multi-floor `floors[]`.
 function convertSingleFloorJSON(
   json: SceneFloorContent,
   defaultRoomHeight: number,
@@ -488,6 +549,56 @@ function convertSingleFloorJSON(
         swingDirection: "inward",
       });
     }
+    // NEW — was missing entirely, so room-anchored railings never
+    // survived a save/load round trip.
+    for (const rl of r.railings ?? []) {
+      openings.push({
+        id: uid(),
+        roomId,
+        wall: rl.wall,
+        type: "railing",
+        variant: "railing",
+        position: rl.position,
+        width: rl.width,
+        height: rl.railing_height ?? 0.9,
+        sillHeight: 0,
+        swingDirection: "inward",
+        railingStyle: rl.railing_style as EditorOpening["railingStyle"],
+        railingHeight: rl.railing_height,
+        railingPostSpacing: rl.railing_post_spacing,
+        railingWidthDim: rl.railing_width_dim,
+        railingColor: rl.railing_color,
+        railingSolidAbove: rl.railing_solid_above,
+        railingWallStart: rl.railing_wall_start,
+      });
+    }
+  }
+
+  // NEW — segment-anchored openings (door/window/railing placed on a
+  // line-drawn wall, not a rectangular room). These have no `roomId`.
+  for (const so of json.segment_openings ?? []) {
+    openings.push({
+      id: so.id,
+      roomId: "",
+      wall: "north", // unused for segment-anchored openings; kept for type shape only
+      type: so.type,
+      variant: so.type === "railing" ? "railing" : `${so.type}-fixed`,
+      position: 0, // unused — segmentT is the real placement value
+      width: so.width,
+      height: so.height,
+      sillHeight: so.sill_height ?? 0,
+      swingDirection: "inward",
+      segmentNodeIds: so.segment_node_ids,
+      segmentT: so.segment_t,
+      material: normalizeDoorMaterialOverride(so.material),
+      railingStyle: so.railing_style as EditorOpening["railingStyle"],
+      railingHeight: so.railing_height,
+      railingPostSpacing: so.railing_post_spacing,
+      railingWidthDim: so.railing_width_dim,
+      railingColor: so.railing_color,
+      railingSolidAbove: so.railing_solid_above,
+      railingWallStart: so.railing_wall_start,
+    });
   }
 
   if (json.line_nodes && json.line_segments) {
@@ -498,6 +609,7 @@ function convertSingleFloorJSON(
       thickness: s.thickness ?? 0.15,
       closed: false,
       height: s.height,
+      wallType: s.wall_type,
     }));
     closedShapes = (json.closed_shapes ?? []).map((s) => ({
       id: s.id,
@@ -506,15 +618,13 @@ function convertSingleFloorJSON(
       floorMaterial: s.floor_material,
       wallMaterial: s.wall_material,
       wallOverrides: s.wall_overrides,
+      cutout: s.cutout,
     }));
   }
 
   const lights: PlacedLight[] = (json.lights ?? []).map((l) => ({
     id: l.id,
     type: l.type,
-    // Now correctly resolves — see the matching fix in
-    // `floorStateToSceneFields` that routes room_id through `roomIdMap`
-    // instead of writing out the raw internal uid.
     roomId: l.room_id ? roomIdReverseMap.get(l.room_id) : undefined,
     wall: l.wall,
     position: l.position,

@@ -228,20 +228,33 @@ export function deriveClosedPolygons(
       let u = a,
         v = b;
       let steps = 0;
+      let closed = false; // NEW — only true if the trace genuinely wraps back to its own start edge
       const maxSteps = lineNodes.length * 4 + 8;
 
       while (steps++ < maxSteps) {
         const key = `${u}->${v}`;
-        if (visitedDirected.has(key)) break;
+        if (visitedDirected.has(key)) {
+          // We ran into an edge already consumed by another trace.
+          // Only a real closure if it's specifically our own start edge —
+          // anything else means this trace wandered into unrelated
+          // geometry (classic dangling-T-junction symptom) and must be discarded.
+          if (key === startKey) closed = true;
+          break;
+        }
         visitedDirected.add(key);
         face.push(v);
         const w = nextInFace(u, v);
         u = v;
         v = w;
-        if (u === a && v === b) break;
+        if (u === a && v === b) {
+          closed = true;
+          break;
+        }
       }
 
-      if (face.length >= 4) {
+      // Previously: `if (face.length >= 4)` — pushed incomplete/wandering
+      // traces too. Now require BOTH a proper closure AND enough nodes.
+      if (closed && face.length >= 4) {
         face.pop();
         rawFaces.push(face);
       }
@@ -331,6 +344,67 @@ export function deriveClosedPolygons(
   _lastLineSegments = lineSegments;
   _cachedFaces = result;
   return result;
+}
+
+// lib/helpers.ts (or wherever insertNodeIntoShapesOnSplit lives)
+
+const SPLICE_EPS = 0.05; // meters — matches the project's existing tolerance conventions
+
+function distToSegment(
+  px: number,
+  pz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): number {
+  const dx = bx - ax,
+    dz = bz - az;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq < 1e-9) return Math.hypot(px - ax, pz - az);
+  let t = ((px - ax) * dx + (pz - az) * dz) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
+}
+
+/**
+ * Given a new node that was just placed (e.g. as the start/end of a new
+ * wall), check every OTHER segment for an edge that this node lies on
+ * top of but is not already an endpoint of, and splice it in.
+ *
+ * MUST be called any time a new node/wall is created, at the same call
+ * site that already calls insertNodeIntoShapesOnSplit — this is the
+ * lineSegments-side counterpart that was missing, which is why T-junction
+ * corners silently fail to register as real graph connections.
+ */
+export function spliceNodeIntoIntersectingSegments(
+  lineSegments: LineSegment[],
+  lineNodes: LineNode[],
+  newNodeId: string,
+): LineSegment[] {
+  const nodeMap = new Map(lineNodes.map((n) => [n.id, n]));
+  const newNode = nodeMap.get(newNodeId);
+  if (!newNode) return lineSegments;
+
+  return lineSegments.map((seg) => {
+    const ids = seg.nodeIds;
+    // Already an endpoint somewhere on this segment — nothing to splice.
+    if (ids.includes(newNodeId)) return seg;
+
+    for (let i = 0; i < ids.length - 1; i++) {
+      const a = nodeMap.get(ids[i]!);
+      const b = nodeMap.get(ids[i + 1]!);
+      if (!a || !b) continue;
+
+      const d = distToSegment(newNode.x, newNode.z, a.x, a.z, b.x, b.z);
+      if (d < SPLICE_EPS) {
+        const next = [...ids];
+        next.splice(i + 1, 0, newNodeId);
+        return { ...seg, nodeIds: next };
+      }
+    }
+    return seg;
+  });
 }
 
 export const T_BASE = "/textures";

@@ -2,7 +2,7 @@ import { useRef } from "react"
 import { useFrame } from "@react-three/fiber"
 import { EditorOpening } from "../lib/constants"
 import * as THREE from 'three'
-import { glassMat, mat } from "../windows/materials"
+import { mat } from "../windows/materials"
 import { WindowGlass } from "./windows-glass"
 import { BayPanel, useBayCapGeometry } from "../hooks/useWindowGeometry"
 
@@ -37,14 +37,6 @@ function approach(current: React.MutableRefObject<number>, target: number, delta
     return current.current
 }
 
-// Resolves the 0–1 openness fraction for a window opening. Prefers the
-// continuous openAmount field; falls back to the legacy boolean so old
-// saves (migrated in Phase 0, openAmount derived from isOpen) still work,
-// and so any code path that only ever set isOpen keeps functioning.
-function resolveOpenFrac(op: EditorOpening): number {
-    if (typeof op.openAmount === 'number') return Math.min(1, Math.max(0, op.openAmount))
-    return op.isOpen ? 1 : 0
-}
 
 function OuterFrame({
     width,
@@ -502,7 +494,7 @@ export function WindowVariant3D({
 
         case 'window-bay': {
             const doorPanelIndex: number | undefined = (op as any).bayDoorIndex
-            const projectDepth = (op as any).bayProjection ?? 0.45
+            const projectDepth = (op as any).bayProjection ?? 0.45   // ← revert to original, unsigned
             const sideAngle = Math.PI / 4
 
             const bayW = op.width - INSTALL_GAP * 2
@@ -518,14 +510,14 @@ export function WindowVariant3D({
             const rightZ = -projectDepth + (sideW / 2) * Math.sin(sideAngle)
 
             const panels = [
-                { key: 'left', index: 0, width: sideW, x: leftX, z: leftZ, rotY: sideAngle },
-                { key: 'center', index: 1, width: frontW, x: 0, z: -projectDepth, rotY: 0 },
-                { key: 'right', index: 2, width: sideW, x: rightX, z: rightZ, rotY: -sideAngle },
+                { key: 'left', index: 0, width: sideW, x: leftX, z: -leftZ, rotY: -sideAngle },
+                { key: 'center', index: 1, width: frontW, x: 0, z: projectDepth, rotY: 0 },
+                { key: 'right', index: 2, width: sideW, x: rightX, z: -rightZ, rotY: sideAngle },
             ]
 
             const roofT = 0.05
-            const sillT = 0.08
-            const roofTopY = bayH / 2
+            const sillT = 0.10
+            const roofTopY = (bayH / 2) + 0.01
             const roofBottomY = roofTopY - roofT
             const sillBottomY = -bayH / 2
 
@@ -612,52 +604,3 @@ export function WindowVariant3D({
 
 const bayStoneDark = '#8A857A'
 const bayRoofColor = '#3A3733'
-
-function BayRoofCap({
-    frontWidth, sideWidth, sideAngle, projectDepth, itemOpacity, itemTransparent,
-}: {
-    frontWidth: number; sideWidth: number; sideAngle: number; projectDepth: number
-    itemOpacity: number; itemTransparent: boolean
-}) {
-    const capH = 0.16
-    const overhang = 0.05
-
-    return (
-        <group>
-            {/* Flat fascia band the roof sits on, tying the three panel tops together */}
-            <mesh position={[0, 0, -projectDepth * 0.5]} castShadow>
-                <boxGeometry args={[frontWidth + sideWidth * 1.6, 0.08, projectDepth + 0.1]} />
-                {mat(bayStoneDark, { roughness: 0.7 }, itemOpacity, itemTransparent)}
-            </mesh>
-            {/* Center sloped roof slab */}
-            <mesh position={[0, capH / 2, -projectDepth * 0.4]} rotation={[-Math.PI / 10, 0, 0]} castShadow>
-                <boxGeometry args={[frontWidth + overhang * 2, 0.03, projectDepth * 0.75]} />
-                {mat(bayRoofColor, { roughness: 0.85 }, itemOpacity, itemTransparent)}
-            </mesh>
-            {/* Angled side roof slabs */}
-            {[-1, 1].map((side) => (
-                <group key={side} position={[side * (frontWidth / 2 + sideWidth * 0.42), 0, -projectDepth * 0.16]} rotation={[0, -side * sideAngle, 0]}>
-                    <mesh position={[0, capH / 2, -projectDepth * 0.3]} rotation={[-Math.PI / 10, 0, 0]} castShadow>
-                        <boxGeometry args={[sideWidth + overhang, 0.03, projectDepth * 0.7]} />
-                        {mat(bayRoofColor, { roughness: 0.85 }, itemOpacity, itemTransparent)}
-                    </mesh>
-                </group>
-            ))}
-        </group>
-    )
-}
-
-// Projecting sill/base ledge beneath the bay.
-function BaySillBase({
-    frontWidth, sideWidth, sideAngle, projectDepth, itemOpacity, itemTransparent,
-}: {
-    frontWidth: number; sideWidth: number; sideAngle: number; projectDepth: number
-    itemOpacity: number; itemTransparent: boolean
-}) {
-    return (
-        <mesh position={[0, 0, -projectDepth * 0.42]} castShadow receiveShadow>
-            <boxGeometry args={[frontWidth + sideWidth * 1.5, 0.1, projectDepth + 0.08]} />
-            {mat(bayStoneDark, { roughness: 0.75 }, itemOpacity, itemTransparent)}
-        </mesh>
-    )
-}

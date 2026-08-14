@@ -5,7 +5,7 @@ import { UniversalMaterial } from "../texture/universalMaterials"
 import { CameraView } from "./camera"
 import { FurnitureType, PlacedFurniture } from "./furniture-constants"
 import { PlacedOutdoorObject } from "./outdoor-constants"
-import { PlacedStairs, StairsType } from "./stairs-constants"
+import { PlacedStairs, RailingStyle, StairsType } from "./stairs-constants"
 import { WallType } from "./wall-constants"
 
 
@@ -448,8 +448,25 @@ export type ClosedShape = {
     wallMaterialSide?: 'interior' | 'exterior' | 'both'
     cutout?: {
         enabled: boolean,
-        toLevel?: string,        // which floor this hole opens INTO (floor above, typically)
-        openingOffset?: number,  // margin beyond the shape's own boundary, defaults 0.1–0.2
+        toLevel?: string,
+        openingOffset?: number,
+        guard?: {
+            enabled: boolean
+            type: 'wall' | 'railing'        // shape-wide default
+            height?: number
+            railingStyle?: RailingStyle
+            railingPostSpacing?: number
+            railingWidthDim?: number
+            railingColor?: string
+            edgeOverrides?: Record<string, {  // NEW — keyed by `${shapeId}::guard::${edgeIndex}`
+                type: 'wall' | 'railing' | 'open'
+                height?: number
+                railingStyle?: RailingStyle
+                railingPostSpacing?: number
+                railingWidthDim?: number
+                railingColor?: string
+            }>
+        }
     }
 }
 
@@ -481,8 +498,9 @@ export interface ToolGroup {
     id: string
     label: string       // shown as flyout header
     leaves: ToolLeaf[]
+    flyoutWidth?: number                                    // px width for the flyout panel; omit to use the default
+    renderFlyout?: (props: { onSelect: (id: EditorTool) => void; close: () => void }) => React.ReactNode  // custom flyout content, e.g. furniture/presets panels
 }
-
 // In ToolConfig.tsx, alongside TOOL_GROUPS
 export const KEY_TO_DEFAULT_TOOL: Record<string, EditorTool> = {
     v: 'select',

@@ -41,6 +41,8 @@ import { migrateToMultiFloor, recomputeFloorElevations } from './lib/migrateToMu
 import { createEmptyFloor, DEFAULT_ROOF, Floor, ProjectFloorPlan, RoofConfig } from './lib/floor-data'
 import { computeDerivedFloorData } from './computeDerivedFloorData'
 import ViewModeControl from '../ui/ViewModeControl'
+import { useAnimatedMount } from './hooks/useAnimatedMount'
+import { getToolGroups } from './lib/tool-constants'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -296,7 +298,7 @@ export default function FloorPlanEditor({
     // Furniture placement + collisions
     // ─────────────────────────────────────────────────────────────────────────
     const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
-    const [openFurnitureCats, setOpenFurnitureCats] = useState<Set<string>>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
+    const [openFurnitureCats, setOpenFurnitureCats] = useState<any>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
     const { checkCollisions, overlappingRef, hasChanged, clear } = useFurnitureCollisions()
     const [overlappingIds, setOverlappingIds] = useState<Set<string>>(new Set())
     const furnitureByCategory = useMemo(() => getFurnitureByCategory(), [])
@@ -337,6 +339,14 @@ export default function FloorPlanEditor({
             requestAnimationFrame(() => { justToggledRef.current = false })
         })
     }
+
+    // 
+    // ANIMATION
+    // 
+    const propertiesRendered = useAnimatedMount(sheetOpen && rightTab === 'properties')
+    const sceneRendered = useAnimatedMount(sheetOpen && rightTab === 'scene')
+    const sunRendered = useAnimatedMount(sheetOpen && rightTab === 'sun')
+
 
     const handleArmMove = useCallback(() => {
         setMoveArmedForId(prev => (prev === selectedId ? null : selectedId))
@@ -957,6 +967,26 @@ export default function FloorPlanEditor({
                 const t = Math.max(0, Math.min(1, ((wx - a.x) * dx + (wz - a.z) * dz) / len2))
                 const dist = Math.hypot(wx - (a.x + t * dx), wz - (a.z + t * dz))
                 if (dist < threshold) return { seg, subIndex: i, t, ax: a.x, az: a.z, bx: b.x, bz: b.z, fromId: a.id, toId: b.id }
+            }
+        }
+        return null
+    }, [])
+
+    const hitCutoutGuardEdge = useCallback((wx: number, wz: number) => {
+        const threshold = 0.35 / zoomRef.current
+        for (const shape of fpRef.current.closedShapes ?? []) {
+            if (!shape.cutout?.enabled || !shape.cutout.guard?.enabled) continue
+            const ids = shape.nodeIds
+            for (let i = 0; i < ids.length; i++) {
+                const a = fpRef.current.lineNodes.find(n => n.id === ids[i])
+                const b = fpRef.current.lineNodes.find(n => n.id === ids[(i + 1) % ids.length])
+                if (!a || !b) continue
+                const dx = b.x - a.x, dz = b.z - a.z
+                const len2 = dx * dx + dz * dz
+                if (len2 === 0) continue
+                const t = Math.max(0, Math.min(1, ((wx - a.x) * dx + (wz - a.z) * dz) / len2))
+                const dist = Math.hypot(wx - (a.x + t * dx), wz - (a.z + t * dz))
+                if (dist < threshold) return { shapeId: shape.id, edgeIndex: i }
             }
         }
         return null
@@ -1628,7 +1658,17 @@ export default function FloorPlanEditor({
                 isMouseDownRef.current = true
                 return
             }
-
+            console.log('shape nodeIds + coords:',
+                fpRef.current.closedShapes.find(s => s.id === 's3n3mrj')?.nodeIds
+                    .map(id => fpRef.current.lineNodes.find(n => n.id === id))
+            )
+            const guardHit = hitCutoutGuardEdge(wx, wz)
+            if (guardHit && e.altKey) {   // back to original: Alt+click still available as a direct shortcut, but not required
+                setSelectedId(`${guardHit.shapeId}::guard::${guardHit.edgeIndex}`)
+                dragRoomRef.current = null
+                isMouseDownRef.current = true
+                return
+            }
             const segHit = hitLineSegment(wx, wz)
             if (segHit) {
                 const isGroupDrag = tryArmGroupDrag(segHit.seg.id)
@@ -3066,13 +3106,7 @@ export default function FloorPlanEditor({
     const pendingTemplateRef = useRef<RoomTemplate | null>(null)
     const [armedTemplateId, setArmedTemplateId] = useState<string | null>(null)
 
-    const armWallPreset = useCallback((preset: WallPreset) => {
-        pendingWallPresetRef.current = preset
-        setArmedWallPresetId(preset.id)
-        pendingTemplateRef.current = null
-        setArmedTemplateId(null)
-        setTool('line') // jump straight into drawing so the user doesn't need a second click on the Line tool
-    }, [])
+    const armWallPreset = (preset: WallPreset) => setArmedWallPresetId(preset.id)
 
     const armRoomTemplate = useCallback((template: RoomTemplate) => {
         pendingTemplateRef.current = template
@@ -3103,39 +3137,6 @@ export default function FloorPlanEditor({
             setPresetsAnchorRect(null)
         }
     }, [tool])
-
-    // useEffect(() => {
-    //     if (!moveArmedForId) return
-
-    //     function clearIfInside2DButOutsideToolbar(e: MouseEvent) {
-    //         const canvas = canvasRef.current
-    //         if (!canvas) return
-
-    //         const target = e.target as Node
-
-    //         // Only react to clicks that land inside the 2D editor canvas.
-    //         // Clicks in the 3D scene, the toolbar itself, or anywhere else
-    //         // (side panels, other UI) should NOT disarm/deselect.
-    //         if (!canvas.contains(target)) return
-
-    //         // Ignore clicks on the floating toolbar (move/duplicate/delete pill) —
-    //         // those are handled by their own onClick handlers, not this listener.
-    //         if (toolbarRef.current?.contains(target)) return
-
-    //         setMoveArmedForId(null)
-    //         setSelectedId(null)
-    //         clearAllDragArm()
-    //         if (lightDragRef) (lightDragRef as any).current = null
-    //     }
-
-    //     // Capture phase so this runs before the 2D canvas's own mousedown
-    //     // handler decides what was hit, avoiding a stale arm/selection racing
-    //     // against the new click's hit-test.
-    //     window.addEventListener('mousedown', clearIfInside2DButOutsideToolbar, true)
-    //     return () => window.removeEventListener('mousedown', clearIfInside2DButOutsideToolbar, true)
-    // }, [moveArmedForId])
-
-
     useEffect(() => {
         if (tool === 'furniture') {
             const el = groupAnchorsRef.current['furniture']
@@ -3329,302 +3330,351 @@ export default function FloorPlanEditor({
             .map(f => ({ floor: f, derived: computeDerivedFloorData(f.state) }))
     }, [viewMode, showUnderlay, floors, activeFloorId])
 
+
+    const toolGroups = useMemo(
+        () =>
+            getToolGroups({
+                furnitureByCategory,
+                openFurnitureCats,
+                setOpenFurnitureCats,
+                selectedFurnitureType,
+                setSelectedFurnitureType,
+                isFurnitureNew,
+                armedWallPresetId,
+                armedTemplateId,
+                armWallPreset,      // already (preset: WallPreset) => void — matches
+                armRoomTemplate,    // already (template: RoomTemplate) => void — matches
+            }),
+        [
+            furnitureByCategory,
+            openFurnitureCats,
+            selectedFurnitureType,
+            armedWallPresetId,
+            armedTemplateId,
+            armWallPreset,
+            armRoomTemplate,
+        ]
+    )
+
     useEffect(() => {
         ghostFloorsDerivedRef.current = ghostFloorsDerived
         scheduleRedraw()
     }, [ghostFloorsDerived, scheduleRedraw])
 
     return (
-        <div
-            ref={editorRef}
-            style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', background: THEME.bg, fontFamily: 'system-ui, sans-serif', color: THEME.text, overflow: 'hidden', maxHeight: '100vh', maxWidth: '100vw' }}
-        >
-            {/* ── Top bar ────────────────────────────────────────────────────── */}
-            <div className='z-99999]'>
-                <WorkspaceNav
-                    fp={fp}
-                    isFullscreen={isFullscreen}
-                    sceneConfig={sceneConfig}
-                    sceneRootRef={exportRootRef}
-                    setFp={setFp}
-                    setSelectedId={setSelectedId}
-                    setZoom={setZoom}
-                    toggleFullscreen={toggleFullscreen}
-                    zoom={zoom}
-                    isSaved={isSaved}
-                    isSaving={isSaving}
-                    key={1}
-                    onClose={onClose}
-                    onSave={handleSaveWithThumbnail}
-                    projectId={projectId}
-                    floors={floors}
-                    activeFloorId={activeFloorId}
-                    viewMode={viewMode}
-                    onSelectFloor={switchToFloor}
-                    onAddFloor={addFloor}
-                    onToggleFloorVisible={toggleFloorVisible}
-                    onRenameFloor={renameFloor}
-                    onSetViewMode={setViewMode}
-                    onSetShowUnderlay={setShowUnderlay}
-                    showUnderlay={showUnderlay}
-                    lastSavedSnapshot={lastSavedSnapshot}
-                />
-            </div>
-            {/* ── Body ─────────────────────────────────────────────────────────── */}
-            <div ref={splitContainerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+        <>
 
-                {/* ── Left tool panel ────────────────────────────────── */}
-                <div
-                    style={{
-                        width: 68, flexShrink: 0,
-                        background: THEME.bgPanel,
-                        borderRight: `1px solid ${THEME.border}`,
-                        display: 'flex', flexDirection: 'column',
-                        alignItems: 'center', padding: '10px 0', gap: 4,
-                        overflowY: 'auto',
-                    }}
-                >
-                    <Toolbar
-                        tool={tool}
-                        setTool={handleToolClick}
-                        registerAnchor={(groupId, el) => { groupAnchorsRef.current[groupId] = el }}
+            <div
+                ref={editorRef}
+                style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', background: THEME.bg, fontFamily: 'system-ui, sans-serif', color: THEME.text, overflow: 'hidden', maxHeight: '100vh', maxWidth: '100vw' }}
+            >
+                {/* ── Top bar ────────────────────────────────────────────────────── */}
+                <div className='z-99999]'>
+                    <WorkspaceNav
+                        fp={fp}
+                        isFullscreen={isFullscreen}
+                        sceneConfig={sceneConfig}
+                        sceneRootRef={exportRootRef}
+                        setFp={setFp}
+                        setSelectedId={setSelectedId}
+                        setZoom={setZoom}
+                        toggleFullscreen={toggleFullscreen}
+                        zoom={zoom}
+                        isSaved={isSaved}
+                        isSaving={isSaving}
+                        key={1}
+                        onClose={onClose}
+                        onSave={handleSaveWithThumbnail}
+                        projectId={projectId}
+                        floors={floors}
+                        activeFloorId={activeFloorId}
+                        viewMode={viewMode}
+                        onSelectFloor={switchToFloor}
+                        onAddFloor={addFloor}
+                        onToggleFloorVisible={toggleFloorVisible}
+                        onRenameFloor={renameFloor}
+                        onSetViewMode={setViewMode}
+                        onSetShowUnderlay={setShowUnderlay}
+                        showUnderlay={showUnderlay}
+                        lastSavedSnapshot={lastSavedSnapshot}
                     />
-
-                    <div style={{ flex: 1 }} />
-                    <div style={{ fontSize: 9, color: THEME.textFaint, textAlign: 'center', lineHeight: 1.7, paddingBottom: 4 }}>
-                        <div>{fp.rooms.length}R</div>
-                        <div>{fp.lineSegments.length}W</div>
-                        <div>{fp.openings.length}O</div>
-                        <div>{(fp.stairs ?? []).length}S</div>
-                    </div>
-
-                    {tool === 'furniture' && furnitureAnchorRect && typeof document !== 'undefined' && createPortal(
-                        <div
-                            style={{
-                                position: 'fixed',
-                                top: furnitureAnchorRect.top,
-                                left: furnitureAnchorRect.right + 10,
-                                background: THEME.bgPanel,
-                                border: `1px solid ${THEME.border}`,
-                                borderRadius: 12,
-                                width: 280,
-                                display: 'flex',
-                                flexDirection: 'column',
-                                boxShadow: THEME.shadowLg,
-                                overflow: 'hidden',
-                                zIndex: 9999,
-                            }}
-                        >
-                            <div style={{
-                                padding: '10px 12px',
-                                borderBottom: `1px solid ${THEME.border}`,
-                                fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
-                                color: THEME.textMuted,
-                            }}>
-                                FURNITURE
-                            </div>
-                            <div style={{ padding: '8px' }}>
-                                <ScrollableList maxHeight={340}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                        {(Object.keys(furnitureByCategory) as FurnitureCategory[]).map(catId => {
-                                            const items = furnitureByCategory[catId]
-                                            if (!items || items.length === 0) return null
-                                            const isOpen = openFurnitureCats.has(catId)
-                                            return (
-                                                <div
-                                                    key={catId}
-                                                    style={{
-                                                        borderRadius: 10,
-                                                        border: `1px solid ${isOpen ? THEME.accent : THEME.border}`,
-                                                        background: isOpen ? 'rgba(99,102,241,0.06)' : 'transparent',
-                                                        overflow: 'hidden',
-                                                        transition: 'border-color 150ms, background 150ms',
-                                                    }}
-                                                >
-                                                    <button
-                                                        onClick={() => setOpenFurnitureCats(prev => {
-                                                            const next = new Set(prev)
-                                                            next.has(catId) ? next.delete(catId) : next.add(catId)
-                                                            return next
-                                                        })}
-                                                        style={{
-                                                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                                                            padding: '8px 10px', background: 'transparent', border: 'none',
-                                                            cursor: 'pointer', textAlign: 'left',
-                                                        }}
-                                                    >
-                                                        <span style={{
-                                                            fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text,
-                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                        }}>
-                                                            {CATEGORY_LABELS[catId]}
-                                                        </span>
-                                                        <span style={{
-                                                            fontSize: 10.5, fontWeight: 700, color: THEME.accent,
-                                                            background: 'rgba(99,102,241,0.12)', borderRadius: 999,
-                                                            padding: '1px 7px', flexShrink: 0, minWidth: 18, textAlign: 'center',
-                                                        }}>
-                                                            {items.length}
-                                                        </span>
-                                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
-                                                            style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }}>
-                                                            <polyline points="9 18 15 12 9 6" />
-                                                        </svg>
-                                                    </button>
-
-                                                    {isOpen && (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 8px 8px' }}>
-                                                            {items.map(catalogEntry => {
-                                                                const id = catalogEntry.type
-                                                                const isNew = isFurnitureNew(catalogEntry)
-                                                                const Icon = (Icons as any)[catalogEntry.icon] ?? Icons.Box
-                                                                const selected = selectedFurnitureType === id
-                                                                return (
-                                                                    <button
-                                                                        key={id}
-                                                                        onClick={() => setSelectedFurnitureType(id)}
-                                                                        style={{
-                                                                            display: 'flex', alignItems: 'center', gap: 8,
-                                                                            padding: '6px 8px', borderRadius: 8, border: 'none',
-                                                                            background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
-                                                                            cursor: 'pointer', textAlign: 'left', width: '100%',
-                                                                        }}
-                                                                    >
-                                                                        <div style={{
-                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                            width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-                                                                            background: selected ? 'rgba(99,102,241,0.14)' : THEME.bgCanvas,
-                                                                        }}>
-                                                                            <Icon size={14} strokeWidth={1.8} color={selected ? THEME.accent : THEME.textMuted} />
-                                                                        </div>
-                                                                        <span style={{
-                                                                            flex: 1, fontSize: 12, fontWeight: selected ? 600 : 400,
-                                                                            color: selected ? THEME.accent : THEME.text,
-                                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                                        }}>
-                                                                            {catalogEntry.label}
-                                                                        </span>
-                                                                        {isNew && (
-                                                                            <span style={{
-                                                                                fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
-                                                                                color: '#fff', background: THEME.accent,
-                                                                                borderRadius: 4, padding: '2px 5px', flexShrink: 0,
-                                                                            }}>
-                                                                                NEW
-                                                                            </span>
-                                                                        )}
-                                                                    </button>
-                                                                )
-                                                            })}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </ScrollableList>
-                            </div>
-                        </div>,
-                        document.body
-                    )}
-                    {presetsMounted && presetsAnchorRect && typeof document !== 'undefined' && createPortal(
-                        <div
-                            style={{
-                                position: 'fixed',
-                                top: presetsAnchorRect.top,
-                                left: presetsAnchorRect.right + 10,
-                                background: THEME.bgPanel,
-                                border: `1px solid ${THEME.border}`,
-                                borderRadius: 12,
-                                width: 280,
-                                display: 'flex',
-                                flexDirection: 'column',
-                                boxShadow: THEME.shadowLg,
-                                overflow: 'hidden',
-                                zIndex: 9999,
-                                transformOrigin: 'top left',
-                                transform: presetsOpen ? 'scale(1)' : 'scale(0.94)',
-                                opacity: presetsOpen ? 1 : 0,
-                                transition: 'transform 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 130ms ease-out',
-                                pointerEvents: presetsOpen ? 'auto' : 'none', // avoid intercepting clicks while fading out
-                            }}
-                        >
-                            <PresetsPanel
-                                armedWallPresetId={armedWallPresetId}
-                                armedTemplateId={armedTemplateId}
-                                onSelectWallPreset={armWallPreset}
-                                onSelectRoomTemplate={armRoomTemplate}
-                            />
-                        </div>,
-                        document.body
-                    )}
                 </div>
+                {/* ── Body ─────────────────────────────────────────────────────────── */}
+                <div ref={splitContainerRef} style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-                {/* 2D canvas */}
-                <div ref={canvasDivRef} style={{ cursor: canvasCursor, flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden', alignSelf: 'stretch', background: THEME.bgCanvas }}>
-                    <canvas
-                        ref={canvasRef}
+                    {/* ── Left tool panel ────────────────────────────────── */}
+                    <div
                         style={{
-                            width: '100%', height: '100%', display: 'block', maxHeight
-                                : "800px"
+                            width: 68, flexShrink: 0,
+                            background: THEME.bgPanel,
+                            borderRight: `1px solid ${THEME.border}`,
+                            display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', padding: '10px 0', gap: 4,
+                            overflowY: 'auto',
+                            animation: 'dockSlideIn 300ms cubic-bezier(0.16, 1, 0.3, 1)',
+                            willChange: 'transform, opacity',
                         }}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={() => {
-                            isMouseDownRef.current = false;
-                            furnitureDragRef.current = null;
-                            wallDecorDragRef.current = null
-                            setMidPan(null);
-                            dragRoomRef.current = null;
-                            segDragRef.current = null;
-                            setHoverTooltip(null)
-                            shapeResizeRef.current = null
-                            lightDragRef.current = null
-                            wallDragRef.current = null   // ← add this too
-                        }}
-                        onContextMenu={handleContextMenu}
-                    />
+                        onAnimationEnd={e => { e.currentTarget.style.willChange = 'auto' }}
+                    >
+                        <Toolbar
+                            tool={tool}
+                            setTool={handleToolClick}
+                            registerAnchor={(groupId, el) => { groupAnchorsRef.current[groupId] = el }}
+                            toolGroups={toolGroups}
+                        />
 
-                    {/* Tool hint */}
-                    <ToolHintBar
-                        tool={tool}
-                        drawStart={drawStart}
-                        lineActiveNodeRef={lineActiveNodeRef}
-                        isDoorTool={isDoorTool}
-                        isWindowTool={isWindowTool}
-                        isOpeningTool={isOpeningTool}
-                        isStairsTool={isStairsTool}
-                        isWallDecorTool={isWallDecorTool}
-                        selectedFurnitureType={selectedFurnitureType}
-                    />
-                    {showRecenterPrompt && (
-                        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-white/95 border rounded-full px-4 py-2 shadow-md flex items-center gap-2 text-sm">
-                            <span>You've scrolled away from your plan</span>
-                            <button
-                                className="font-medium text-blue-600 hover:underline"
-                                onClick={() => {
-                                    centerOnContent(fpRef.current, canvasRef.current)
-                                    setShowRecenterPrompt(false)
-                                    recenterPromptShownRef.current = false
+                        <div style={{ flex: 1 }} />
+                        <div style={{ fontSize: 9, color: THEME.textFaint, textAlign: 'center', lineHeight: 1.7, paddingBottom: 4 }}>
+                            <div>{fp.rooms.length}R</div>
+                            <div>{fp.lineSegments.length}W</div>
+                            <div>{fp.openings.length}O</div>
+                            <div>{(fp.stairs ?? []).length}S</div>
+                        </div>
+
+                        {tool === 'furniture' && furnitureAnchorRect && typeof document !== 'undefined' && createPortal(
+                            <div
+                                style={{
+                                    position: 'fixed',
+                                    top: furnitureAnchorRect.top,
+                                    left: furnitureAnchorRect.right + 10,
+                                    background: THEME.bgPanel,
+                                    border: `1px solid ${THEME.border}`,
+                                    borderRadius: 12,
+                                    width: 280,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    boxShadow: THEME.shadowLg,
+                                    overflow: 'hidden',
+                                    zIndex: 9999,
                                 }}
                             >
-                                Scroll back
-                            </button>
-                        </div>
-                    )}
-                    {/* Annotation editor */}
-                    {editingAnnotation && (
-                        <div style={{ position: 'fixed', left: Math.min(editingAnnotation.x - 80, window.innerWidth - 260), top: Math.min(editingAnnotation.y - 40, window.innerHeight - 120), zIndex: 300, background: THEME.bgPanel, border: `1px solid ${THEME.accent}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: THEME.shadowLg }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: THEME.accent, letterSpacing: '0.08em' }}>LABEL</div>
-                            <input
-                                ref={annotationInputRef}
-                                autoFocus
-                                defaultValue={editingAnnotation.text || ''}
-                                placeholder="Enter label..."
-                                style={{ width: 160, height: 28, borderRadius: 5, border: `1px solid ${THEME.accent}`, background: '#FAFAFA', color: THEME.text, fontSize: 13, padding: '0 8px', outline: 'none' }}
-                                onKeyDown={e2 => {
-                                    if (e2.key === 'Enter' || e2.key === 'Escape') {
+                                <div style={{
+                                    padding: '10px 12px',
+                                    borderBottom: `1px solid ${THEME.border}`,
+                                    fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+                                    color: THEME.textMuted,
+                                }}>
+                                    FURNITURE
+                                </div>
+                                <div style={{ padding: '8px' }}>
+                                    <ScrollableList maxHeight={340}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                            {(Object.keys(furnitureByCategory) as FurnitureCategory[]).map(catId => {
+                                                const items = furnitureByCategory[catId]
+                                                if (!items || items.length === 0) return null
+                                                const isOpen = openFurnitureCats.has(catId)
+                                                return (
+                                                    <div
+                                                        key={catId}
+                                                        style={{
+                                                            borderRadius: 10,
+                                                            border: `1px solid ${isOpen ? THEME.accent : THEME.border}`,
+                                                            background: isOpen ? 'rgba(99,102,241,0.06)' : 'transparent',
+                                                            overflow: 'hidden',
+                                                            transition: 'border-color 150ms, background 150ms',
+                                                        }}
+                                                    >
+                                                        <button
+                                                            onClick={() => setOpenFurnitureCats((prev: any) => {
+                                                                const next = new Set(prev)
+                                                                next.has(catId) ? next.delete(catId) : next.add(catId)
+                                                                return next
+                                                            })}
+                                                            style={{
+                                                                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                                                padding: '8px 10px', background: 'transparent', border: 'none',
+                                                                cursor: 'pointer', textAlign: 'left',
+                                                            }}
+                                                        >
+                                                            <span style={{
+                                                                fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text,
+                                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                            }}>
+                                                                {CATEGORY_LABELS[catId]}
+                                                            </span>
+                                                            <span style={{
+                                                                fontSize: 10.5, fontWeight: 700, color: THEME.accent,
+                                                                background: 'rgba(99,102,241,0.12)', borderRadius: 999,
+                                                                padding: '1px 7px', flexShrink: 0, minWidth: 18, textAlign: 'center',
+                                                            }}>
+                                                                {items.length}
+                                                            </span>
+                                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
+                                                                style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }}>
+                                                                <polyline points="9 18 15 12 9 6" />
+                                                            </svg>
+                                                        </button>
+
+                                                        {isOpen && (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 8px 8px' }}>
+                                                                {items.map(catalogEntry => {
+                                                                    const id = catalogEntry.type
+                                                                    const isNew = isFurnitureNew(catalogEntry)
+                                                                    const Icon = (Icons as any)[catalogEntry.icon] ?? Icons.Box
+                                                                    const selected = selectedFurnitureType === id
+                                                                    return (
+                                                                        <button
+                                                                            key={id}
+                                                                            onClick={() => setSelectedFurnitureType(id)}
+                                                                            style={{
+                                                                                display: 'flex', alignItems: 'center', gap: 8,
+                                                                                padding: '6px 8px', borderRadius: 8, border: 'none',
+                                                                                background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
+                                                                                cursor: 'pointer', textAlign: 'left', width: '100%',
+                                                                            }}
+                                                                        >
+                                                                            <div style={{
+                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                                                                                background: selected ? 'rgba(99,102,241,0.14)' : THEME.bgCanvas,
+                                                                            }}>
+                                                                                <Icon size={14} strokeWidth={1.8} color={selected ? THEME.accent : THEME.textMuted} />
+                                                                            </div>
+                                                                            <span style={{
+                                                                                flex: 1, fontSize: 12, fontWeight: selected ? 600 : 400,
+                                                                                color: selected ? THEME.accent : THEME.text,
+                                                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                                            }}>
+                                                                                {catalogEntry.label}
+                                                                            </span>
+                                                                            {isNew && (
+                                                                                <span style={{
+                                                                                    fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
+                                                                                    color: '#fff', background: THEME.accent,
+                                                                                    borderRadius: 4, padding: '2px 5px', flexShrink: 0,
+                                                                                }}>
+                                                                                    NEW
+                                                                                </span>
+                                                                            )}
+                                                                        </button>
+                                                                    )
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </ScrollableList>
+                                </div>
+                            </div>,
+                            document.body
+                        )}
+                        {presetsMounted && presetsAnchorRect && typeof document !== 'undefined' && createPortal(
+                            <div
+                                style={{
+                                    position: 'fixed',
+                                    top: presetsAnchorRect.top,
+                                    left: presetsAnchorRect.right + 10,
+                                    background: THEME.bgPanel,
+                                    border: `1px solid ${THEME.border}`,
+                                    borderRadius: 12,
+                                    width: 280,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    boxShadow: THEME.shadowLg,
+                                    overflow: 'hidden',
+                                    zIndex: 9999,
+                                    transformOrigin: 'top left',
+                                    transform: presetsOpen ? 'scale(1)' : 'scale(0.94)',
+                                    opacity: presetsOpen ? 1 : 0,
+                                    transition: 'transform 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 130ms ease-out',
+                                    pointerEvents: presetsOpen ? 'auto' : 'none', // avoid intercepting clicks while fading out
+                                }}
+                            >
+                                <PresetsPanel
+                                    armedWallPresetId={armedWallPresetId}
+                                    armedTemplateId={armedTemplateId}
+                                    onSelectWallPreset={armWallPreset}
+                                    onSelectRoomTemplate={armRoomTemplate}
+                                />
+                            </div>,
+                            document.body
+                        )}
+                    </div>
+
+                    {/* 2D canvas */}
+                    <div
+                        ref={canvasDivRef}
+                        style={{
+                            cursor: canvasCursor, flex: 1, minWidth: 0, position: 'relative',
+                            overflow: 'hidden', alignSelf: 'stretch', background: THEME.bgCanvas,
+                            animation: 'canvasFadeIn 400ms cubic-bezier(0.16, 1, 0.3, 1)',
+                        }}
+                    >
+                        <canvas
+                            ref={canvasRef}
+                            style={{
+                                width: '100%', height: '100%', display: 'block', maxHeight
+                                    : "800px"
+                            }}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={() => {
+                                isMouseDownRef.current = false;
+                                furnitureDragRef.current = null;
+                                wallDecorDragRef.current = null
+                                setMidPan(null);
+                                dragRoomRef.current = null;
+                                segDragRef.current = null;
+                                setHoverTooltip(null)
+                                shapeResizeRef.current = null
+                                lightDragRef.current = null
+                                wallDragRef.current = null   // ← add this too
+                            }}
+                            onContextMenu={handleContextMenu}
+                        />
+
+                        {/* Tool hint */}
+                        <ToolHintBar
+                            tool={tool}
+                            drawStart={drawStart}
+                            lineActiveNodeRef={lineActiveNodeRef}
+                            isDoorTool={isDoorTool}
+                            isWindowTool={isWindowTool}
+                            isOpeningTool={isOpeningTool}
+                            isStairsTool={isStairsTool}
+                            isWallDecorTool={isWallDecorTool}
+                            selectedFurnitureType={selectedFurnitureType}
+                        />
+                        {showRecenterPrompt && (
+                            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-white/95 border rounded-full px-4 py-2 shadow-md flex items-center gap-2 text-sm">
+                                <span>You've scrolled away from your plan</span>
+                                <button
+                                    className="font-medium text-blue-600 hover:underline"
+                                    onClick={() => {
+                                        centerOnContent(fpRef.current, canvasRef.current)
+                                        setShowRecenterPrompt(false)
+                                        recenterPromptShownRef.current = false
+                                    }}
+                                >
+                                    Scroll back
+                                </button>
+                            </div>
+                        )}
+                        {/* Annotation editor */}
+                        {editingAnnotation && (
+                            <div style={{ position: 'fixed', left: Math.min(editingAnnotation.x - 80, window.innerWidth - 260), top: Math.min(editingAnnotation.y - 40, window.innerHeight - 120), zIndex: 300, background: THEME.bgPanel, border: `1px solid ${THEME.accent}`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: THEME.shadowLg }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: THEME.accent, letterSpacing: '0.08em' }}>LABEL</div>
+                                <input
+                                    ref={annotationInputRef}
+                                    autoFocus
+                                    defaultValue={editingAnnotation.text || ''}
+                                    placeholder="Enter label..."
+                                    style={{ width: 160, height: 28, borderRadius: 5, border: `1px solid ${THEME.accent}`, background: '#FAFAFA', color: THEME.text, fontSize: 13, padding: '0 8px', outline: 'none' }}
+                                    onKeyDown={e2 => {
+                                        if (e2.key === 'Enter' || e2.key === 'Escape') {
+                                            const val = annotationInputRef.current?.value?.trim()
+                                            if (val) {
+                                                setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).map(a => a.id === editingAnnotation!.id ? { ...a, text: val } : a) }))
+                                            } else {
+                                                setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== editingAnnotation!.id) }))
+                                            }
+                                            setEditingAnnotation(null)
+                                        }
+                                    }}
+                                    onBlur={() => {
                                         const val = annotationInputRef.current?.value?.trim()
                                         if (val) {
                                             setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).map(a => a.id === editingAnnotation!.id ? { ...a, text: val } : a) }))
@@ -3632,522 +3682,528 @@ export default function FloorPlanEditor({
                                             setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== editingAnnotation!.id) }))
                                         }
                                         setEditingAnnotation(null)
-                                    }
-                                }}
-                                onBlur={() => {
-                                    const val = annotationInputRef.current?.value?.trim()
-                                    if (val) {
-                                        setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).map(a => a.id === editingAnnotation!.id ? { ...a, text: val } : a) }))
-                                    } else {
-                                        setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== editingAnnotation!.id) }))
-                                    }
-                                    setEditingAnnotation(null)
-                                }}
-                            />
-                            <div style={{ fontSize: 10, color: THEME.textFaint }}>Enter to confirm · Esc to cancel</div>
+                                    }}
+                                />
+                                <div style={{ fontSize: 10, color: THEME.textFaint }}>Enter to confirm · Esc to cancel</div>
+                            </div>
+                        )}
+                    </div>
+
+
+                    {hoverTooltip && (
+                        <div style={{
+                            position: 'fixed', left: hoverTooltip.x + 14, top: hoverTooltip.y + 14,
+                            zIndex: 250, pointerEvents: 'none',
+                            background: 'rgba(15,15,15,0.85)', color: '#fff',
+                            fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6,
+                            whiteSpace: 'nowrap',
+                        }}>
+                            {hoverTooltip.text}
                         </div>
+                    )}
+                    <div style={{ width: 1, background: THEME.border, flexShrink: 0 }} />
+
+                    {/* ── Right: 3D preview + collapsible dock ─────────────────────── */}
+                    <div style={{ width: 1, background: THEME.border, flexShrink: 0 }} />
+                    {previewOpen && (
+                        <>
+                            <div
+                                onMouseDown={handleDividerMouseDown}
+                                style={{
+                                    width: 6, flexShrink: 0, cursor: 'col-resize', position: 'relative', zIndex: 20,
+                                    background: 'transparent',
+                                }}
+                            >
+                                <div style={{ position: 'absolute', left: 2, top: 0, bottom: 0, width: 2, background: THEME.border }} />
+                            </div>
+
+                            {/* 3D pane */}
+                            <div
+                                style={{
+                                    width: `${splitRatio * 100}%`, flexShrink: 0, display: 'flex', flexDirection: 'column',
+                                    overflow: 'hidden', background: THEME.bgPanel, minWidth: 260, position: 'relative',
+                                }}
+                            >
+                                <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#EFEFEC' }}>
+                                    <ResilientCanvas
+                                        frameloop='always'
+                                        shadows
+                                        gl={{
+                                            antialias: true,
+                                            alpha: false,
+                                            powerPreference: 'low-power',
+                                            stencil: true,
+                                            depth: true,
+                                            preserveDrawingBuffer: true
+                                        }}
+                                        dpr={[1, 2]}
+                                        camera={{
+                                            position: [
+                                                (fp?.roomHeight ?? 2.8) * 3,
+                                                (fp?.roomHeight ?? 2.8) * 4,
+                                                (fp?.roomHeight ?? 2.8) * 4
+                                            ],
+                                            fov: 45, near: 0.1, far: 500
+                                        }}
+                                        style={{ width: '100%', height: '100%', background: '#EFEFEC', display: 'block' }}
+                                        onWheel={e => e.stopPropagation()}
+                                        resize={{ scroll: false, debounce: { scroll: 50, resize: 0 } }}
+                                    >
+                                        <Scene3D
+                                            ref={scene3DRef}
+                                            exportRootRef={exportRootRef}
+                                            floors={floors}
+                                            activeFloorId={activeFloorId}
+                                            viewMode={viewMode}
+                                            showUnderlay={showUnderlay}
+                                            sceneConfig={sceneConfig}
+                                            walkMode={walkMode}
+                                            activeFp={fp}
+                                            interactiveMode={interactiveMode}
+                                            selectedId={selectedId}
+                                            onSelect={handleSceneSelect}
+                                            onToggleDoorOpen={(openingId) => setFp(prev => ({ ...prev, openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o) }))}
+                                            overlappingIds={overlappingIds}
+                                            cutoutDrawInProgress={cutoutArmed}
+                                        />
+                                    </ResilientCanvas>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+                {typeof document !== 'undefined' && createPortal(
+                    <div style={{ position: 'fixed', top: 64, right: 16, zIndex: 1000 }}>
+                        <FloatingMenu
+                            walkMode={walkMode}
+                            onToggleWalkMode={() => setWalkMode(w => !w)}
+                            interactiveMode={interactiveMode}
+                            onToggleInteractive={handleToggleInteractive}
+                            showFurniture={sceneConfig.showFurniture}
+                            onToggleShowFurniture={() =>
+                                setSceneConfig(c => ({ ...c, showFurniture: !c.showFurniture }))
+                            }
+                            showLabels={sceneConfig.showLabels}
+                            onToggleShowLabels={() =>
+                                setSceneConfig(c => ({ ...c, showLabels: !c.showLabels }))
+                            }
+                            previewOpen={previewOpen}
+                            onTogglePreview={() => setPreviewOpen(o => !o)}
+                            cameraViewPickerSlot={
+                                scene3DRef && onSave !== undefined ? (
+                                    <CameraViewPickerV2
+                                        embedded
+                                        fp={fp}
+                                        setFp={setFp}
+                                        sceneConfig={sceneConfig}
+                                        pushHistory={pushHistory}
+                                        scene3DRef={scene3DRef}
+                                        onSave={(fpArg, cfgArg) => { void handleSaveWithThumbnail(fpArg, cfgArg) }}
+                                    />
+                                ) : null
+                            }
+                        />
+                    </div>,
+                    document.body
+                )}
+                <div style={{ position: "relative" }} className='flex items-center justify-center'>
+                    <FloatingDock
+                        orientation="horizontal"
+                        activeId={sheetOpen ? rightTab : (layersOpen ? 'layers' : null)}
+                        items={[
+                            {
+                                id: 'layers',
+                                title: 'Floor View',
+                                icon: (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-full">
+                                        <path d="M12 2 2 7l10 5 10-5-10-5z" strokeLinejoin="round" />
+                                        <path d="M2 17l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
+                                        <path d="M2 12l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
+                                    </svg>
+                                ),
+                                onClick: () => setLayersOpen(v => !v),
+                            },
+                            {
+                                id: 'properties',
+                                title: 'Properties',
+                                icon: <img className='w-full' src={'/icons/properties.png'} />,
+                                onClick: () => {
+                                    if (sheetOpen && rightTab === 'properties') setSheetOpen(false)
+                                    else { setRightTab('properties'); setSheetOpen(true) }
+                                },
+                            },
+                            {
+                                id: 'scene',
+                                title: 'Scene',
+                                icon: <img className='w-full' src={'/icons/scene.png'} />,
+                                onClick: () => {
+                                    if (sheetOpen && rightTab === 'scene') setSheetOpen(false)
+                                    else { setRightTab('scene'); setSheetOpen(true) }
+                                },
+                            },
+                            {
+                                id: 'sun',
+                                title: 'Sun & Lighting',
+                                icon: <img className='w-full' src={'/icons/light.png'} />,
+                                onClick: () => {
+                                    if (sheetOpen && rightTab === 'sun') setSheetOpen(false)
+                                    else { setRightTab('sun'); setSheetOpen(true) }
+                                },
+                            },
+                        ]}
+                    />
+                    <ViewModeControl
+                        open={layersOpen}
+                        viewMode={viewMode}
+                        onSetViewMode={setViewMode}
+                        onClose={() => setLayersOpen(false)}
+                    />
+                </div>
+                <div ref={toolbarRef}>
+
+
+                    {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection ? (
+                        <div
+                            onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
+                            style={{
+                                position: 'fixed',
+                                left: quickMenuAnchor.x,
+                                top: quickMenuAnchor.y,
+                                transform: 'translate(-50%, calc(-100% - 14px))',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2,
+                                padding: 6,
+                                borderRadius: 999,
+                                background: 'rgba(28,28,32,0.95)',
+                                boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
+                                backdropFilter: 'blur(6px)',
+                                zIndex: 50,
+                            }}
+                        >
+                            <button
+                                onClick={e => { e.stopPropagation(); e.preventDefault(); handleDuplicateSelected() }}
+                                title="Duplicate all"
+                                style={{
+                                    width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
+                                    color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                                }}
+                            >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="9" y="9" width="11" height="11" rx="2" />
+                                    <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                                </svg>
+                            </button>
+                            <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.14)', margin: '0 2px' }} />
+                            <button
+                                onClick={e => {
+                                    e.stopPropagation(); e.preventDefault()
+                                    const idSet = new Set(selectedIds.filter(id => !id.includes('::wall::')))
+                                    if (idSet.size === 0) return
+                                    setFp(prev => ({
+                                        ...prev,
+                                        rooms: prev.rooms.filter(r => !idSet.has(r.id)),
+                                        openings: prev.openings.filter(o => !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))),
+                                        lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
+                                        lineSegments: prev.lineSegments.filter(s => !idSet.has(s.id)).filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
+                                        closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
+                                        furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
+                                        stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
+                                        annotations: (prev.annotations ?? []).filter(a => !idSet.has(a.id)),
+                                        wallDecor: (prev.wallDecor ?? []).filter(d => !idSet.has(d.id)),
+                                        lights: (prev.lights ?? []).filter(l => !idSet.has(l.id)),
+                                        outdoorObjects: (prev.outdoorObjects ?? []).filter(o => !idSet.has(o.id)),
+                                    }))
+                                    selectedIdsRef.current = []
+                                    setSelectedIds([])
+                                    pushHistory()
+                                }}
+                                title="Delete all"
+                                style={{
+                                    width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
+                                    color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                                }}
+                            >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
+                                </svg>
+                            </button>
+                        </div>
+                    ) : quickMenuAnchor && (
+                        <QuickActionMenu
+                            fp={fp}
+                            selectedId={selectedId}
+                            screenX={quickMenuAnchor.x}
+                            screenY={quickMenuAnchor.y}
+                            visible={!isDraggingSelection && tool === 'select'}
+                            onDuplicate={handleDuplicateSelected}
+                            onDelete={() => {
+                                const rawIds = selectedIds.length > 0
+                                    ? selectedIds
+                                    : (selectedId ? [selectedId] : [])
+                                const idsToDelete = rawIds.filter(id => !id.includes('::wall::'))
+                                if (idsToDelete.length === 0) return
+
+                                setFp(prev => {
+                                    // Resolve any shape ids (real ClosedShape ids OR synthetic
+                                    // `unconfigured::${sorted}` ids from hitClosedShape) to their
+                                    // actual boundary node-id arrays, using a SINGLE derive call so
+                                    // every resolution in this pass agrees on the same polygon set.
+                                    const allPolys = deriveClosedPolygons(prev.lineNodes, prev.lineSegments)
+                                    const shapeTargets: string[][] = []
+                                    const nonShapeIds = new Set<string>()
+
+                                    for (const id of idsToDelete) {
+                                        if (id.startsWith('unconfigured::')) {
+                                            const poly = allPolys.find(p => `unconfigured::${[...p].sort().join(',')}` === id)
+                                            if (poly) shapeTargets.push(poly)
+                                            continue
+                                        }
+                                        const sh = (prev.closedShapes ?? []).find(sh => sh.id === id)
+                                        if (sh) {
+                                            const poly = allPolys.find(p => [...p].sort().join(',') === [...sh.nodeIds].sort().join(','))
+                                            shapeTargets.push(poly ?? sh.nodeIds)
+                                            continue
+                                        }
+                                        nonShapeIds.add(id)
+                                    }
+
+                                    // Cascade-delete each shape target (preserves any edge shared
+                                    // with a polygon NOT being deleted in this same pass).
+                                    let next = prev
+                                    for (const target of shapeTargets) {
+                                        next = deleteAreaCascade(next, target)
+                                    }
+
+                                    // Everything else (rooms, furniture, stairs, etc.) — unchanged
+                                    // generic id-set filtering, just no longer touching lineNodes/
+                                    // lineSegments here since deleteAreaCascade already owns that.
+                                    if (nonShapeIds.size > 0) {
+                                        next = {
+                                            ...next,
+                                            rooms: next.rooms.filter(r => !nonShapeIds.has(r.id)),
+                                            openings: next.openings.filter(o =>
+                                                !nonShapeIds.has(o.id) && !(o.roomId && nonShapeIds.has(o.roomId))
+                                            ),
+                                            furniture: (next.furniture ?? []).filter(f => !nonShapeIds.has(f.id)),
+                                            stairs: (next.stairs ?? []).filter(st => !nonShapeIds.has(st.id)),
+                                            annotations: (next.annotations ?? []).filter(a => !nonShapeIds.has(a.id)),
+                                            wallDecor: (next.wallDecor ?? []).filter(d => !nonShapeIds.has(d.id)),
+                                            lights: (next.lights ?? []).filter(l => !nonShapeIds.has(l.id)),
+                                            outdoorObjects: (next.outdoorObjects ?? []).filter(o => !nonShapeIds.has(o.id)),
+                                        }
+                                    }
+                                    return next
+                                })
+                                selectedIdsRef.current = []
+                                setSelectedIds([])
+                                setSelectedId(null)
+                            }}
+                            onBend={handleBendSelectedSegment}
+                            onMove={handleArmMove}
+                            moveArmed={moveArmedForId === selectedId}
+                            cutoutArmed={cutoutArmed}
+                            onArmCutoutDraw={handleArmCutoutDraw}
+                            onOpenProperties={() => {
+                                if (sheetOpen && rightTab === 'properties') {
+                                    setSheetOpen(false)
+                                } else {
+                                    setRightTab('properties')
+                                    setSheetOpen(true)
+                                }
+                            }}
+                        />
                     )}
                 </div>
 
-
-                {hoverTooltip && (
-                    <div style={{
-                        position: 'fixed', left: hoverTooltip.x + 14, top: hoverTooltip.y + 14,
-                        zIndex: 250, pointerEvents: 'none',
-                        background: 'rgba(15,15,15,0.85)', color: '#fff',
-                        fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6,
-                        whiteSpace: 'nowrap',
-                    }}>
-                        {hoverTooltip.text}
-                    </div>
-                )}
-                <div style={{ width: 1, background: THEME.border, flexShrink: 0 }} />
-
-                {/* ── Right: 3D preview + collapsible dock ─────────────────────── */}
-                <div style={{ width: 1, background: THEME.border, flexShrink: 0 }} />
-                {previewOpen && (
-                    <>
-                        <div
-                            onMouseDown={handleDividerMouseDown}
-                            style={{
-                                width: 6, flexShrink: 0, cursor: 'col-resize', position: 'relative', zIndex: 20,
-                                background: 'transparent',
-                            }}
-                        >
-                            <div style={{ position: 'absolute', left: 2, top: 0, bottom: 0, width: 2, background: THEME.border }} />
-                        </div>
-
-                        {/* 3D pane */}
-                        <div
-                            style={{
-                                width: `${splitRatio * 100}%`, flexShrink: 0, display: 'flex', flexDirection: 'column',
-                                overflow: 'hidden', background: THEME.bgPanel, minWidth: 260, position: 'relative',
-                            }}
-                        >
-                            <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#EFEFEC' }}>
-                                <ResilientCanvas
-                                    frameloop='always'
-                                    shadows
-                                    gl={{
-                                        antialias: true,
-                                        alpha: false,
-                                        powerPreference: 'low-power',
-                                        stencil: true,
-                                        depth: true,
-                                        preserveDrawingBuffer: true
-                                    }}
-                                    dpr={[1, 2]}
-                                    camera={{
-                                        position: [
-                                            (fp?.roomHeight ?? 2.8) * 3,
-                                            (fp?.roomHeight ?? 2.8) * 4,
-                                            (fp?.roomHeight ?? 2.8) * 4
-                                        ],
-                                        fov: 45, near: 0.1, far: 500
-                                    }}
-                                    style={{ width: '100%', height: '100%', background: '#EFEFEC', display: 'block' }}
-                                    onWheel={e => e.stopPropagation()}
-                                    resize={{ scroll: false, debounce: { scroll: 50, resize: 0 } }}
-                                >
-                                    <Scene3D
-                                        ref={scene3DRef}
-                                        exportRootRef={exportRootRef}
-                                        floors={floors}
-                                        activeFloorId={activeFloorId}
-                                        viewMode={viewMode}
-                                        showUnderlay={showUnderlay}
-                                        sceneConfig={sceneConfig}
-                                        walkMode={walkMode}
-                                        activeFp={fp}
-                                        interactiveMode={interactiveMode}
-                                        selectedId={selectedId}
-                                        onSelect={handleSceneSelect}
-                                        onToggleDoorOpen={(openingId) => setFp(prev => ({ ...prev, openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o) }))}
-                                        overlappingIds={overlappingIds}
-                                        cutoutDrawInProgress={cutoutArmed}
-                                    />
-                                </ResilientCanvas>
-                            </div>
-                        </div>
-                    </>
-                )}
-            </div>
-            {typeof document !== 'undefined' && createPortal(
-                <div style={{ position: 'fixed', top: 64, right: 16, zIndex: 1000 }}>
-                    <FloatingMenu
-                        walkMode={walkMode}
-                        onToggleWalkMode={() => setWalkMode(w => !w)}
-                        interactiveMode={interactiveMode}
-                        onToggleInteractive={handleToggleInteractive}
-                        showFurniture={sceneConfig.showFurniture}
-                        onToggleShowFurniture={() =>
-                            setSceneConfig(c => ({ ...c, showFurniture: !c.showFurniture }))
-                        }
-                        showLabels={sceneConfig.showLabels}
-                        onToggleShowLabels={() =>
-                            setSceneConfig(c => ({ ...c, showLabels: !c.showLabels }))
-                        }
-                        previewOpen={previewOpen}
-                        onTogglePreview={() => setPreviewOpen(o => !o)}
-                        cameraViewPickerSlot={
-                            scene3DRef && onSave !== undefined ? (
-                                <CameraViewPickerV2
-                                    embedded
-                                    fp={fp}
-                                    setFp={setFp}
-                                    sceneConfig={sceneConfig}
-                                    pushHistory={pushHistory}
-                                    scene3DRef={scene3DRef}
-                                    onSave={(fpArg, cfgArg) => { void handleSaveWithThumbnail(fpArg, cfgArg) }}
-                                />
-                            ) : null
-                        }
-                    />
-                </div>,
-                document.body
-            )}
-            <div style={{ position: "relative" }} className='flex items-center justify-center'>
-                <FloatingDock
-                    orientation="horizontal"
-                    activeId={sheetOpen ? rightTab : (layersOpen ? 'layers' : null)}
-                    items={[
-                        {
-                            id: 'layers',
-                            title: 'Floor View',
-                            icon: (
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-full">
-                                    <path d="M12 2 2 7l10 5 10-5-10-5z" strokeLinejoin="round" />
-                                    <path d="M2 17l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
-                                    <path d="M2 12l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
-                                </svg>
-                            ),
-                            onClick: () => setLayersOpen(v => !v),
-                        },
-                        {
-                            id: 'properties',
-                            title: 'Properties',
-                            icon: <img className='w-full' src={'/icons/properties.png'} />,
-                            onClick: () => {
-                                if (sheetOpen && rightTab === 'properties') setSheetOpen(false)
-                                else { setRightTab('properties'); setSheetOpen(true) }
-                            },
-                        },
-                        {
-                            id: 'scene',
-                            title: 'Scene',
-                            icon: <img className='w-full' src={'/icons/scene.png'} />,
-                            onClick: () => {
-                                if (sheetOpen && rightTab === 'scene') setSheetOpen(false)
-                                else { setRightTab('scene'); setSheetOpen(true) }
-                            },
-                        },
-                        {
-                            id: 'sun',
-                            title: 'Sun & Lighting',
-                            icon: <img className='w-full' src={'/icons/light.png'} />,
-                            onClick: () => {
-                                if (sheetOpen && rightTab === 'sun') setSheetOpen(false)
-                                else { setRightTab('sun'); setSheetOpen(true) }
-                            },
-                        },
-                    ]}
-                />
-                <ViewModeControl
-                    open={layersOpen}
-                    viewMode={viewMode}
-                    onSetViewMode={setViewMode}
-                    onClose={() => setLayersOpen(false)}
-                />
-            </div>
-            <div ref={toolbarRef}>
-
-
-                {selectedIds.length > 1 && quickMenuAnchor && !isDraggingSelection ? (
+                {propertiesRendered && (
                     <div
-                        onMouseDown={e => { e.stopPropagation(); e.preventDefault() }}
+                        data-panel="right-sidebar"
                         style={{
-                            position: 'fixed',
-                            left: quickMenuAnchor.x,
-                            top: quickMenuAnchor.y,
-                            transform: 'translate(-50%, calc(-100% - 14px))',
+                            position: 'absolute',
+                            top: '53%',
+                            right: 12,
+                            transform: `translateY(-50%) scale(${sheetOpen && rightTab === 'properties' ? 1 : 0.96})`,
+                            opacity: sheetOpen && rightTab === 'properties' ? 1 : 0,
+                            transition: 'transform 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 130ms ease-out',
+                            transformOrigin: 'bottom right',
+                            pointerEvents: sheetOpen && rightTab === 'properties' ? 'auto' : 'none',
+                            height: '75vh',
+                            width: 320,
+                            background: THEME.bg ?? '#fff',
+                            border: `1px solid ${THEME.border}`,
+                            borderRadius: 8,
                             display: 'flex',
-                            alignItems: 'center',
-                            gap: 2,
-                            padding: 6,
-                            borderRadius: 999,
-                            background: 'rgba(28,28,32,0.95)',
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.28)',
-                            backdropFilter: 'blur(6px)',
-                            zIndex: 50,
+                            flexDirection: 'column',
+                            zIndex: 20,
+                            overflow: 'hidden',
                         }}
                     >
-                        <button
-                            onClick={e => { e.stopPropagation(); e.preventDefault(); handleDuplicateSelected() }}
-                            title="Duplicate all"
-                            style={{
-                                width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
-                                color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                            }}
-                        >
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="9" y="9" width="11" height="11" rx="2" />
-                                <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-                            </svg>
-                        </button>
-                        <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.14)', margin: '0 2px' }} />
-                        <button
-                            onClick={e => {
-                                e.stopPropagation(); e.preventDefault()
-                                const idSet = new Set(selectedIds.filter(id => !id.includes('::wall::')))
-                                if (idSet.size === 0) return
-                                setFp(prev => ({
-                                    ...prev,
-                                    rooms: prev.rooms.filter(r => !idSet.has(r.id)),
-                                    openings: prev.openings.filter(o => !idSet.has(o.id) && !(o.roomId && idSet.has(o.roomId))),
-                                    lineNodes: prev.lineNodes.filter(n => !idSet.has(n.id)),
-                                    lineSegments: prev.lineSegments.filter(s => !idSet.has(s.id)).filter(s => !s.nodeIds.some(nid => idSet.has(nid))),
-                                    closedShapes: (prev.closedShapes ?? []).filter(sh => !idSet.has(sh.id)),
-                                    furniture: (prev.furniture ?? []).filter(f => !idSet.has(f.id)),
-                                    stairs: (prev.stairs ?? []).filter(st => !idSet.has(st.id)),
-                                    annotations: (prev.annotations ?? []).filter(a => !idSet.has(a.id)),
-                                    wallDecor: (prev.wallDecor ?? []).filter(d => !idSet.has(d.id)),
-                                    lights: (prev.lights ?? []).filter(l => !idSet.has(l.id)),
-                                    outdoorObjects: (prev.outdoorObjects ?? []).filter(o => !idSet.has(o.id)),
-                                }))
-                                selectedIdsRef.current = []
-                                setSelectedIds([])
-                                pushHistory()
-                            }}
-                            title="Delete all"
-                            style={{
-                                width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent',
-                                color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                            }}
-                        >
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
-                            </svg>
-                        </button>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '8px 12px', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0,
+                        }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>PROPERTIES</span>
+                            <button
+                                onClick={() => setSheetOpen(false)}
+                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted, fontSize: 14, lineHeight: 1 }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <ScrollableList maxHeight={1200}>
+                            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}
+                            >
+                                {/* <SceneGraphPanel fp={fp} selectedId={selectedId} onSelect={setSelectedId} /> */}
+                                <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
+                                <PropsPanel
+                                    fp={fp}
+                                    selectedId={selectedId}
+                                    onChange={setFp}
+                                    onDelete={() => {
+                                        if (!selectedId || selectedId.includes('::wall::')) return
+                                        setFp(prev => {
+                                            const isRoom = prev.rooms.some(r => r.id === selectedId)
+                                            const isNode = prev.lineNodes.some(n => n.id === selectedId)
+                                            const isSeg = prev.lineSegments.some(s => s.id === selectedId)
+                                            const isShape = (prev.closedShapes ?? []).some(sh => sh.id === selectedId)
+                                            const isUnconfiguredShape = selectedId.startsWith('unconfigured::')  // NEW
+                                            const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
+                                            const isStairs = (prev.stairs ?? []).some(st => st.id === selectedId)
+                                            const isAnn = (prev.annotations ?? []).some(a => a.id === selectedId)
+                                            const isWallDecor = (prev.wallDecor ?? []).some(d => d.id === selectedId)
+                                            if (isWallDecor) return { ...prev, wallDecor: (prev.wallDecor ?? []).filter(d => d.id !== selectedId) }
+
+                                            if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
+                                            if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
+                                            if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
+                                            if (isShape || isUnconfiguredShape) {
+                                                const allPolys = deriveClosedPolygons(prev.lineNodes, prev.lineSegments)
+                                                const targetNodeIds = isUnconfiguredShape
+                                                    ? allPolys.find(poly => `unconfigured::${[...poly].sort().join(',')}` === selectedId)
+                                                    : (() => {
+                                                        const sh = (prev.closedShapes ?? []).find(sh => sh.id === selectedId)
+                                                        if (!sh) return undefined
+                                                        return allPolys.find(poly => [...poly].sort().join(',') === [...sh.nodeIds].sort().join(','))
+                                                            ?? sh.nodeIds
+                                                    })()
+                                                if (!targetNodeIds) return prev
+                                                return deleteAreaCascade(prev, targetNodeIds)
+                                            }
+
+                                            if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
+                                            if (isStairs) return { ...prev, stairs: (prev.stairs ?? []).filter(st => st.id !== selectedId) }
+                                            if (isAnn) return { ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== selectedId) }
+                                            return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
+                                        })
+                                        setSelectedId(null)
+                                        setSelectedIds([])
+                                    }}
+                                    sceneConfig={sceneConfig}
+                                    onChangeSceneConfig={setSceneConfig}
+                                    onDuplicate={handleDuplicateSelected}
+                                    onMirror={handleMirrorSelected}
+                                />
+                            </div>
+                        </ScrollableList>
                     </div>
-                ) : quickMenuAnchor && (
-                    <QuickActionMenu
-                        fp={fp}
-                        selectedId={selectedId}
-                        screenX={quickMenuAnchor.x}
-                        screenY={quickMenuAnchor.y}
-                        visible={!isDraggingSelection && tool === 'select'}
-                        onDuplicate={handleDuplicateSelected}
-                        onDelete={() => {
-                            const rawIds = selectedIds.length > 0
-                                ? selectedIds
-                                : (selectedId ? [selectedId] : [])
-                            const idsToDelete = rawIds.filter(id => !id.includes('::wall::'))
-                            if (idsToDelete.length === 0) return
-
-                            setFp(prev => {
-                                // Resolve any shape ids (real ClosedShape ids OR synthetic
-                                // `unconfigured::${sorted}` ids from hitClosedShape) to their
-                                // actual boundary node-id arrays, using a SINGLE derive call so
-                                // every resolution in this pass agrees on the same polygon set.
-                                const allPolys = deriveClosedPolygons(prev.lineNodes, prev.lineSegments)
-                                const shapeTargets: string[][] = []
-                                const nonShapeIds = new Set<string>()
-
-                                for (const id of idsToDelete) {
-                                    if (id.startsWith('unconfigured::')) {
-                                        const poly = allPolys.find(p => `unconfigured::${[...p].sort().join(',')}` === id)
-                                        if (poly) shapeTargets.push(poly)
-                                        continue
-                                    }
-                                    const sh = (prev.closedShapes ?? []).find(sh => sh.id === id)
-                                    if (sh) {
-                                        const poly = allPolys.find(p => [...p].sort().join(',') === [...sh.nodeIds].sort().join(','))
-                                        shapeTargets.push(poly ?? sh.nodeIds)
-                                        continue
-                                    }
-                                    nonShapeIds.add(id)
-                                }
-
-                                // Cascade-delete each shape target (preserves any edge shared
-                                // with a polygon NOT being deleted in this same pass).
-                                let next = prev
-                                for (const target of shapeTargets) {
-                                    next = deleteAreaCascade(next, target)
-                                }
-
-                                // Everything else (rooms, furniture, stairs, etc.) — unchanged
-                                // generic id-set filtering, just no longer touching lineNodes/
-                                // lineSegments here since deleteAreaCascade already owns that.
-                                if (nonShapeIds.size > 0) {
-                                    next = {
-                                        ...next,
-                                        rooms: next.rooms.filter(r => !nonShapeIds.has(r.id)),
-                                        openings: next.openings.filter(o =>
-                                            !nonShapeIds.has(o.id) && !(o.roomId && nonShapeIds.has(o.roomId))
-                                        ),
-                                        furniture: (next.furniture ?? []).filter(f => !nonShapeIds.has(f.id)),
-                                        stairs: (next.stairs ?? []).filter(st => !nonShapeIds.has(st.id)),
-                                        annotations: (next.annotations ?? []).filter(a => !nonShapeIds.has(a.id)),
-                                        wallDecor: (next.wallDecor ?? []).filter(d => !nonShapeIds.has(d.id)),
-                                        lights: (next.lights ?? []).filter(l => !nonShapeIds.has(l.id)),
-                                        outdoorObjects: (next.outdoorObjects ?? []).filter(o => !nonShapeIds.has(o.id)),
-                                    }
-                                }
-                                return next
-                            })
-                            selectedIdsRef.current = []
-                            setSelectedIds([])
-                            setSelectedId(null)
-                        }}
-                        onBend={handleBendSelectedSegment}
-                        onMove={handleArmMove}
-                        moveArmed={moveArmedForId === selectedId}
-                        cutoutArmed={cutoutArmed}
-                        onArmCutoutDraw={handleArmCutoutDraw}
-                        onOpenProperties={() => {
-                            if (sheetOpen && rightTab === 'properties') {
-                                setSheetOpen(false)
-                            } else {
-                                setRightTab('properties')
-                                setSheetOpen(true)
-                            }
-                        }}
-                    />
                 )}
-            </div>
-
-            {sheetOpen && rightTab === 'properties' && (
-                <div
-                    data-panel="right-sidebar"
-                    style={{
-                        position: 'absolute',
-                        top: '53%',
-                        right: 12,
-                        transform: 'translateY(-50%)',
-                        height: '75vh',
-                        width: 320,
-                        background: THEME.bg ?? '#fff',
-                        border: `1px solid ${THEME.border}`,
-                        borderRadius: 8,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        zIndex: 20,
-                        overflow: 'hidden',
-                    }}
-                >
-                    <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '8px 12px', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0,
-                    }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>PROPERTIES</span>
-                        <button
-                            onClick={() => setSheetOpen(false)}
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted, fontSize: 14, lineHeight: 1 }}
-                        >
-                            ✕
-                        </button>
-                    </div>
-                    <ScrollableList maxHeight={1200}>
-                        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}
-                        >
-                            {/* <SceneGraphPanel fp={fp} selectedId={selectedId} onSelect={setSelectedId} /> */}
-                            <div style={{ height: 1, background: THEME.border, margin: '4px 0' }} />
-                            <PropsPanel
+                {sceneRendered && (
+                    <div
+                        data-panel="right-sidebar"
+                        style={{
+                            position: 'absolute',
+                            top: '53%',
+                            right: 12,
+                            transform: `translateY(-50%) scale(${sheetOpen && rightTab === 'properties' ? 1 : 0.96})`,
+                            opacity: sheetOpen && rightTab === 'properties' ? 1 : 0,
+                            transition: 'transform 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 130ms ease-out',
+                            transformOrigin: 'bottom right',
+                            pointerEvents: sheetOpen && rightTab === 'properties' ? 'auto' : 'none',
+                            height: '75vh',
+                            width: 320,
+                            background: THEME.bg ?? '#fff',
+                            border: `1px solid ${THEME.border}`,
+                            borderRadius: 8,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            zIndex: 20,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '8px 12px', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0,
+                        }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>SCENE</span>
+                            <button
+                                onClick={() => setSheetOpen(false)}
+                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted, fontSize: 14, lineHeight: 1 }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}>
+                            <MaterialsPanel
                                 fp={fp}
-                                selectedId={selectedId}
-                                onChange={setFp}
-                                onDelete={() => {
-                                    if (!selectedId || selectedId.includes('::wall::')) return
-                                    setFp(prev => {
-                                        const isRoom = prev.rooms.some(r => r.id === selectedId)
-                                        const isNode = prev.lineNodes.some(n => n.id === selectedId)
-                                        const isSeg = prev.lineSegments.some(s => s.id === selectedId)
-                                        const isShape = (prev.closedShapes ?? []).some(sh => sh.id === selectedId)
-                                        const isUnconfiguredShape = selectedId.startsWith('unconfigured::')  // NEW
-                                        const isFurniture = (prev.furniture ?? []).some(f => f.id === selectedId)
-                                        const isStairs = (prev.stairs ?? []).some(st => st.id === selectedId)
-                                        const isAnn = (prev.annotations ?? []).some(a => a.id === selectedId)
-                                        const isWallDecor = (prev.wallDecor ?? []).some(d => d.id === selectedId)
-                                        if (isWallDecor) return { ...prev, wallDecor: (prev.wallDecor ?? []).filter(d => d.id !== selectedId) }
+                                config={sceneConfig}
+                                onChange={setSceneConfig}
+                                onChangeFp={setFp}
+                                pushHistory={pushHistory}
+                            />
 
-                                        if (isRoom) return { ...prev, rooms: prev.rooms.filter(r => r.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                                        if (isNode) return { ...prev, lineNodes: prev.lineNodes.filter(n => n.id !== selectedId), lineSegments: prev.lineSegments.filter(s => !s.nodeIds.includes(selectedId)) }
-                                        if (isSeg) return { ...prev, lineSegments: prev.lineSegments.filter(s => s.id !== selectedId), openings: prev.openings.filter(o => o.roomId !== selectedId) }
-                                        if (isShape || isUnconfiguredShape) {
-                                            const allPolys = deriveClosedPolygons(prev.lineNodes, prev.lineSegments)
-                                            const targetNodeIds = isUnconfiguredShape
-                                                ? allPolys.find(poly => `unconfigured::${[...poly].sort().join(',')}` === selectedId)
-                                                : (() => {
-                                                    const sh = (prev.closedShapes ?? []).find(sh => sh.id === selectedId)
-                                                    if (!sh) return undefined
-                                                    return allPolys.find(poly => [...poly].sort().join(',') === [...sh.nodeIds].sort().join(','))
-                                                        ?? sh.nodeIds
-                                                })()
-                                            if (!targetNodeIds) return prev
-                                            return deleteAreaCascade(prev, targetNodeIds)
-                                        }
+                        </div>
+                    </div>
 
-                                        if (isFurniture) return { ...prev, furniture: (prev.furniture ?? []).filter(f => f.id !== selectedId) }
-                                        if (isStairs) return { ...prev, stairs: (prev.stairs ?? []).filter(st => st.id !== selectedId) }
-                                        if (isAnn) return { ...prev, annotations: (prev.annotations ?? []).filter(a => a.id !== selectedId) }
-                                        return { ...prev, openings: prev.openings.filter(o => o.id !== selectedId) }
-                                    })
-                                    setSelectedId(null)
-                                    setSelectedIds([])
-                                }}
+                )}
+                {sunRendered && (
+                    <div
+                        data-panel="right-sidebar"
+                        style={{
+                            position: 'absolute',
+                            top: '53%',
+                            right: 12,
+                            transform: `translateY(-50%) scale(${sheetOpen && rightTab === 'properties' ? 1 : 0.96})`,
+                            opacity: sheetOpen && rightTab === 'properties' ? 1 : 0,
+                            transition: 'transform 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 130ms ease-out',
+                            transformOrigin: 'bottom right',
+                            pointerEvents: sheetOpen && rightTab === 'properties' ? 'auto' : 'none',
+                            height: '75vh',
+                            width: 320,
+                            background: THEME.bg ?? '#fff',
+                            border: `1px solid ${THEME.border}`,
+                            borderRadius: 8,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            zIndex: 20,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}>
+                            <SunScenePanel
                                 sceneConfig={sceneConfig}
-                                onChangeSceneConfig={setSceneConfig}
-                                onDuplicate={handleDuplicateSelected}
-                                onMirror={handleMirrorSelected}
+                                onChange={patch => setSceneConfig(prev => ({ ...prev, ...patch }))}
                             />
                         </div>
-                    </ScrollableList>
-                </div>
-            )}
-
-            {sheetOpen && rightTab === 'scene' && (
-                <div
-                    style={{
-                        position: 'absolute',
-                        top: '50%',
-                        right: 12,
-                        transform: 'translateY(-50%)',
-                        height: '80vh',
-                        width: 320,
-                        background: THEME.bg ?? '#fff',
-                        border: `1px solid ${THEME.border}`,
-                        borderRadius: 8,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        zIndex: 20,
-                        overflow: 'hidden',
-                    }}
-                >
-                    <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '8px 12px', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0,
-                    }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>SCENE</span>
-                        <button
-                            onClick={() => setSheetOpen(false)}
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted, fontSize: 14, lineHeight: 1 }}
-                        >
-                            ✕
-                        </button>
                     </div>
-                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}>
-                        <MaterialsPanel
-                            fp={fp}
-                            config={sceneConfig}
-                            onChange={setSceneConfig}
-                            onChangeFp={setFp}
-                            pushHistory={pushHistory}
-                        />
-
-                    </div>
-                </div>
-
-            )}
-            {sheetOpen && rightTab === 'sun' && (
-                <div
-                    style={{
-                        position: 'absolute',
-                        top: '50%',
-                        right: 12,
-                        transform: 'translateY(-50%)',
-                        height: 'auto',
-                        width: 320,
-                        background: THEME.bg ?? '#fff',
-                        border: `1px solid ${THEME.border}`,
-                        borderRadius: 8,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        zIndex: 20,
-                        overflow: 'hidden',
-                    }}
-                    className='rounded-full'
-                >
-                    {/* <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '8px 12px', borderBottom: `1px solid ${THEME.border}`, flexShrink: 0,
-                    }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>SUN & LIGHTING</span>
-                        <button
-                            onClick={() => setSheetOpen(false)}
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: THEME.textMuted, fontSize: 14, lineHeight: 1 }}
-                        >
-                            ✕
-                        </button>
-                    </div> */}
-                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }} onWheel={(e) => e.stopPropagation()} onWheelCapture={(e) => e.stopPropagation()}>
-                        <SunScenePanel
-                            sceneConfig={sceneConfig}
-                            onChange={patch => setSceneConfig(prev => ({ ...prev, ...patch }))}
-                        />
-                    </div>
-                </div>
-            )}
-        </div>
+                )}
+            </div>
+            <style>{`
+                @keyframes dockSlideIn {
+                    from { opacity: 0; transform: translateX(-16px); }
+                    to   { opacity: 1; transform: translateX(0); }
+                }
+                @keyframes canvasFadeIn {
+                    from { opacity: 0; }
+                    to   { opacity: 1; }
+                }
+                @keyframes panelStaggerIn {
+                    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+                    to   { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                `}
+            </style>
+        </>
     )
 }
 

@@ -11,6 +11,7 @@ import { Button, Card, COLOR, ColorSwatchInput, Divider, EmptyState, IconButton,
 import { LIGHT_FIXTURE_LABELS, PlacedLight } from "./lights-constant"
 import { FURNITURE_LABELS } from "./lib/furniture-constants"
 import { DEFAULT_RAILING, DEFAULT_SKIRT, DEFAULT_TREAD, FlightRailingConfig, RailingSideConfig } from "./objects/stair-config"
+import { RAILING_STYLE_LABELS, RailingStyle } from "./lib/stairs-constants"
 
 // Every door geometry variant DoorVariant3D actually knows how to render
 // (its switch-case keys) — kept here so the "Type" dropdown can't offer an
@@ -55,7 +56,36 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     const wallRoom = wallSel ? fp.rooms.find(r => r.id === wallSel.roomId) : null
     const [railingFlightTab, setRailingFlightTab] = useState<'0' | '1'>('0')
     const [railingSideTab, setRailingSideTab] = useState<'left' | 'right'>('left')
+    const guardEdgeSel = selectedId?.includes('::guard::')
+        ? { shapeId: selectedId.split('::guard::')[0], edgeIndex: Number(selectedId.split('::guard::')[1]) }
+        : null
+    const guardShape = guardEdgeSel ? (fp.closedShapes ?? []).find(s => s.id === guardEdgeSel.shapeId) : null
+    const guardEdgeId = guardEdgeSel ? selectedId! : null
+    const guardEdgeOverride = guardShape && guardEdgeId
+        ? guardShape.cutout?.guard?.edgeOverrides?.[guardEdgeId]
+        : undefined
 
+    function patchGuardEdge(patch: Partial<{
+        type: 'wall' | 'railing' | 'open'
+        height: number
+        railingStyle: RailingStyle
+        railingPostSpacing: number
+        railingWidthDim: number
+        railingColor: string
+    }>) {
+        if (!guardShape || !guardEdgeId) return
+        const guard = guardShape.cutout?.guard
+        if (!guard) return
+        const nextOverride = { ...(guard.edgeOverrides?.[guardEdgeId] ?? { type: guard.type }), ...patch }
+        onChange({
+            ...fp,
+            closedShapes: (fp.closedShapes ?? []).map(sh =>
+                sh.id === guardShape.id
+                    ? { ...sh, cutout: { ...sh.cutout!, guard: { ...guard, edgeOverrides: { ...guard.edgeOverrides, [guardEdgeId]: nextOverride } } } }
+                    : sh
+            ),
+        })
+    }
 
     const derivedPolygonForSelection = useMemo(
         () => deriveClosedPolygons(fp.lineNodes, fp.lineSegments).find(nodeIds => {
@@ -286,7 +316,52 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             </Button>
                         </PropField>
                     </Card>
+                    {guardShape && guardEdgeSel && (
+                        <Card>
+                            <PropField label="Cutout">
+                                <span style={{ fontSize: 12.5, color: COLOR.accent, fontWeight: 600 }}>
+                                    {guardShape.label || 'Area'} — Edge {guardEdgeSel.edgeIndex + 1}
+                                </span>
+                            </PropField>
+                            <PropField label="Type">
+                                <select
+                                    value={guardEdgeOverride?.type ?? guardShape.cutout?.guard?.type ?? 'wall'}
+                                    onChange={(e) => patchGuardEdge({ type: e.target.value as 'wall' | 'railing' | 'open' })}
+                                >
+                                    <option value="wall">Wall</option>
+                                    <option value="railing">Railing</option>
+                                    <option value="open">Open</option>
+                                </select>
+                            </PropField>
 
+                            {(guardEdgeOverride?.type ?? guardShape.cutout?.guard?.type) === 'railing' && (
+                                <>
+                                    <Divider />
+                                    <PropField label="Rail Style">
+                                        <select
+                                            value={guardEdgeOverride?.railingStyle ?? guardShape.cutout?.guard?.railingStyle ?? 'baluster'}
+                                            onChange={(e) => patchGuardEdge({ railingStyle: e.target.value as RailingStyle })}
+                                        >
+                                            {Object.entries(RAILING_STYLE_LABELS).map(([k, label]) => (
+                                                <option key={k} value={k}>{label}</option>
+                                            ))}
+                                        </select>
+                                    </PropField>
+                                </>
+                            )}
+
+                            <Divider />
+                            <PropField label="Height (m)">
+                                <input
+                                    type="number"
+                                    step={0.1}
+                                    value={guardEdgeOverride?.height ?? guardShape.cutout?.guard?.height ?? ''}
+                                    placeholder="default"
+                                    onChange={(e) => patchGuardEdge({ height: e.target.value === '' ? undefined : Number(e.target.value) })}
+                                />
+                            </PropField>
+                        </Card>
+                    )}
                     <Card>
                         <SectionLabel>Wall Appearance</SectionLabel>
                         <PropField label="Paint Color">
@@ -308,23 +383,14 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 </>
             )}
 
-            {shape && !wallRoom && (
+            {shape && (
                 <>
                     <Card>
                         <PropField label="Label">
                             <input
                                 value={shape.label ?? ''}
-                                onChange={e => {
-                                    const exists = (fp.closedShapes ?? []).some(sh => sh.id === shape.id)
-                                    const patch = { label: e.target.value }
-                                    onChange({
-                                        ...fp,
-                                        closedShapes: exists
-                                            ? (fp.closedShapes ?? []).map(sh => sh.id === shape.id ? { ...sh, ...patch } : sh)
-                                            : [...(fp.closedShapes ?? []), { ...shape, ...patch }],
-                                    })
-                                }}
-                                style={{ /* match your existing text input styling */ }}
+                                onChange={e => patchShape({ label: e.target.value })}
+                                style={{ height: 34, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 13, padding: '0 10px', outline: 'none' }}
                             />
                         </PropField>
                     </Card>
@@ -349,6 +415,32 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             </Button>
                         </PropField>
                         {(shape.cutout?.enabled ?? false) && (
+                            <PropField label="Guard">
+                                <select
+                                    value={shape.cutout?.guard?.type ?? 'none'}
+                                    onChange={(e) => {
+                                        const v = e.target.value
+                                        const guard = v === 'none' ? undefined : {
+                                            enabled: true,
+                                            type: v as 'wall' | 'railing',
+                                            height: v === 'railing' ? 0.9 : undefined,
+                                            railingStyle: 'baluster' as const,
+                                        }
+                                        onChange({
+                                            ...fp,
+                                            closedShapes: (fp.closedShapes ?? []).map(sh =>
+                                                sh.id === shape.id ? { ...sh, cutout: { ...sh.cutout!, guard } } : sh
+                                            ),
+                                        })
+                                    }}
+                                >
+                                    <option value="none">None</option>
+                                    <option value="wall">Wall</option>
+                                    <option value="railing">Railing</option>
+                                </select>
+                            </PropField>
+                        )}
+                        {(shape.cutout?.enabled ?? false) && (
                             <PropField label="Opening margin (m)">
                                 <NumInput value={shape.cutout?.openingOffset ?? 0.15} min={0} max={1} step={0.05}
                                     onChange={v => onChange({
@@ -358,107 +450,178 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             </PropField>
                         )}
                     </Card>
+
+                    <Card>
+                        <SectionLabel>Walls</SectionLabel>
+                        {(shape.cutout?.enabled ?? false) ? (
+                            <>
+                                <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: 4 }}>
+                                    This area is a floor cutout — these settings control its guard perimeter, not a wall.
+                                </div>
+                                <PropField label="Guard type">
+                                    <SegmentedControl
+                                        options={[
+                                            { value: 'wall', label: 'Wall' },
+                                            { value: 'railing', label: 'Railing' },
+                                        ] as const}
+                                        value={shape.cutout?.guard?.type ?? 'wall'}
+                                        onChange={type => onChange({
+                                            ...fp,
+                                            closedShapes: (fp.closedShapes ?? []).map(sh =>
+                                                sh.id === shape.id
+                                                    ? { ...sh, cutout: { ...sh.cutout!, guard: { ...(sh.cutout?.guard ?? { enabled: true, type: 'wall' }), enabled: true, type } } }
+                                                    : sh
+                                            ),
+                                        })}
+                                    />
+                                </PropField>
+                                <PropField label="Height (m)">
+                                    <NumInput
+                                        value={shape.cutout?.guard?.height ?? (shape.cutout?.guard?.type === 'railing' ? 0.9 : fp.roomHeight)}
+                                        min={0.3} max={6} step={0.1}
+                                        onChange={v => onChange({
+                                            ...fp,
+                                            closedShapes: (fp.closedShapes ?? []).map(sh =>
+                                                sh.id === shape.id
+                                                    ? { ...sh, cutout: { ...sh.cutout!, guard: { ...(sh.cutout?.guard ?? { enabled: true, type: 'wall' }), height: v } } }
+                                                    : sh
+                                            ),
+                                        })}
+                                    />
+                                    <a
+                                        style={{ fontSize: 11, cursor: 'pointer', color: COLOR.accent }}
+                                        onClick={() => onChange({
+                                            ...fp,
+                                            closedShapes: (fp.closedShapes ?? []).map(sh =>
+                                                sh.id === shape.id
+                                                    ? { ...sh, cutout: { ...sh.cutout!, guard: { ...(sh.cutout?.guard ?? { enabled: true, type: 'wall' }), height: undefined } } }
+                                                    : sh
+                                            ),
+                                        })}
+                                    >
+                                        Reset to room height ({fp.roomHeight.toFixed(2)}m)
+                                    </a>
+                                </PropField>
+                            </>
+                        ) : (
+                            <>
+                                {/* Bulk-writes seg.thickness across every segment forming this
+                        area's perimeter loop (via segmentsForShape). There is no
+                        separate ClosedShape.thickness field — line-walls-3d.tsx reads
+                        thickness per-segment, so this is a multi-write convenience,
+                        the same pattern already used below for Wall height/type.
+                        Segments in the loop can have diverging thickness if a user
+                        previously edited one individually via the segment panel —
+                        this shows the first segment's value and, on change, snaps
+                        every segment in the loop to the new value. */}
+                                <PropField label="Thickness (m)">
+                                    <RangeRow
+                                        value={Math.round((segmentsForShape(shape, fp.lineSegments)[0]?.thickness ?? 0.15) * 100)}
+                                        onChange={v => {
+                                            const targetIds = new Set(segmentsForShape(shape, fp.lineSegments).map(s => s.id))
+                                            onChange({
+                                                ...fp,
+                                                lineSegments: fp.lineSegments.map(s => targetIds.has(s.id) ? { ...s, thickness: v / 100 } : s)
+                                            })
+                                        }}
+                                        format={v => `${(v / 100).toFixed(2)}m`}
+                                        min={2} max={200} step={1}
+                                    />
+                                </PropField>
+                                <PropField label="Wall height (m)">
+                                    <NumInput
+                                        value={segmentsForShape(shape, fp.lineSegments)[0]?.height ?? fp.roomHeight}
+                                        min={0.5} max={6} step={0.1}
+                                        onChange={v => {
+                                            const targetIds = new Set(segmentsForShape(shape, fp.lineSegments).map(s => s.id))
+                                            onChange({
+                                                ...fp,
+                                                lineSegments: fp.lineSegments.map(s => targetIds.has(s.id) ? { ...s, height: v } : s)
+                                            })
+                                        }}
+                                    />
+                                </PropField>
+                                <PropField label="Wall type">
+                                    <SegmentedControl
+                                        options={[
+                                            { value: 'solid', label: 'Solid' },
+                                            { value: 'railing', label: 'Railing' },
+                                            { value: 'open', label: 'Open' },
+                                        ] as const}
+                                        value={segmentsForShape(shape, fp.lineSegments)[0]?.wallType ?? 'solid'}
+                                        onChange={wallType => {
+                                            const targetIds = new Set(segmentsForShape(shape, fp.lineSegments).map(s => s.id))
+                                            onChange({
+                                                ...fp,
+                                                lineSegments: fp.lineSegments.map(s => targetIds.has(s.id) ? { ...s, wallType } : s)
+                                            })
+                                        }}
+                                    />
+                                </PropField>
+                            </>
+                        )}
+                    </Card>
+
+                    <Card>
+                        <SectionLabel>Wall Texture</SectionLabel>
+                        <PropField label="Side">
+                            <SegmentedControl
+                                options={[
+                                    { value: 'interior', label: 'Interior' },
+                                    { value: 'exterior', label: 'Exterior' },
+                                    { value: 'both', label: 'Both' },
+                                ] as const}
+                                value={shapeWallSide}
+                                onChange={(side) => setShapeWallSide(side)}
+                            />
+                        </PropField>
+                        <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: -4 }}>
+                            {shapeWallSide === 'exterior'
+                                ? 'Applies to the outside face of this wall.'
+                                : shapeWallSide === 'both'
+                                    ? 'Applies to both faces of this wall.'
+                                    : 'Applies to the inside face of this wall.'}
+                        </div>
+                        <MaterialTexturePicker
+                            label={
+                                shapeWallSide === 'both'
+                                    ? 'Wall Texture'
+                                    : shapeWallSide === 'exterior'
+                                        ? 'Exterior Wall Texture'
+                                        : 'Interior Wall Texture'
+                            }
+                            items={wallMaterials}
+                            currentId={
+                                shapeWallSide === 'exterior'
+                                    ? shape.exteriorWallMaterial
+                                    : shape.wallMaterial
+                            }
+                            onSelect={(id) =>
+                                applyShapeWallTexture(
+                                    shapeWallSide,
+                                    id as WallMaterial
+                                )
+                            }
+                            onClear={() =>
+                                applyShapeWallTexture(
+                                    shapeWallSide,
+                                    undefined
+                                )
+                            }
+                            theme={pickerTheme}
+                        />
+                        <Divider />
+                        <MaterialTexturePicker
+                            label="Floor Texture"
+                            items={floorMaterials}
+                            currentId={shape.floorMaterial}
+                            onSelect={(id) => patchShape({ floorMaterial: id as FloorMaterial })}
+                            onClear={() => patchShape({ floorMaterial: undefined })}
+                            theme={pickerTheme}
+                        />
+                    </Card>
                 </>
             )}
-            {shape && <>
-                <Card>
-                    <PropField label="Label">
-                        <input value={shape.label ?? ''} onChange={e => patchShape({ label: e.target.value })}
-                            style={{ height: 34, borderRadius: 6, width: '100%', border: `1px solid ${COLOR.borderStrong}`, background: COLOR.bgCard, color: COLOR.text, fontSize: 13, padding: '0 10px', outline: 'none' }} />
-                    </PropField>
-                </Card>
-                <Card>
-                    <SectionLabel>Walls</SectionLabel>
-                    <PropField label="Wall height (m)">
-                        <NumInput
-                            value={segmentsForShape(shape, fp.lineSegments)[0]?.height ?? fp.roomHeight}
-                            min={0.5} max={6} step={0.1}
-                            onChange={v => {
-                                const targetIds = new Set(segmentsForShape(shape, fp.lineSegments).map(s => s.id))
-                                onChange({
-                                    ...fp,
-                                    lineSegments: fp.lineSegments.map(s => targetIds.has(s.id) ? { ...s, height: v } : s)
-                                })
-                            }}
-                        />
-                    </PropField>
-                    <PropField label="Wall type">
-                        <SegmentedControl
-                            options={[
-                                { value: 'solid', label: 'Solid' },
-                                { value: 'railing', label: 'Railing' },
-                                { value: 'open', label: 'Open' },
-                            ] as const}
-                            value={segmentsForShape(shape, fp.lineSegments)[0]?.wallType ?? 'solid'}
-                            onChange={wallType => {
-                                const targetIds = new Set(segmentsForShape(shape, fp.lineSegments).map(s => s.id))
-                                onChange({
-                                    ...fp,
-                                    lineSegments: fp.lineSegments.map(s => targetIds.has(s.id) ? { ...s, wallType } : s)
-                                })
-                            }}
-                        />
-                    </PropField>
-                </Card>
-                <Card>
-                    <SectionLabel>Wall Texture</SectionLabel>
-                    <PropField label="Side">
-                        <SegmentedControl
-                            options={[
-                                { value: 'interior', label: 'Interior' },
-                                { value: 'exterior', label: 'Exterior' },
-                                { value: 'both', label: 'Both' },
-                            ] as const}
-                            value={shapeWallSide}
-                            onChange={(side) => setShapeWallSide(side)}
-                        />
-                    </PropField>
-                    <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: -4 }}>
-                        {shapeWallSide === 'exterior'
-                            ? 'Applies to the outside face of this wall.'
-                            : shapeWallSide === 'both'
-                                ? 'Applies to both faces of this wall.'
-                                : 'Applies to the inside face of this wall.'}
-                    </div>
-                    <MaterialTexturePicker
-                        label={
-                            shapeWallSide === 'both'
-                                ? 'Wall Texture'
-                                : shapeWallSide === 'exterior'
-                                    ? 'Exterior Wall Texture'
-                                    : 'Interior Wall Texture'
-                        }
-                        items={wallMaterials}
-                        currentId={
-                            shapeWallSide === 'exterior'
-                                ? shape.exteriorWallMaterial
-                                : shape.wallMaterial
-                        }
-                        onSelect={(id) =>
-                            applyShapeWallTexture(
-                                shapeWallSide,
-                                id as WallMaterial
-                            )
-                        }
-                        onClear={() =>
-                            applyShapeWallTexture(
-                                shapeWallSide,
-                                undefined
-                            )
-                        }
-                        theme={pickerTheme}
-                    />
-                    <Divider />
-                    <MaterialTexturePicker
-                        label="Floor Texture"
-                        items={floorMaterials}
-                        currentId={shape.floorMaterial}
-                        onSelect={(id) => patchShape({ floorMaterial: id as FloorMaterial })}
-                        onClear={() => patchShape({ floorMaterial: undefined })}
-                        theme={pickerTheme}
-                    />
-                </Card>
-            </>}
 
             {room && <>
                 <Card>
@@ -529,114 +692,181 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 <div style={{ fontSize: 12, color: COLOR.textMuted, lineHeight: 1.5 }}>
                     Wall/floor loop with {seg.nodeIds.length} nodes. Select individual nodes to reposition.
                 </div>
-                <Card>
-                    <SectionLabel>Appearance</SectionLabel>
-                    <PropField label="Thickness (m)">
-                        <RangeRow
-                            value={Math.round((seg.thickness ?? 0.15) * 100)}
-                            onChange={v => patchSegment({ thickness: v / 100 })}
-                            format={v => `${(v / 100).toFixed(2)}m`}
-                            min={2} max={200} step={1}
-                        />
-                    </PropField>
-                    <PropField label="Wall type">
-                        <SegmentedControl
-                            options={[
-                                { value: 'solid', label: 'Solid' },
-                                { value: 'railing', label: 'Railing' },
-                                { value: 'open', label: 'Open' },
-                            ] as const}
-                            value={seg.wallType ?? 'solid'}
-                            onChange={wt => patchSegment({ wallType: wt })}
-                        />
-                    </PropField>
-                    <PropField label="Height (m)">
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-                            <RangeRow
-                                value={Math.round((seg.height ?? fp.roomHeight) * 100)}
-                                onChange={v => patchSegment({ height: v / 100 })}
-                                format={v => `${(v / 100).toFixed(2)}m`}
-                                min={10} max={1000} step={5}
-                            />
-                            {seg.height !== undefined && (
-                                <button
-                                    onClick={() => patchSegment({ height: undefined })}
-                                    style={{
-                                        alignSelf: 'flex-start', fontSize: 10.5, color: COLOR.accent,
-                                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                        textDecoration: 'underline',
-                                    }}
-                                >
-                                    Reset to room height ({fp.roomHeight.toFixed(2)}m)
-                                </button>
-                            )}
-                        </div>
-                    </PropField>
-                    <PropField label="Side">
-                        <SegmentedControl
-                            options={[
-                                { value: 'interior', label: 'Interior' },
-                                { value: 'exterior', label: 'Exterior' },
-                                { value: 'both', label: 'Both' },
-                            ] as const}
-                            value={segWallSide}
-                            onChange={(side) => {
-                                setSegWallSide(side)
-                                patchRoomSceneById(seg.id, { wallMaterialSide: side })
-                            }}
-                        />
-                    </PropField>
 
-                    <PropField label="Wall color">
-                        <ColorSwatchInput
-                            value={segSceneConfig?.wallColor ?? '#FFFFFF'}
-                            onChange={v =>
-                                patchRoomSceneById(seg.id, {
-                                    wallColor: v,
-                                })
-                            }
-                        />
-                    </PropField>
+                {(() => {
+                    const cutoutShape = (fp.closedShapes ?? []).find(sh =>
+                        sh.cutout?.enabled && segmentsForShape(sh, fp.lineSegments).some(s => s.id === seg.id)
+                    )
 
-                    <Divider />
+                    if (cutoutShape) {
+                        const edgeIndex = segmentsForShape(cutoutShape, fp.lineSegments).findIndex(s => s.id === seg.id)
+                        const guardEdgeId = edgeIndex >= 0 ? `${cutoutShape.id}::guard::${edgeIndex}` : null
+                        const guard = cutoutShape.cutout?.guard
+                        const guardOverride = guard && guardEdgeId ? guard.edgeOverrides?.[guardEdgeId] : undefined
+                        const effType = guardOverride?.type ?? guard?.type ?? 'wall'
 
-                    <div style={{
-                        fontSize: 11,
-                        color: COLOR.textFaint,
-                        marginBottom: -4
-                    }}>
-                        {segWallSide === 'interior'
-                            ? 'Applies to the interior face of this wall.'
-                            : segWallSide === 'exterior'
-                                ? 'Applies to the exterior face of this wall.'
-                                : 'Applies to both faces of this wall.'}
-                    </div>
-
-                    <MaterialTexturePicker
-                        label="Wall Texture"
-                        items={wallMaterials}
-                        currentId={
-                            segWallSide === 'interior'
-                                ? segSceneConfig?.wallMaterial
-                                : segWallSide === 'exterior'
-                                    ? segSceneConfig?.exteriorWallMaterial
-                                    : undefined
+                        const patchThisEdge = (patch: Partial<{ type: 'wall' | 'railing' | 'open'; height: number; railingStyle: RailingStyle }>) => {
+                            if (!guard || !guardEdgeId) return
+                            const nextOverride = { ...(guard.edgeOverrides?.[guardEdgeId] ?? { type: guard.type }), ...patch }
+                            onChange({
+                                ...fp,
+                                closedShapes: (fp.closedShapes ?? []).map(sh =>
+                                    sh.id === cutoutShape.id
+                                        ? { ...sh, cutout: { ...sh.cutout!, guard: { ...guard, edgeOverrides: { ...guard.edgeOverrides, [guardEdgeId]: nextOverride } } } }
+                                        : sh
+                                ),
+                            })
                         }
-                        onSelect={(id) => {
-                            const patch: Partial<RoomSceneConfig> = {}
-                            if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = id as WallMaterial
-                            if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = id as WallMaterial
-                            patchRoomSceneById(seg.id, patch)
-                        }}
-                        onClear={() => {
-                            const patch: Partial<RoomSceneConfig> = {}
-                            if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = undefined
-                            if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = undefined
-                            patchRoomSceneById(seg.id, patch)
-                        }}
-                        theme={pickerTheme}
-                    />
-                </Card>
+
+                        return (
+                            <Card>
+                                <SectionLabel>Cutout Guard — {cutoutShape.label || 'Area'}</SectionLabel>
+                                <div style={{ fontSize: 11.5, color: COLOR.textFaint, marginBottom: 6 }}>
+                                    This edge borders a floor cutout. The wall itself is hidden — configure its guard here.
+                                </div>
+                                <PropField label="Type">
+                                    <SegmentedControl
+                                        options={[
+                                            { value: 'wall', label: 'Wall' },
+                                            { value: 'railing', label: 'Railing' },
+                                            { value: 'open', label: 'Open' },
+                                        ] as const}
+                                        value={effType}
+                                        onChange={type => patchThisEdge({ type })}
+                                    />
+                                </PropField>
+                                {effType === 'railing' && (
+                                    <PropField label="Rail Style">
+                                        <select
+                                            value={guardOverride?.railingStyle ?? guard?.railingStyle ?? 'baluster'}
+                                            onChange={(e) => patchThisEdge({ railingStyle: e.target.value as RailingStyle })}
+                                        >
+                                            {Object.entries(RAILING_STYLE_LABELS).map(([k, label]) => (
+                                                <option key={k} value={k}>{label}</option>
+                                            ))}
+                                        </select>
+                                    </PropField>
+                                )}
+                                {effType !== 'open' && (
+                                    <PropField label="Height (m)">
+                                        <NumInput
+                                            value={guardOverride?.height ?? guard?.height ?? (effType === 'railing' ? 0.9 : fp.roomHeight)}
+                                            min={0.3} max={6} step={0.1}
+                                            onChange={v => patchThisEdge({ height: v })}
+                                        />
+                                    </PropField>
+                                )}
+                            </Card>
+                        )
+                    }
+
+                    return (
+                        <Card>
+                            <SectionLabel>Appearance</SectionLabel>
+                            <PropField label="Thickness (m)">
+                                <RangeRow
+                                    value={Math.round((seg.thickness ?? 0.15) * 100)}
+                                    onChange={v => patchSegment({ thickness: v / 100 })}
+                                    format={v => `${(v / 100).toFixed(2)}m`}
+                                    min={2} max={200} step={1}
+                                />
+                            </PropField>
+                            <PropField label="Wall type">
+                                <SegmentedControl
+                                    options={[
+                                        { value: 'solid', label: 'Solid' },
+                                        { value: 'railing', label: 'Railing' },
+                                        { value: 'open', label: 'Open' },
+                                    ] as const}
+                                    value={seg.wallType ?? 'solid'}
+                                    onChange={wt => patchSegment({ wallType: wt })}
+                                />
+                            </PropField>
+                            <PropField label="Height (m)">
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+                                    <RangeRow
+                                        value={Math.round((seg.height ?? fp.roomHeight) * 100)}
+                                        onChange={v => patchSegment({ height: v / 100 })}
+                                        format={v => `${(v / 100).toFixed(2)}m`}
+                                        min={10} max={1000} step={5}
+                                    />
+                                    {seg.height !== undefined && (
+                                        <button
+                                            onClick={() => patchSegment({ height: undefined })}
+                                            style={{
+                                                alignSelf: 'flex-start', fontSize: 10.5, color: COLOR.accent,
+                                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                                textDecoration: 'underline',
+                                            }}
+                                        >
+                                            Reset to room height ({fp.roomHeight.toFixed(2)}m)
+                                        </button>
+                                    )}
+                                </div>
+                            </PropField>
+                            <PropField label="Side">
+                                <SegmentedControl
+                                    options={[
+                                        { value: 'interior', label: 'Interior' },
+                                        { value: 'exterior', label: 'Exterior' },
+                                        { value: 'both', label: 'Both' },
+                                    ] as const}
+                                    value={segWallSide}
+                                    onChange={(side) => {
+                                        setSegWallSide(side)
+                                        patchRoomSceneById(seg.id, { wallMaterialSide: side })
+                                    }}
+                                />
+                            </PropField>
+
+                            <PropField label="Wall color">
+                                <ColorSwatchInput
+                                    value={segSceneConfig?.wallColor ?? '#FFFFFF'}
+                                    onChange={v =>
+                                        patchRoomSceneById(seg.id, {
+                                            wallColor: v,
+                                        })
+                                    }
+                                />
+                            </PropField>
+
+                            <Divider />
+
+                            <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: -4 }}>
+                                {segWallSide === 'interior'
+                                    ? 'Applies to the interior face of this wall.'
+                                    : segWallSide === 'exterior'
+                                        ? 'Applies to the exterior face of this wall.'
+                                        : 'Applies to both faces of this wall.'}
+                            </div>
+
+                            <MaterialTexturePicker
+                                label="Wall Texture"
+                                items={wallMaterials}
+                                currentId={
+                                    segWallSide === 'interior'
+                                        ? segSceneConfig?.wallMaterial
+                                        : segWallSide === 'exterior'
+                                            ? segSceneConfig?.exteriorWallMaterial
+                                            : undefined
+                                }
+                                onSelect={(id) => {
+                                    const patch: Partial<RoomSceneConfig> = {}
+                                    if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = id as WallMaterial
+                                    if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = id as WallMaterial
+                                    patchRoomSceneById(seg.id, patch)
+                                }}
+                                onClear={() => {
+                                    const patch: Partial<RoomSceneConfig> = {}
+                                    if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = undefined
+                                    if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = undefined
+                                    patchRoomSceneById(seg.id, patch)
+                                }}
+                                theme={pickerTheme}
+                            />
+                        </Card>
+                    )
+                })()}
             </>}
 
             {opening && <>
@@ -1047,10 +1277,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                 />
                             </PropField>
                         )}
-
-                        {/* Side tabs — this is the piece that was missing. Each side is
-            now edited and stored independently via perFlight, instead of
-            one shared Style/Height/Color applied to "Both" sides at once. */}
                         <PropField label="Editing side">
                             <SegmentedControl
                                 options={[
@@ -1294,7 +1520,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
                         {(stairs.tread?.mode ?? 'floating') === 'floating' && (
                             <PropField label="Gap (m)">
-                                <NumInput value={stairs.tread?.gap ?? 0.03} min={0.005} max={0.1} step={0.005}
+                                <NumInput value={stairs.tread?.gap ?? 0.03} min={0} max={0.3} step={0.005}
                                     onChange={v => onChange({
                                         ...fp,
                                         stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
@@ -1305,7 +1531,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         )}
 
                         <PropField label="Tread depth (m)">
-                            <NumInput value={stairs.tread?.depth ?? 0} min={0} max={0.6} step={0.01}
+                            <NumInput value={stairs.tread?.depth ?? 0} min={0} max={1.5} step={0.01}
                                 onChange={v => onChange({
                                     ...fp,
                                     stairs: (fp.stairs ?? []).map(s => s.id === stairs.id
@@ -1314,7 +1540,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                 })} />
                         </PropField>
                         <PropField label="Tread thickness (m)">
-                            <NumInput value={stairs.tread?.thickness ?? 0} min={0} max={0.15} step={0.005}
+                            <NumInput value={stairs.tread?.thickness ?? 0} min={0} max={0.4} step={0.005}
                                 onChange={v => onChange({
                                     ...fp,
                                     stairs: (fp.stairs ?? []).map(s => s.id === stairs.id

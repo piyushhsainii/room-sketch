@@ -27,18 +27,19 @@ export function glassMat(
     return (
         <meshPhysicalMaterial
             color={tint}
-            transparent={transparent || itemOpacity < 1}
-            opacity={0.22 * itemOpacity}
-            transmission={0.96}
-            thickness={0.02}
-            roughness={0.02}
+            transparent
+            opacity={0.12 * itemOpacity}
+            transmission={0.98}
+            thickness={0.01}
+            roughness={0.01}
             metalness={0}
-            ior={1.52}
-            reflectivity={1}
+            ior={1.5}
+            reflectivity={0.3}
             clearcoat={1}
             clearcoatRoughness={0}
-            envMapIntensity={1.35}
+            envMapIntensity={1.1}
             side={THREE.DoubleSide}
+            depthWrite={false}
         />
     )
 }

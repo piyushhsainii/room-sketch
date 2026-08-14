@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { ClosedShape, FloorPlanState, LineSegment } from './lib/constants'
 
 export type QuickAction = 'move' | 'bend' | 'duplicate' | 'delete' | 'properties' | 'cutout'
@@ -227,9 +227,6 @@ export function QuickActionMenu({
     onMove,
     onArmCutoutDraw,
     moveArmed = false,
-    /** True while a cutout draw-session is currently armed for this
-     *  selection — the NEXT closed loop drawn on the canvas (via the line
-     *  tool) gets auto-tagged as a cutout. Mirrors moveArmed's pattern. */
     cutoutArmed = false,
 }: {
     fp: FloorPlanState
@@ -242,20 +239,36 @@ export function QuickActionMenu({
     onBend: (segId: string) => void
     onOpenProperties: () => void
     onMove: () => void
-    /** Arms cutout-draw mode for the current selection. Does NOT toggle
-     *  cutout on the selected shape itself — it switches the editor into
-     *  the line tool so the user draws a NEW closed loop, which gets
-     *  tagged cutout.enabled=true automatically the moment it closes. */
     onArmCutoutDraw: () => void
     moveArmed?: boolean
     cutoutArmed?: boolean
 }) {
     const kind = useMemo(() => classifySelection(fp, selectedId), [fp, selectedId])
     const actions = kind ? ACTIONS_BY_ENTITY[kind] : []
+    const shouldShow = visible && !!selectedId && !!kind && actions.length > 0
 
-    if (!visible || !selectedId || !kind || actions.length === 0) return null
+    // Keep mounted through the exit transition instead of snapping away.
+    const [shouldRender, setShouldRender] = useState(shouldShow)
+    // Tracks the animate-in/out phase separately from mount, so we can
+    // start at scale(0.9)/opacity 0 and transition to 1 on the next frame.
+    const [entered, setEntered] = useState(false)
 
-    const bendDisabled = kind === 'segment' && !canBendSegment(fp, selectedId)
+    useEffect(() => {
+        if (shouldShow) {
+            setShouldRender(true)
+            const raf = requestAnimationFrame(() => setEntered(true))
+            return () => cancelAnimationFrame(raf)
+        } else {
+            setEntered(false)
+            const t = setTimeout(() => setShouldRender(false), 120)
+            return () => clearTimeout(t)
+        }
+    }, [shouldShow])
+
+    if (!shouldRender) return null
+
+    const bendDisabled = kind === 'segment' && !canBendSegment(fp, selectedId!)
+
 
     const handle = (action: QuickAction) => (e: React.MouseEvent) => {
         e.stopPropagation()
@@ -263,7 +276,7 @@ export function QuickActionMenu({
         switch (action) {
             case 'duplicate': onDuplicate(); break
             case 'delete': onDelete(); break
-            case 'bend': if (kind === 'segment' && !bendDisabled) onBend(selectedId); break
+            case 'bend': if (kind === 'segment' && !bendDisabled) onBend(selectedId!); break
             case 'properties': onOpenProperties(); break
             case 'move': onMove(); break
             case 'cutout': onArmCutoutDraw(); break
@@ -277,7 +290,10 @@ export function QuickActionMenu({
                 position: 'fixed',
                 left: screenX,
                 top: screenY,
-                transform: 'translate(-50%, calc(-100% - 14px))',
+                transform: `translate(-50%, calc(-100% - 14px)) scale(${entered ? 1 : 0.9})`,
+                transformOrigin: 'center bottom', // pops from the anchor point (selected object)
+                opacity: entered ? 1 : 0,
+                transition: 'transform 120ms ease-out, opacity 120ms ease-out',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,
@@ -287,7 +303,7 @@ export function QuickActionMenu({
                 boxShadow: PILL.shadow,
                 backdropFilter: 'blur(6px)',
                 zIndex: 50,
-                pointerEvents: 'auto',
+                pointerEvents: entered ? 'auto' : 'none',
             }}
         >
             {actions.map((action, i) => {

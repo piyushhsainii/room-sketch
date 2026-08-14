@@ -370,9 +370,6 @@ function StraightStairs({
 
     const usedH = numTreads * riser
     const usedD = numTreads * run
-    // FIX: treadW was `w * 0.42`, leaving a big gap between tread edges and
-    // the railings (which sit at ±w/2). Full width minus a small clearance
-    // matches what the railings actually attach to.
     const treadW = w - 0.04
     const skirtColor = skirt.color ?? STAIR_SIDE_COLOR
 
@@ -395,8 +392,12 @@ function StraightStairs({
                     riserAxis: 'z',
                 })
             )}
-            <StraightStringer x={-w / 2 + 0.02} d={usedD} h={usedH} />
-            <StraightStringer x={w / 2 - 0.02} d={usedD} h={usedH} />
+
+            {/* FIX: stringers now receive treadMaterial so they texture like
+                the rest of the stairs instead of rendering as flat untextured
+                strips. */}
+            <StraightStringer x={-w / 2 + 0.02} d={usedD} h={usedH} material={treadMaterial} />
+            <StraightStringer x={w / 2 - 0.02} d={usedD} h={usedH} material={treadMaterial} />
 
             <FlightRailing from={leftFrom} to={leftTo} side="left" railing={railing} flightIndex={0} />
             <FlightRailing from={rightFrom} to={rightTo} side="right" railing={railing} flightIndex={0} />
@@ -417,17 +418,31 @@ function StraightStairs({
     )
 }
 
-function StraightStringer({ x, d, h }: { x: number; d: number; h: number }) {
-    const len = Math.hypot(d, h)
+// Reconstructed to accept a material — replace with your real geometry if
+// this differs from what you already have (I don't have your original body,
+// so double-check the box dimensions/rotation match your stringer's actual
+// diagonal geometry before dropping this in).
+function StraightStringer({
+    x, d, h, material, thickness = 0.04,
+}: {
+    x: number
+    d: number
+    h: number
+    material?: ResolvedTreadMaterial
+    thickness?: number
+}) {
+    const length = Math.sqrt(d * d + h * h)
     const angle = Math.atan2(h, d)
+
     return (
         <mesh
             position={[x, h / 2, 0]}
-            rotation={[-angle, 0, 0]}
+            rotation={[angle, 0, 0]}
             castShadow
+            receiveShadow
         >
-            <boxGeometry args={[0.04, 0.08, len]} />
-            <meshStandardMaterial color={STAIR_SIDE_COLOR} roughness={0.6} />
+            <boxGeometry args={[thickness, length, 0.2]} />
+            <TreadMaterial def={material} />
         </mesh>
     )
 }

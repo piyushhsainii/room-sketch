@@ -1,43 +1,90 @@
 'use client'
 
-import { useState } from "react"
-import { EditorTool } from "../lib/constants"
+import { useLayoutEffect, useRef, useState } from "react"
+import { EditorTool, ToolGroup } from "../lib/constants"
 import { GroupButton } from "./GroupComponent"
-import { TOOL_GROUPS } from "../lib/tool-constants"
 
 export function Toolbar({
     tool,
     setTool,
     orientation = 'vertical',
-    registerAnchor, // NEW
+    registerAnchor,
+    toolGroups,
 }: {
     tool: EditorTool
     setTool: (t: EditorTool) => void
     orientation?: 'vertical' | 'horizontal'
-    registerAnchor?: (groupId: string, el: HTMLDivElement | null) => void // NEW
+    registerAnchor?: (groupId: string, el: HTMLDivElement | null) => void
+    toolGroups: ToolGroup[]
 }) {
     const [lastUsed, setLastUsed] = useState<Record<string, EditorTool>>({})
+    const containerRef = useRef<HTMLDivElement>(null)
+    const buttonRefs = useRef<Record<string, HTMLDivElement | null>>({})
+    const [indicatorStyle, setIndicatorStyle] = useState<{ top: number; left: number; size: number } | null>(null)
+
+    const activeGroup = toolGroups.find(g => g.leaves.some(l => l.id === tool))
 
     const handleSelect = (groupId: string, leafId: EditorTool) => {
         setLastUsed(prev => ({ ...prev, [groupId]: leafId }))
         setTool(leafId)
     }
 
+    const setButtonNode = (groupId: string) => (el: HTMLDivElement | null) => {
+        buttonRefs.current[groupId] = el
+        registerAnchor?.(groupId, el)
+    }
+
+    useLayoutEffect(() => {
+        if (!activeGroup || !containerRef.current) { setIndicatorStyle(null); return }
+        const btnEl = buttonRefs.current[activeGroup.id]
+        if (!btnEl) return
+        const containerRect = containerRef.current.getBoundingClientRect()
+        const btnRect = btnEl.getBoundingClientRect()
+        setIndicatorStyle({
+            top: btnRect.top - containerRect.top,
+            left: btnRect.left - containerRect.left,
+            size: btnRect.width, // buttons are square (48px)
+        })
+    }, [tool, activeGroup, orientation])
+
     return (
-        <div style={{
-            display: 'flex',
-            flexDirection: orientation === 'vertical' ? 'column' : 'row',
-            gap: 6,
-        }}>
-            {TOOL_GROUPS.map(group => (
-                <GroupButton
-                    key={group.id}
-                    group={group}
-                    activeTool={tool}
-                    lastUsed={lastUsed}
-                    onSelect={(leafId) => handleSelect(group.id, leafId)}
-                    registerAnchor={registerAnchor}
+        <div
+            ref={containerRef}
+            style={{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: orientation === 'vertical' ? 'column' : 'row',
+                gap: 6,
+            }}
+        >
+            {/* Sliding active-tool underline indicator */}
+            {indicatorStyle && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: indicatorStyle.top,
+                        left: indicatorStyle.left,
+                        width: indicatorStyle.size,
+                        height: indicatorStyle.size,
+                        borderRadius: 10,
+                        border: '1.5px solid rgba(99,102,241,0.55)',
+                        boxShadow: '0 0 0 1px rgba(99,102,241,0.08)',
+                        transition: 'top 220ms cubic-bezier(0.34,1.56,0.64,1), left 220ms cubic-bezier(0.34,1.56,0.64,1)',
+                        pointerEvents: 'none',
+                        zIndex: 0,
+                    }}
                 />
+            )}
+
+            {toolGroups.map(group => (
+                <div key={group.id} style={{ position: 'relative', zIndex: 1 }} ref={setButtonNode(group.id)}>
+                    <GroupButton
+                        group={group}
+                        activeTool={tool}
+                        lastUsed={lastUsed}
+                        onSelect={(leafId) => handleSelect(group.id, leafId)}
+                    />
+                </div>
             ))}
         </div>
     )

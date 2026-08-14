@@ -62,14 +62,10 @@ export function BayPanel({
                     <boxGeometry args={[width - stoneT * 2, stoneT, 0.05]} />
                     {mat(bayStoneColor, { roughness: 0.75 }, itemOpacity, itemTransparent)}
                 </mesh>
-                <mesh position={[0, 0, 0]}>
-                    <boxGeometry args={[width - stoneT * 2, height - stoneT * 2, sashT]} />
-                    {mat(bayGlassFrame, { roughness: 0.45 }, itemOpacity, itemTransparent)}
-                </mesh>
+                {/* removed: the full-size opaque center box that was covering the glass */}
             </group>
         )
     }
-
     const inner = (
         <>
             {frameFace(frameHalfGap)}
@@ -78,13 +74,6 @@ export function BayPanel({
             <group position={[0, 0, 0]}>
                 <WindowGlass width={glassW} height={glassH} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
             </group>
-
-            {[0.2, -0.05, -0.3].map((f, i) => (
-                <mesh key={i} position={[0, glassH * f, frameHalfGap + sashT / 2 + 0.018]}>
-                    <boxGeometry args={[glassW * 0.98, 0.012, 0.006]} />
-                    {mat(bayGlassFrame, { roughness: 0.4 }, itemOpacity, itemTransparent)}
-                </mesh>
-            ))}
 
             {isDoor && (
                 <mesh position={[-hingeSign * (width / 2 - stoneT - 0.05), 0, frameHalfGap + sashT / 2 + 0.02]}>
@@ -152,3 +141,4 @@ export function useBayCapGeometry(bayW: number, frontW: number, sideW: number, p
         return geo
     }, [bayW, frontW, sideW, projectDepth, sideAngle, thickness, overhang])
 }
+

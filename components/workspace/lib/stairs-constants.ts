@@ -25,18 +25,19 @@ export const STAIRS_TYPE_GROUP: Record<StairsType, StairsTypeGroup> = {
   "stairs-ramp": "other",
   elevator: "other",
 };
-
 export type RailingStyle =
-  | "baluster" // current default — vertical baluster posts, matches Railing3D/stairsMesh today
-  | "glass" // solid glass panel between posts, metal/black cap rail
-  | "cable" // horizontal tensioned cables between posts
-  | "solid"; // solid knee-wall / stringer-height panel, no visible posts
+  | "baluster" // fallback-branch default, vertical square posts
+  | "cable" // fallback-branch, tighter post spacing, thin metal infill
+  | "glass" // transmissive glass panel
+  | "criss-cross" // diagonal X-brace infill
+  | "solid-panel"; // opaque solid panel
 
 export const RAILING_STYLE_LABELS: Record<RailingStyle, string> = {
   baluster: "Baluster",
-  glass: "Glass Panel",
   cable: "Cable",
-  solid: "Solid Wall",
+  glass: "Glass Panel",
+  "criss-cross": "Criss-Cross",
+  "solid-panel": "Solid Panel",
 };
 
 export type StairsOpeningMode = "none" | "destination";

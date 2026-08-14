@@ -6,6 +6,7 @@ import {
 } from "@/components/workspace/lib/constants";
 import { PlacedFurniture } from "@/components/workspace/lib/furniture-constants";
 import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
+import { WallType } from "@/components/workspace/lib/wall-constants";
 import { SceneLight } from "@/components/workspace/lights-constant";
 
 export interface WallPoint {
@@ -31,14 +32,33 @@ export interface RoomWindow {
 export interface SceneRoom {
   id: string;
   name: string;
-  shape: WallPoint[]; // polygon points in meters, clockwise
-  height: number; // ceiling height in meters, default 2.7
+  shape: WallPoint[];
+  height: number;
   floor_material: FloorMaterial;
-  wall_material: WallMaterial; // NEW — required, mirrors floor_material's pattern
-  wall_color: string; // hex color string
+  wall_material: WallMaterial;
+  wall_color: string;
   doors: RoomDoor[];
   windows: RoomWindow[];
+  railings?: RoomRailing[]; // NEW
 }
+
+export type RoomRailing = {
+  wall: "north" | "south" | "east" | "west";
+  position: number;
+  width: number;
+  railing_style?:
+    | "baluster"
+    | "glass"
+    | "cable"
+    | "solid-panel"
+    | "criss-cross";
+  railing_height?: number;
+  railing_post_spacing?: number;
+  railing_width_dim?: number;
+  railing_color?: string;
+  railing_solid_above?: boolean;
+  railing_wall_start?: number;
+};
 
 export type SceneOutdoorObject = {
   id: string;
@@ -67,6 +87,12 @@ export type SceneJSON = {
       string,
       { color?: string; material?: WallMaterial }
     >;
+    cutout?: {
+      // NEW
+      enabled: boolean;
+      toLevel?: string;
+      openingOffset?: number;
+    };
   }[];
   line_nodes?: { id: string; x: number; z: number }[];
   line_segments?: {
@@ -74,9 +100,11 @@ export type SceneJSON = {
     node_ids: string[];
     thickness?: number;
     height?: number;
+    wall_type?: WallType; // NEW
   }[];
   lights?: SceneLight[];
   outdoor_objects: SceneOutdoorObject[];
+  segment_openings?: SceneSegmentOpening[]; // NEW
   saved_views?: {
     id: string;
     label: string;
@@ -86,6 +114,29 @@ export type SceneJSON = {
   ground_material?: string;
   extracted_at: string;
   floorplan_url: string;
+};
+
+export type SceneSegmentOpening = {
+  id: string;
+  type: "door" | "window" | "opening" | "railing";
+  segment_node_ids: string[];
+  segment_t: number;
+  width: number;
+  height: number;
+  sill_height?: number;
+  material?: DoorMaterial;
+  railing_style?:
+    | "baluster"
+    | "glass"
+    | "cable"
+    | "solid-panel"
+    | "criss-cross";
+  railing_height?: number;
+  railing_post_spacing?: number;
+  railing_width_dim?: number;
+  railing_color?: string;
+  railing_solid_above?: boolean;
+  railing_wall_start?: number;
 };
 
 export type WorkspaceStatus =

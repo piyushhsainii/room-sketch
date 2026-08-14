@@ -1,5 +1,5 @@
 import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef } from "react"
-import { OrbitControls, Sky } from "@react-three/drei"
+import { Environment, OrbitControls, Sky } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, DEFAULT_FP, FloorPlanState } from "./lib/constants"
 import { WalkModeControls } from "./WalkModeControls"
 import { SceneConfig } from "./FloorPlanEditor"
@@ -221,6 +221,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         () => resolveShadowEligibleLightIdsAcrossFloors(floorsToRender.map(f => f.floor.state)),
         [floorsToRender]
     )
+    const envPreset = useMemo(() => (sunEnabled ? "sunset" : "apartment"), [sunEnabled])
 
     useEffect(() => {
         invalidate()
@@ -239,7 +240,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             </mesh>
             <fog attach="fog" args={['#F2F2F0', 30, 90]} />
 
-            <ambientLight intensity={sunEnabled ? cfg.ambientIntensity * 0.4 : cfg.ambientIntensity} color="#FFF8F0" />
+            <Environment preset={envPreset} background={false} />
 
             <directionalLight
                 color={sunColor}

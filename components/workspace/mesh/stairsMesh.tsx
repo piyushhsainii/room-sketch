@@ -396,8 +396,16 @@ function StraightStairs({
             {/* FIX: stringers now receive treadMaterial so they texture like
                 the rest of the stairs instead of rendering as flat untextured
                 strips. */}
-            <StraightStringer x={-w / 2 + 0.02} d={usedD} h={usedH} material={treadMaterial} />
-            <StraightStringer x={w / 2 - 0.02} d={usedD} h={usedH} material={treadMaterial} />
+            <StraightStringer
+                from={[leftFrom[0] + 0.02, leftFrom[1], leftFrom[2]]}
+                to={[leftTo[0] + 0.02, leftTo[1], leftTo[2]]}
+                material={treadMaterial}
+            />
+            <StraightStringer
+                from={[rightFrom[0] - 0.02, rightFrom[1], rightFrom[2]]}
+                to={[rightTo[0] - 0.02, rightTo[1], rightTo[2]]}
+                material={treadMaterial}
+            />
 
             <FlightRailing from={leftFrom} to={leftTo} side="left" railing={railing} flightIndex={0} />
             <FlightRailing from={rightFrom} to={rightTo} side="right" railing={railing} flightIndex={0} />
@@ -423,25 +431,29 @@ function StraightStairs({
 // so double-check the box dimensions/rotation match your stringer's actual
 // diagonal geometry before dropping this in).
 function StraightStringer({
-    x, d, h, material, thickness = 0.04,
+    from, to, material, thickness = 0.04, width = 0.2,
 }: {
-    x: number
-    d: number
-    h: number
+    from: [number, number, number]
+    to: [number, number, number]
     material?: ResolvedTreadMaterial
     thickness?: number
+    width?: number
 }) {
-    const length = Math.sqrt(d * d + h * h)
-    const angle = Math.atan2(h, d)
+    const dx = to[0] - from[0]
+    const dy = to[1] - from[1]
+    const dz = to[2] - from[2]
+    const length = Math.sqrt(dx * dx + dy * dy + dz * dz)
+    const angle = -Math.atan2(dy, dz) // rotate about X, matching riserAxis 'z' travel direction
+
+    const mid: [number, number, number] = [
+        (from[0] + to[0]) / 2,
+        (from[1] + to[1]) / 2,
+        (from[2] + to[2]) / 2,
+    ]
 
     return (
-        <mesh
-            position={[x, h / 2, 0]}
-            rotation={[angle, 0, 0]}
-            castShadow
-            receiveShadow
-        >
-            <boxGeometry args={[thickness, length, 0.2]} />
+        <mesh position={mid} rotation={[angle, 0, 0]} castShadow receiveShadow>
+            <boxGeometry args={[thickness, width, length]} />
             <TreadMaterial def={material} />
         </mesh>
     )

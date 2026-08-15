@@ -15,10 +15,25 @@ export default function SceneLighting({ rooms, ambientIntensity = 2.5 }: Props) 
   const maxDim = Math.max(bounds.width, bounds.depth, 1)
   const { centerX, centerZ } = bounds
 
+  // Shadow frustum sized to actual scene extent + small margin,
+  // instead of a flat maxDim*3 multiplier that over/under-fits depending on room count.
+  const shadowMargin = 1.15
+  const shadowHalfWidth = (bounds.width / 2) * shadowMargin
+  const shadowHalfDepth = (bounds.depth / 2) * shadowMargin
+  const shadowExtent = Math.max(shadowHalfWidth, shadowHalfDepth, 4)
+
   return (
     <group>
-      {/* High ambient — this floor plan is bright and airy */}
-      <ambientLight intensity={ambientIntensity} color="#FFF9F2" />
+      {/* Hemisphere light — sky color from above, ground-bounce color from below.
+          Replaces flat ambient so unlit areas read as "in shade" rather than uniformly grey. */}
+      <hemisphereLight
+        color="#CFE0F5"
+        groundColor="#8A7A64"
+        intensity={ambientIntensity * 0.5}
+      />
+
+      {/* Low flat ambient kept as a small base so nothing goes fully black in tight corners */}
+      <ambientLight intensity={ambientIntensity * 0.15} color="#FFF9F2" />
 
       {/* Primary overhead sun — very high so it floods down evenly */}
       <directionalLight
@@ -28,13 +43,14 @@ export default function SceneLighting({ rooms, ambientIntensity = 2.5 }: Props) 
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-bias={-0.0004}
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.02}
         shadow-camera-near={0.1}
-        shadow-camera-far={maxDim * 7}
-        shadow-camera-left={-maxDim * 3}
-        shadow-camera-right={maxDim * 3}
-        shadow-camera-top={maxDim * 3}
-        shadow-camera-bottom={-maxDim * 3}
+        shadow-camera-far={maxDim * 5}
+        shadow-camera-left={-shadowExtent}
+        shadow-camera-right={shadowExtent}
+        shadow-camera-top={shadowExtent}
+        shadow-camera-bottom={-shadowExtent}
       />
 
       {/* Secondary fill — cool-white from the opposite side */}

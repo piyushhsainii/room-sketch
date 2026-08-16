@@ -42,11 +42,13 @@ function buildCatalog(): UniversalMaterial[] {
   for (const [id, def] of Object.entries(MATERIAL_REGISTRY)) {
     const thumbnail = def.textureUrl;
     const domains = def.domains ?? [];
+
     if (domains.length === 0) {
       console.warn(
         `[materials] "${id}" has no domains — it will never appear in any picker.`,
       );
     }
+
     items.push({
       id,
       label:
@@ -61,41 +63,6 @@ function buildCatalog(): UniversalMaterial[] {
   }
 
   return items;
-}
-
-// Door style ids don't carry a texture file path directly (DoorMat.tsx picks
-// its own texture per id internally), so categorize by the id itself.
-function categorizeDoorMaterial(id: string): MaterialCategory {
-  const material = MATERIAL_REGISTRY[id];
-
-  if (!material) {
-    // Fallback for unknown materials
-    if (id.includes("wood") || id.startsWith("wood-")) return "wood";
-    if (id.includes("glass")) return "glass";
-    if (id.includes("metal")) return "metal";
-    return "glass";
-  }
-
-  // Use the actual category from registry
-  const category = material.category as MaterialCategory;
-
-  // Map internal categories to the expected MaterialCategory union if needed
-  switch (category) {
-    case "solid":
-    case "fabric":
-    case "wood":
-    case "marble-stone":
-    case "brick":
-    case "tile":
-    case "concrete":
-    case "metal":
-    case "wallpaper":
-    case "pvc-panel":
-    case "glass":
-      return category;
-    default:
-      return "pvc-panel";
-  }
 }
 
 export const UNIVERSAL_MATERIALS: UniversalMaterial[] = buildCatalog();

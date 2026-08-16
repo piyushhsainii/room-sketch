@@ -3060,6 +3060,20 @@ export default function FloorPlanEditor({
                 if (result) { workingFp = result.fp; newIds.push(result.newId) }
                 continue
             }
+            const light = (workingFp.lights ?? []).find(l => l.id === id)
+            if (light) {
+                const newLightId = `light_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+                const newLight = {
+                    ...light,
+                    id: newLightId,
+                    ...(light.x !== undefined ? { x: light.x + 0.5 } : {}),
+                    ...(light.z !== undefined ? { z: light.z + 0.5 } : {}),
+                    ...(light.position !== undefined ? { position: light.position + 0.3 } : {}),
+                }
+                workingFp = { ...workingFp, lights: [...(workingFp.lights ?? []), newLight] }
+                newIds.push(newLightId)
+                continue
+            }
             // Closed shape (incl. unconfigured derived shapes)
             const targetShape = workingFp.closedShapes?.find(s => s.id === id)
             const shapeNodeIds = targetShape?.nodeIds
@@ -3624,6 +3638,7 @@ export default function FloorPlanEditor({
                                 wallDragRef.current = null   // ← add this too
                             }}
                             onContextMenu={handleContextMenu}
+
                         />
 
                         {/* Tool hint */}
@@ -4183,6 +4198,7 @@ export default function FloorPlanEditor({
                             <SunScenePanel
                                 sceneConfig={sceneConfig}
                                 onChange={patch => setSceneConfig(prev => ({ ...prev, ...patch }))}
+                                theme={THEME}
                             />
                         </div>
                     </div>

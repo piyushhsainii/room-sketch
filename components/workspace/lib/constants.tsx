@@ -309,8 +309,6 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
 }
 
 
-
-
 export function getMaterialsForDomain(domain: MaterialDomain): { key: string; def: MaterialDef }[] {
     return Object.entries(MATERIAL_REGISTRY)
         .filter(([, def]) => def.domains.includes(domain))
@@ -899,7 +897,10 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
     globalFloorMaterial: 'plain',
     globalWallMaterial: 'paint',
     rooms: [],
-    lights: []
+    lights: [],
+    sunToolEnabled: true,
+    sunTimeOfDay: 12,
+    sunCompassHeading: 180,
 }
 
 export const WALL_COLORS = [

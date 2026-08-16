@@ -1,6 +1,6 @@
 import { applyShapeExteriorMaterial, deriveClosedPolygons, segmentsForShape, snapFurniture, snapM, uid } from "@/lib/helpers"
 import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
-import { ClosedShape, EditorOpening, EditorRoom, FloorMaterial, FloorPlanState, LineNode, LineSegment, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
+import { ClosedShape, EditorOpening, EditorRoom, FloorMaterial, FloorPlanState, LineNode, LineSegment, MATERIAL_REGISTRY, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
 import { MaterialTexturePicker } from "./texture/MaterialPicker"
 import { OUTDOOR_OBJECT_LABELS, PlacedOutdoorObject } from "./lib/outdoor-constants"
@@ -1192,7 +1192,17 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                 label="Furniture Texture"
                                 items={furnitureMaterials}
                                 currentId={furniture.materialId}
-                                onSelect={(id) => patchFurniture({ materialId: id })}
+                                onSelect={(id) => {
+                                    console.log('[FurniturePicker] SELECTED ID:', id)
+                                    console.log(
+                                        '[FurniturePicker] UNIVERSAL MATERIAL:',
+                                        MATERIAL_REGISTRY[id]
+                                    )
+
+                                    patchFurniture({
+                                        materialId: id,
+                                    })
+                                }}
                                 onClear={() => patchFurniture({ materialId: undefined })}
                                 theme={pickerTheme}
                             />

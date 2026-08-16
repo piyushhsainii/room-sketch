@@ -46,5 +46,9 @@ export default function ResilientCanvas({ onCreated, ...props }: CanvasProps) {
         onCreated?.(state)
     }, [onCreated])
 
-    return <Canvas key={canvasKey} {...props} onCreated={handleCreated} />
+    return <Canvas
+        gl={{ toneMappingExposure: 1.3 }}
+        key={canvasKey}
+        {...props}
+        onCreated={handleCreated} />
 }

@@ -182,13 +182,14 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     const { azimuth, elevation } = sunPosition(sunTimeOfDay, sunCompassHeading)
     const sunVec = sunVectorFromAngles(azimuth, elevation, sunSpan * 2.5)
     const sunColor = sunEnabled ? sunLightColor(sunTimeOfDay) : '#FFF5E8'
-    const sunIntensityVal = sunEnabled ? sunIntensity(sunTimeOfDay) : 2.5
+    const sunIntensityVal = sunEnabled ? sunIntensity(sunTimeOfDay) * 2.2 : 2.5
 
     const sunAzRad = (azimuth * Math.PI) / 180
     const sunElRad = (elevation * Math.PI) / 180
     const sunDirX = Math.cos(sunElRad) * Math.sin(sunAzRad)
     const sunDirY = Math.sin(sunElRad)
     const sunDirZ = -Math.cos(sunElRad) * Math.cos(sunAzRad)
+    const isNight = !sunEnabled || sunTimeOfDay < 6 || sunTimeOfDay > 19.5
 
     let floorsToRender: { floor: Floor; opacity: number; renderCap?: boolean }[] = []
 
@@ -222,6 +223,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         [floorsToRender]
     )
     const envPreset = useMemo(() => (sunEnabled ? "sunset" : "apartment"), [sunEnabled])
+    const shadowExtent = Math.max(sunSpan * 1.15, 4)
 
     useEffect(() => {
         invalidate()
@@ -246,8 +248,17 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 color={sunColor}
                 intensity={sunIntensityVal}
                 position={sunEnabled ? [sunCx + sunVec.x, Math.max(sunVec.y, 1), sunCz + sunVec.z] : [10, 15, 10]}
+                target-position={[sunCx, 0, sunCz]}
                 castShadow
                 shadow-mapSize={[2048, 2048]}
+                shadow-camera-left={-shadowExtent}
+                shadow-camera-right={shadowExtent}
+                shadow-camera-top={shadowExtent}
+                shadow-camera-bottom={-shadowExtent}
+                shadow-camera-near={0.1}
+                shadow-camera-far={sunSpan * 6}
+                shadow-bias={-0.0003}
+                shadow-normalBias={0.02}
             />
             {sunEnabled ? (
                 <Sky
@@ -262,7 +273,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 <color attach="background" args={['#FFFFFF']} />
             )}
 
-            <directionalLight position={[-5, 8, -5]} intensity={sunEnabled ? 0.3 : 0.8} color="#C8D4E8" />
+            <directionalLight position={[-5, 8, -5]} intensity={sunEnabled ? 0.15 : 0.8} color="#C8D4E8" />
             {cfg.fogEnabled && !sunEnabled && <fog attach="fog" args={['#F2F2F0', 20, 60]} />}
 
             {interactiveMode && (
@@ -275,6 +286,14 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                     <planeGeometry args={[500, 500]} />
                     <meshBasicMaterial />
                 </mesh>
+            )}
+
+            {isNight && (
+                <hemisphereLight
+                    color="#3A4A6B"
+                    groundColor="#1A1510"
+                    intensity={0.6}
+                />
             )}
 
             {floorsToRender.map(({ floor, opacity, renderCap }) => {

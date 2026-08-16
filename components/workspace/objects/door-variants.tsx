@@ -406,11 +406,6 @@ export function DoorVariant3D({
         FaceComponent: (p: FaceProps) => React.ReactElement = DoorFace,
         pivotInset = 0,
     ) {
-        // FIX: must match panelLocalX's use of pivotInset inside SwingHinge —
-        // for a normal hinge (pivotInset=0) this is unchanged. For a pivot
-        // door, the rotation axis sits inset from the edge, so the pivot
-        // group's own world position has to be inset by the same amount,
-        // not placed at the full edge.
         const hingeAlong = centerOffset - hingeSign * (panelWidth / 2 - pivotInset)
 
         return (
@@ -452,7 +447,6 @@ export function DoorVariant3D({
                 </group>
             )
         }
-
         case 'door-swing-double-french': {
             const half = op.width / 2
             const restAngle = (Math.PI / 40) * swingSign
@@ -465,7 +459,6 @@ export function DoorVariant3D({
                 </group>
             )
         }
-
         case 'door-swing-double-arched': {
             const half = op.width / 2
             const restAngle = (Math.PI / 40) * swingSign
@@ -478,7 +471,6 @@ export function DoorVariant3D({
                 </group>
             )
         }
-
         case 'door-pivot': {
             const pivotInset = Math.min(0.16, op.width * 0.14)
             const restAngle = (Math.PI / 40) * swingSign
@@ -490,7 +482,6 @@ export function DoorVariant3D({
                 </group>
             )
         }
-
         case 'door-folding-single': {
             return (
                 <group>
@@ -662,7 +653,6 @@ export function DoorVariant3D({
                 </group>
             )
         }
-
         case 'door-sliding-double': {
             const half = op.width / 2
             return (
@@ -689,7 +679,6 @@ export function DoorVariant3D({
                 </group>
             )
         }
-
         case 'door-folding': {
             return (
                 <FoldingDoor width={op.width} height={op.height} panelCount={4} foldAngleMax={Math.PI / 8}
@@ -699,7 +688,6 @@ export function DoorVariant3D({
                     itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
             )
         }
-
         case 'door-folding-french': {
             return (
                 <FoldingDoor width={op.width} height={op.height} panelCount={4} foldAngleMax={Math.PI / 8} glazed
@@ -709,7 +697,6 @@ export function DoorVariant3D({
                     itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
             )
         }
-
         case 'door-garage': {
             const trackPositions: [number, number][] = [[-op.width / 2 - 0.02, 1], [op.width / 2 + 0.02, 1]]
             return (
@@ -729,7 +716,6 @@ export function DoorVariant3D({
                 </group>
             )
         }
-
         case 'door-swing-single':
         default: {
             const restAngle = (Math.PI / 40) * swingSign
@@ -744,10 +730,6 @@ export function DoorVariant3D({
     }
 }
 
-// ── SwingHinge — rotates a door panel open/closed around a hinge point set
-// back from the panel's own center by hingeSign*(panelWidth/2 - pivotInset).
-// Reconstructed from call-site usage; verify swing direction against your
-// original behavior once wired in — signs here are inferred, not ported. ──
 function SwingHinge({
     hingeAlong, hingeSign, panelWidth, basePos, dirX, dirZ, perpX, perpZ, angle,
     closedRestAngle, fullyOpenAngle, isOpen, interactive, onToggleOpen, pivotInset = 0,

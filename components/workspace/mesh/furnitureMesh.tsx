@@ -3,6 +3,7 @@ import { RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
 import { getMaterialsForDomain } from '../texture/materials-registry'
 import { FURNITURE_FOOTPRINTS, PlacedFurniture } from '../lib/furniture-constants'
+import { getMaterialsFor } from '../texture/universalMaterials'
 
 const FABRIC_TEX_URLS = {
     map: '/textures/Fabric049_1K-JPG_Color.jpg',
@@ -18,16 +19,26 @@ function normalizeMaterialProps(obj: Record<string, THREE.Texture | undefined>) 
     return out
 }
 
-// Multiple upholstery colorways so repeated furniture doesn't look identical.
-// Applied as a tint multiplied over the fabric texture.
-const SOFA_VARIANTS = ['#C7B9A6', '#8A9A8C', '#5E6E82', '#B85C4A', '#4A4640', '#D9C9A8']
-const CUSHION_VARIANTS = ['#EDE4D3', '#DCD0BC', '#C9BFAE', '#E6D9C4']
+function getMaterialTextureUrls(def: any): Record<string, string> | null {
+    const urls: Record<string, string> = {}
 
-// simple deterministic hash so the same furniture id always gets the same variant
-function hashPick<T>(id: string, arr: T[]): T {
-    let h = 0
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
-    return arr[h % arr.length]
+    if (def.textureUrl) {
+        urls.map = def.textureUrl
+    }
+
+    if (def.normalMapUrl) {
+        urls.normalMap = def.normalMapUrl
+    }
+
+    if (def.roughnessMapUrl) {
+        urls.roughnessMap = def.roughnessMapUrl
+    }
+
+    if (def.aoMapUrl) {
+        urls.aoMap = def.aoMapUrl
+    }
+
+    return Object.keys(urls).length > 0 ? urls : null
 }
 
 const _texCache = new Map<string, THREE.Texture>()   // only ever holds a REAL loaded texture now
@@ -124,45 +135,100 @@ function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
     return textures
 }
 
-function useTextureMaterialProps(urls: Record<string, string> | null, repeatX = 2, repeatY = 2) {
+function useTextureMaterialProps(
+    urls: Record<string, string> | null,
+    repeatX = 2,
+    repeatY = 2
+) {
     const [tick, forceTick] = React.useState(0)
-    const key = urls ? Object.values(urls).join('|') : ''
+
+    const key = React.useMemo(
+        () => urls
+            ? Object.entries(urls)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([k, v]) => `${k}:${v}`)
+                .join('|')
+            : '',
+        [urls]
+    )
 
     const { textures, status } = React.useMemo(() => {
-        if (!urls) return { textures: {}, status: 'none' as const }
-        const out: Record<string, THREE.Texture | undefined> = {}
-        let anyPending = false
-        let anyFailed = false
+        if (!urls) {
+            return {
+                textures: {} as Record<string, THREE.Texture>,
+                status: 'none' as const,
+            }
+        }
+
+        const out: Record<string, THREE.Texture> = {}
+
+        let pending = 0
+        let failed = 0
+
         for (const [k, url] of Object.entries(urls)) {
             const cached = _texCache.get(url)
-            if (cached) { out[k] = cached; continue }
-            if (_failed.has(url)) { anyFailed = true; continue }
-            anyPending = true
-        }
-        const status = anyPending ? 'loading' : anyFailed ? 'failed' : 'loaded'
-        return { textures: out, status }
 
+            if (cached) {
+                out[k] = cached
+                continue
+            }
+
+            if (_failed.has(url)) {
+                failed++
+                continue
+            }
+
+            pending++
+        }
+
+        let status: 'loading' | 'loaded' | 'failed'
+
+        if (pending > 0) {
+            status = 'loading'
+        } else if (Object.keys(out).length > 0) {
+            // Even if AO/normal/etc failed, use whatever successfully loaded.
+            status = 'loaded'
+        } else if (failed > 0) {
+            status = 'failed'
+        } else {
+            status = 'loaded'
+        }
+
+        return { textures: out, status }
     }, [key, tick])
 
     React.useEffect(() => {
         if (!urls) return
+
         let cancelled = false
         const unsubs: (() => void)[] = []
+
         for (const url of Object.values(urls)) {
             if (_failed.has(url) || _texCache.get(url)) continue
+
             loadTextureSafe(url)
-            unsubs.push(subscribe(url, () => { if (!cancelled) forceTick(n => n + 1) }))
+
+            unsubs.push(
+                subscribe(url, () => {
+                    if (!cancelled) {
+                        forceTick(n => n + 1)
+                    }
+                })
+            )
         }
-        return () => { cancelled = true; unsubs.forEach(u => u()) }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
+        return () => {
+            cancelled = true
+            unsubs.forEach(unsub => unsub())
+        }
     }, [key])
 
     React.useMemo(() => {
-        Object.values(textures).forEach(t => {
-            if (!t) return
-            t.wrapS = t.wrapT = THREE.RepeatWrapping
-            t.repeat.set(repeatX, repeatY)
-            t.needsUpdate = true
+        Object.values(textures).forEach((texture) => {
+            texture.wrapS = THREE.RepeatWrapping
+            texture.wrapT = THREE.RepeatWrapping
+            texture.repeat.set(repeatX, repeatY)
+            texture.needsUpdate = true
         })
     }, [textures, repeatX, repeatY])
 
@@ -187,12 +253,16 @@ function notify(url: string) {
 
 // of sync with the panel's source of truth.
 const _furnitureMatById = new Map(
-    getMaterialsForDomain('furniture').map(({ key, def }: any) => [
-        key,
-        { swatch: def.color, textureUrl: def.textureUrl as string | undefined },
+    getMaterialsFor('furniture').map((material) => [
+        material.id,
+        material,
     ])
 )
-console.log('[FurnitureMesh] _furnitureMatById keys=', [..._furnitureMatById.keys()])
+
+console.log(
+    '[FurnitureMesh] furniture materials:',
+    [..._furnitureMatById.entries()]
+)
 
 export function FurnitureMesh({
     f,
@@ -211,7 +281,6 @@ export function FurnitureMesh({
     opacity?: number
     transparent?: boolean
 }) {
-    const itemOpacity = opacity
     const itemTransparent = transparent || opacity < 1
     const groupRef = useRef<THREE.Group>(null)
 
@@ -219,31 +288,36 @@ export function FurnitureMesh({
     const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
     const [hovered, setHovered] = React.useState(false)
 
-    // fabric textures, shared and reused across all upholstered pieces (default look, no override)
-    const fabric = useFabricMaterialProps(2.4, 2.4)
-    const fabricTight = useFabricMaterialProps(4, 4) // finer repeat for smaller cushions/chairs
+    const overrideMat = f.materialId
+        ? _furnitureMatById.get(f.materialId)
+        : undefined
 
-    const sofaColor = hashPick(f.id, SOFA_VARIANTS)
-    const cushionColor = hashPick(f.id, CUSHION_VARIANTS)
-
-    const overrideMat = f.materialId ? _furnitureMatById.get(f.materialId) : undefined
-    const { textures: overrideTex, status: overrideStatus } = useTextureMaterialProps(
-        overrideMat?.textureUrl ? { map: overrideMat.textureUrl } : null,
-        2.4, 2.4
-    )
-    console.log('[FurnitureMesh] materialId=', f.materialId, 'overrideMat=', overrideMat)
-    const overrideReady = overrideStatus === 'loaded' || overrideStatus === 'failed'
+    const { textures: overrideTex, status: overrideStatus } =
+        useTextureMaterialProps(
+            overrideMat?.textureUrl
+                ? { map: overrideMat.textureUrl }
+                : null,
+            2.4,
+            2.4
+        );
+    const overrideReady = overrideStatus === 'loaded' || overrideStatus === 'failed' || overrideStatus === 'none'
     const useOverride = overrideMat && overrideReady
 
-    const bodyColor = useOverride
-        ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch) // loaded → white base for texture; failed → swatch fallback
-        : sofaColor
-    const cushionColorResolved = useOverride
-        ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch)
-        : cushionColor
+    // No materialId selected → flat white, no texture at all.
+    const bodyColor = !f.materialId
+        ? '#FFFFFF'
+        : useOverride
+            ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch)
+            : '#FFFFFF' // still resolving — show white rather than flashing fabric
 
-    const bodyMaterialProps = normalizeMaterialProps(useOverride ? overrideTex : fabric)
-    const cushionMaterialProps = normalizeMaterialProps(useOverride ? overrideTex : fabricTight)
+    const cushionColorResolved = !f.materialId
+        ? '#FFFFFF'
+        : useOverride
+            ? (overrideTex.map ? '#FFFFFF' : overrideMat.swatch)
+            : '#FFFFFF'
+
+    const bodyMaterialProps = useOverride ? normalizeMaterialProps(overrideTex) : normalizeMaterialProps({})
+    const cushionMaterialProps = useOverride ? normalizeMaterialProps(overrideTex) : normalizeMaterialProps({})
 
     const handleClick = (e: any) => {
         if (!interactive) return
@@ -265,8 +339,6 @@ export function FurnitureMesh({
         document.body.style.cursor = 'auto'
     }
     const materialKey = useOverride ? `override:${f.materialId}:${overrideStatus}` : 'default'
-    // Approximate bounding footprint for the highlight outline.
-    // Height is a rough per-type guess since footprints only carry w/d.
     const highlightH = f.type === 'wardrobe' ? 1.9 * s
         : f.type === 'led_strip' || f.type === 'painting' || f.type === 'wall_panel_pvc' || f.type === 'mirror' ? 0
             : 1.0 * s
@@ -281,10 +353,6 @@ export function FurnitureMesh({
             for (const mat of mats) {
                 if (mat instanceof THREE.MeshBasicMaterial) continue // outlines — leave alone
                 if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
-                    // Preserve each material's own authored opacity (e.g. the
-                    // bathtub water plane's 0.85, shower glass's 0.25) by
-                    // capturing it once as a baseline, then multiplying by the
-                    // floor-level ghosting factor on every update.
                     if (mat.userData.__baseOpacity === undefined) {
                         mat.userData.__baseOpacity = mat.opacity
                     }
@@ -420,22 +488,22 @@ export function FurnitureMesh({
                         <meshStandardMaterial color="#4A3A2E" roughness={0.75} />
                     </RoundedBox>
                     <RoundedBox args={[1.58 * s, 0.22 * s, 1.95 * s]} radius={0.07 * s} smoothness={8} position={[0, 0.34 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial key={`${materialKey}-mattress`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#EDE8E0"} roughness={0.95} />
+                        <meshStandardMaterial key={`${materialKey}-mattress`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
                     <RoundedBox args={[1.7 * s, 0.82 * s, 0.10 * s]} radius={0.06 * s} smoothness={8} position={[0, 0.74 * s, -0.92 * s]} castShadow>
-                        <meshStandardMaterial key={`${materialKey}-headboard`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#8A8280"} roughness={0.9} />
+                        <meshStandardMaterial key={`${materialKey}-headboard`} {...bodyMaterialProps} color={bodyColor} roughness={0.9} />
                     </RoundedBox>
                     <RoundedBox args={[1.7 * s, 0.42 * s, 0.08 * s]} radius={0.04 * s} smoothness={6} position={[0, 0.52 * s, 0.92 * s]} castShadow>
                         <meshStandardMaterial color="#4A3A2E" roughness={0.7} />
                     </RoundedBox>
                     <RoundedBox args={[0.58 * s, 0.12 * s, 0.38 * s]} radius={0.06 * s} smoothness={10} position={[-0.38 * s, 0.49 * s, -0.72 * s]} castShadow>
-                        <meshStandardMaterial key={`${materialKey}-pillowL`} {...cushionMaterialProps} color={useOverride ? cushionColorResolved : "#F0EBE4"} roughness={0.97} />
+                        <meshStandardMaterial key={`${materialKey}-pillowL`} {...cushionMaterialProps} color={cushionColorResolved} roughness={0.97} />
                     </RoundedBox>
                     <RoundedBox args={[0.58 * s, 0.12 * s, 0.38 * s]} radius={0.06 * s} smoothness={10} position={[0.38 * s, 0.49 * s, -0.72 * s]} castShadow>
-                        <meshStandardMaterial key={`${materialKey}-pillowR`} {...cushionMaterialProps} color={useOverride ? cushionColorResolved : "#F0EBE4"} roughness={0.97} />
+                        <meshStandardMaterial key={`${materialKey}-pillowR`} {...cushionMaterialProps} color={cushionColorResolved} roughness={0.97} />
                     </RoundedBox>
                     <RoundedBox args={[1.52 * s, 0.10 * s, 1.15 * s]} radius={0.05 * s} smoothness={8} position={[0, 0.48 * s, 0.35 * s]} castShadow>
-                        <meshStandardMaterial key={`${materialKey}-throw`} {...bodyMaterialProps} color={useOverride ? bodyColor : "#E8E0D4"} roughness={0.95} />
+                        <meshStandardMaterial key={`${materialKey}-throw`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                     </RoundedBox>
                 </group>
             )}
@@ -783,13 +851,6 @@ export function FurnitureMesh({
                     </mesh>
                 </group>
             )}
-
-            {/* ============================================================
-    L-SHAPED SOFA
-    f.type === 'sofa_l'
-    f.variant: 'modern' | 'classical'   (defaults to 'modern')
-    f.orientation: 'left' | 'right'     (which side the chaise sits on, defaults to 'right')
-   ============================================================ */}
             {f.type === 'sofa_l' && (
                 <group rotation={[0, f.orientation === 'left' ? Math.PI : 0, 0]}>
 
@@ -1067,13 +1128,6 @@ export function FurnitureMesh({
                     )}
                 </group>
             )}
-
-
-            {/* ============================================================
-    SINGLE BED
-    f.type === 'bed_single'
-    f.variant: 'modern' | 'classical'
-   ============================================================ */}
             {f.type === 'bed_single' && (
                 <group>
                     {(!f.variant || f.variant === 'modern') && (
@@ -1137,13 +1191,6 @@ export function FurnitureMesh({
                     )}
                 </group>
             )}
-
-
-            {/* ============================================================
-    DOUBLE / QUEEN BED
-    f.type === 'bed_double'
-    f.variant: 'modern' | 'classical'
-   ============================================================ */}
             {f.type === 'bed_double' && (
                 <group>
                     {(!f.variant || f.variant === 'modern') && (
@@ -1223,13 +1270,6 @@ export function FurnitureMesh({
                     )}
                 </group>
             )}
-
-
-            {/* ============================================================
-    BUNK BED
-    f.type === 'bed_bunk'
-    f.variant: 'modern' | 'classical'
-   ============================================================ */}
             {f.type === 'bed_bunk' && (
                 <group>
                     {(!f.variant || f.variant === 'modern') && (
@@ -1341,13 +1381,6 @@ export function FurnitureMesh({
                     )}
                 </group>
             )}
-
-
-            {/* ============================================================
-    DRESSING TABLE
-    f.type === 'dressing_table'
-    f.variant: 'modern' | 'classical'
-   ============================================================ */}
             {f.type === 'dressing_table' && (
                 <group>
                     {(!f.variant || f.variant === 'modern') && (
@@ -1480,9 +1513,6 @@ export function FurnitureMesh({
                     )}
                 </group>
             )}
-
-            {/* KITCHEN MESH */}
-
             {f.type === 'kitchen_cabinet_base' && (
                 <group>
                     <RoundedBox args={[0.58 * s, 0.85 * s, 0.58 * s]} radius={0.015 * s} smoothness={6} position={[0, 0.425 * s, 0]} castShadow receiveShadow>
@@ -1507,7 +1537,6 @@ export function FurnitureMesh({
                     </mesh>
                 </group>
             )}
-
             {f.type === 'kitchen_cabinet_wall' && (
                 <group position={[0, 1.4 * s, 0]}>
                     <RoundedBox args={[0.58 * s, 0.7 * s, 0.33 * s]} radius={0.015 * s} smoothness={6} castShadow receiveShadow>
@@ -1526,7 +1555,6 @@ export function FurnitureMesh({
                     ))}
                 </group>
             )}
-
             {f.type === 'kitchen_countertop_slab' && (
                 <group>
                     <RoundedBox args={[1.18 * s, 0.05 * s, 0.6 * s]} radius={0.008 * s} smoothness={8} position={[0, 0.88 * s, 0]} castShadow receiveShadow>
@@ -1539,7 +1567,6 @@ export function FurnitureMesh({
                     </mesh>
                 </group>
             )}
-
             {f.type === 'kitchen_sink' && (
                 <group position={[0, 0.86 * s, 0]}>
                     <RoundedBox args={[0.76 * s, 0.04 * s, 0.5 * s]} radius={0.01 * s} smoothness={8} castShadow receiveShadow>
@@ -1561,7 +1588,6 @@ export function FurnitureMesh({
                     </mesh>
                 </group>
             )}
-
             {f.type === 'kitchen_fridge' && (
                 <group>
                     <RoundedBox args={[0.72 * s, 1.78 * s, 0.72 * s]} radius={0.02 * s} smoothness={6} position={[0, 0.89 * s, 0]} castShadow receiveShadow>
@@ -1583,7 +1609,6 @@ export function FurnitureMesh({
                     </mesh>
                 </group>
             )}
-
             {f.type === 'kitchen_island' && (
                 <group>
                     <RoundedBox args={[1.55 * s, 0.85 * s, 0.85 * s]} radius={0.02 * s} smoothness={6} position={[0, 0.425 * s, 0]} castShadow receiveShadow>
@@ -1601,7 +1626,6 @@ export function FurnitureMesh({
                     ))}
                 </group>
             )}
-
             {f.type === 'kitchen_dishwasher' && (
                 <group>
                     <RoundedBox args={[0.58 * s, 0.82 * s, 0.58 * s]} radius={0.015 * s} smoothness={6} position={[0, 0.41 * s, 0]} castShadow receiveShadow>
@@ -1619,7 +1643,6 @@ export function FurnitureMesh({
                     </mesh>
                 </group>
             )}
-
             {f.type === 'kitchen_backsplash_panel' && (
                 <group position={[0, 1.15 * s, 0]}>
                     <mesh castShadow receiveShadow>
@@ -1635,10 +1658,6 @@ export function FurnitureMesh({
                     ))}
                 </group>
             )}
-
-
-
-            {/* Selection / hover highlight — wireframe box around bounding footprint */}
             {interactive && (selected || hovered) && highlightH > 0 && (
                 <mesh position={[0, highlightH / 2, 0]} renderOrder={999}>
                     <boxGeometry args={[fp2.w * s * 1.08, highlightH * 1.05, fp2.d * s * 1.08]} />
@@ -1651,9 +1670,6 @@ export function FurnitureMesh({
                     />
                 </mesh>
             )}
-
-            {/* Collision warning — visual-only, shows during a drag even if this
-                piece isn't selected/hovered right now */}
             {overlapping && highlightH > 0 && (
                 <mesh position={[0, highlightH / 2, 0]} renderOrder={1000}>
                     <boxGeometry args={[fp2.w * s * 1.12, highlightH * 1.1, fp2.d * s * 1.12]} />

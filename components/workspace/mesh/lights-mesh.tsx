@@ -144,7 +144,6 @@ export function LightFixtureMesh({
 }) {
     const bulbPos = bulbLocalPosition(light.type)
     const scale = light.scale ?? 1
-    const kind = LIGHT_PLACEMENT_KIND[light.type]
     const targetRef = useRef(new THREE.Object3D())
     const groupRef = useRef<THREE.Group>(null)
     const itemTransparent = transparent || opacity < 1
@@ -190,7 +189,7 @@ export function LightFixtureMesh({
                     <boxGeometry args={[w * 0.96, 0.022, 0.008]} />
                     <meshStandardMaterial color={light.color} emissive={light.color} emissiveIntensity={2.2} roughness={0.3} toneMapped={false} />
                 </mesh>
-                <pointLight position={[0, -0.02, 0.03]} color={light.color} intensity={light.intensity} distance={2.5} decay={2} castShadow={false} />
+                <pointLight position={[0, -0.02, 0.03]} color={light.color} intensity={light.intensity * 1.5} distance={5} decay={1} castShadow={false} />
                 {selected && (
                     <mesh renderOrder={999}>
                         <boxGeometry args={[w * 1.05, 0.1, 0.1]} />
@@ -228,13 +227,41 @@ export function LightFixtureMesh({
         <group ref={groupRef} position={position} rotation={[0, rotation, 0]} scale={scale} {...clickHandlers}>
             <FixtureBody type={light.type} />
             <mesh position={bulbPos}>
-                <sphereGeometry args={[light.type === 'chandelier' ? 0.022 : 0.035, 12, 12]} />
-                <meshStandardMaterial color={light.color} emissive={light.color} emissiveIntensity={2.2} toneMapped={false} />
+                <sphereGeometry
+                    args={[
+                        light.type === 'chandelier'
+                            ? 0.022
+                            : light.type === 'ceiling_recessed'
+                                ? 0.07
+                                : 0.035,
+                        12,
+                        12,
+                    ]}
+                />
+                <meshStandardMaterial
+                    color={light.color}
+                    emissive={light.color}
+                    emissiveIntensity={light.type === 'ceiling_recessed' ? 3.5 : 2.2}
+                    toneMapped={false}
+                />
             </mesh>
             <pointLight
-                position={bulbPos} color={light.color} intensity={light.intensity}
-                distance={light.type === 'chandelier' ? 8 : light.type === 'outdoor_bollard' ? 5 : light.type === 'track_lighting' ? 6.5 : 6}
-                decay={2} castShadow={effectiveCastShadow} shadow-mapSize={[512, 512]} shadow-bias={-0.002} shadow-radius={2}
+                position={bulbPos}
+                color={light.color} intensity={light.intensity * (light.type === 'ceiling_recessed' ? 2.2 : 1.8)}
+                decay={1}
+                castShadow={effectiveCastShadow}
+                shadow-mapSize={[512, 512]}
+                shadow-bias={-0.0005}
+                shadow-normalBias={0.05}
+                shadow-radius={2}
+                distance={
+                    light.type === 'chandelier' ? 14
+                        : light.type === 'outdoor_bollard' ? 8
+                            : light.type === 'track_lighting' ? 10
+                                : light.type === 'ceiling_recessed' ? 5
+                                    : light.type === 'wall_sconce' ? 4
+                                        : 10
+                }
             />
             {selected && (
                 <mesh position={bulbPos} renderOrder={999}>

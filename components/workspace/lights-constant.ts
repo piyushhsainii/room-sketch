@@ -58,7 +58,7 @@ export const LIGHT_FIXTURE_DEFAULTS: Record<
 > = {
   wall_sconce: { color: "#FFF4E0", intensity: 2.5, heightOffset: 1.6 },
   ceiling_pendant: { color: "#FFF8F0", intensity: 3.5, heightOffset: 2.4 },
-  ceiling_recessed: { color: "#FFFFFF", intensity: 2.0, heightOffset: 2.6 },
+  ceiling_recessed: { color: "#FFFFFF", intensity: 3.2, heightOffset: 2.6 },
   floor_lamp: { color: "#FFE8C4", intensity: 2.8, heightOffset: 0 },
   track_lighting: { color: "#FFF8F0", intensity: 3.0, heightOffset: 2.6 },
   chandelier: { color: "#FFEBC4", intensity: 4.5, heightOffset: 2.3 },

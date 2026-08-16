@@ -99,7 +99,6 @@ export function MaterialTexturePicker({
                 )}
             </div>
 
-            {/* Compact single-row summary of the current selection. Tap to expand the full grid. */}
             <button
                 onClick={() => setExpanded(e => !e)}
                 style={{
@@ -131,10 +130,6 @@ export function MaterialTexturePicker({
 
             {expanded && (
                 <>
-                    {/* Default / clear tile, always visible above the groups.
-                        CSS grid (not flex-wrap) so a lone tile — or any
-                        under-filled row — keeps the same column width as a
-                        full row instead of stretching to fill the space. */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: SPACE.xxs }}>
                         <TextureTile
                             label="Default"
@@ -159,13 +154,6 @@ export function MaterialTexturePicker({
                             />
                         ))}
                     </div>
-
-                    {/* Category list — each category is its own bordered card:
-                        icon tile, label, count pill, chevron. The active/open
-                        card picks up the accent border + tint + soft ring,
-                        matching the reference "Fabric" row. Cards are spaced
-                        apart (not a flush list with hairline dividers) so each
-                        reads as a distinct tappable row. */}
                     {showCategories && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE.xs, marginTop: 2 }}>
                             {groups.map(([cat, matList]) => {
@@ -259,7 +247,6 @@ export function MaterialTexturePicker({
                             )}
                         </div>
                     )}
-
                     {showCategories && groups.length === 0 && (
                         <div style={{ fontSize: 11.5, color: COLOR.textFaint, padding: '8px 2px' }}>
                             No textures match "{query}"
@@ -271,9 +258,6 @@ export function MaterialTexturePicker({
     )
 }
 
-// Hover-prefetch: with thumbnails lazy-loaded in the tile itself, this makes
-// select-on-first-click feel instant for the item the user is about to pick,
-// without forcing everything to load upfront.
 function prefetch(m: UniversalMaterial) {
     if (m.textureUrl) {
         const img = new Image()
@@ -281,10 +265,6 @@ function prefetch(m: UniversalMaterial) {
     }
 }
 
-// Simple line icons per category, in the spirit of the reference design
-// (paint roller / wallpaper roll / panel / brick / tiles / etc). Falls back
-// to a generic swatch-grid glyph for any category name we don't recognize,
-// so new/custom categories never render blank.
 function CategoryIcon({ category }: { category: string }) {
     const key = category.trim().toLowerCase()
     const common = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }

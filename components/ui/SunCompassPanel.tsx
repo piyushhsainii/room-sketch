@@ -1,4 +1,4 @@
-import { SceneConfig } from '../workspace/FloorPlanEditor'
+import { SceneConfig, THEME } from '../workspace/FloorPlanEditor'
 
 const PANEL = {
     bg: '#1C1C1F',
@@ -118,7 +118,13 @@ function CompassDial({
         <svg
             width={size} height={size} viewBox={`0 0 ${size} ${size}`}
             onPointerDown={onPointer}
-            style={{ cursor: 'grab', touchAction: 'none' }}
+            style={{
+                cursor: 'grab',
+                touchAction: 'none',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                MozUserSelect: 'none',
+            }}
         >
             <circle cx={cx} cy={cy} r={r} fill="rgba(139,143,255,0.04)" stroke={PANEL.border} strokeWidth={1} />
             <circle cx={cx} cy={cy} r={r - 24} fill="none" stroke={PANEL.border} strokeWidth={0.5} opacity={0.5} />
@@ -152,11 +158,23 @@ function CompassDial({
 export function SunScenePanel({
     sceneConfig,
     onChange,
+    theme, // pass THEME from parent
 }: {
     sceneConfig: SceneConfig
     onChange: (patch: Partial<SceneConfig>) => void
+    theme: typeof THEME
 }) {
-    const enabled = sceneConfig.sunToolEnabled ?? false
+    const PANEL = {
+        bg: theme.bg ?? '#fff',
+        rowHover: 'rgba(0,0,0,0.04)',
+        border: theme.border ?? 'rgba(0,0,0,0.08)',
+        text: theme.text ?? '#18181B',
+        textMuted: theme.textMuted ?? '#71717A',
+        textFaint: '#A1A1AA',
+        accent: '#6366F1',
+        accentBg: 'rgba(99,102,241,0.1)',
+    }
+    const enabled = sceneConfig.sunToolEnabled ?? true
     const timeOfDay = sceneConfig.sunTimeOfDay ?? 12
     const heading = sceneConfig.sunCompassHeading ?? 180
 

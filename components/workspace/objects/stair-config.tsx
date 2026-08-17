@@ -35,7 +35,7 @@ export interface RailingConfig {
 // of an L-stair has a different "left" than flight 1).
 export interface SkirtSide {
     flightIndex: number
-    sides: ('left' | 'right' | 'front')[]
+    sides: ('left' | 'right' | 'front' | 'back')[]
 }
 
 export interface SkirtConfig {

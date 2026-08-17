@@ -1,6 +1,7 @@
 // components/workspace/export/ExportPlanDialog.tsx
 import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { flushSync } from 'react-dom'
 import { THEME } from '../FloorPlanEditor'
 import { FloorPlanState } from '../lib/constants'
 import { Floor } from '../lib/floor-data'
@@ -25,6 +26,7 @@ const FORMATS: { value: ExportFormat; label: string; sub: string }[] = [
 ]
 
 const PNG_DPI_MULTIPLIER = 3
+const RENDER_TIMEOUT_MS = 4000
 
 export function ExportPlanDialog({ fp, projectId, floors, activeFloorId, onClose, onOpenShare }: Props) {
     const [format, setFormat] = useState<ExportFormat>('svg')
@@ -58,28 +60,82 @@ export function ExportPlanDialog({ fp, projectId, floors, activeFloorId, onClose
     const resolveScale = (state: FloorPlanState) =>
         scaleMode === 'auto' ? pickAutoScale(state, paperSize) : scaleMode
 
-    const renderOffscreenSvg = (state: FloorPlanState): Promise<SVGSVGElement | null> => {
-        return new Promise(resolve => {
+    const waitForImages = async (svgEl: SVGSVGElement) => {
+        const images = Array.from(svgEl.querySelectorAll('image'))
+        await Promise.all(
+            images.map(imgEl => {
+                const href = imgEl.getAttribute('href') || imgEl.getAttribute('xlink:href')
+                if (!href) return Promise.resolve()
+                return new Promise<void>(resolve => {
+                    const probe = new Image()
+                    probe.onload = () => resolve()
+                    probe.onerror = () => resolve() // don't block export on one bad texture
+                    probe.src = href
+                    if (probe.complete) resolve()
+                })
+            })
+        )
+    }
+
+    // Takes floorLabel now (was previously dropped on the floor — literally
+    // — so PrintableFloorPlan2D's floorLabel prop always resolved undefined
+    // and the title block's floor-level line never rendered, even though
+    // the component itself supported it).
+    const renderOffscreenSvg = (state: FloorPlanState, floorLabel: string): Promise<SVGSVGElement | null> => {
+        return new Promise((resolve, reject) => {
             const container = document.createElement('div')
             container.style.position = 'fixed'
             container.style.left = '-99999px'
             document.body.appendChild(container)
             const root = createRoot(container)
-            root.render(
-                <PrintableFloorPlan2D
-                    fp={state}
-                    scale={resolveScale(state)}
-                    paperSize={paperSize}
-                    showFurniture={showFurniture}
-                    showLabels={showLabels}
-                />
-            )
-            setTimeout(() => {
-                const svgEl = container.querySelector('svg') as SVGSVGElement | null
-                resolve(svgEl ? (svgEl.cloneNode(true) as SVGSVGElement) : null)
+
+            const cleanup = () => {
                 root.unmount()
                 document.body.removeChild(container)
-            }, 0)
+            }
+
+            try {
+                flushSync(() => {
+                    root.render(
+                        <PrintableFloorPlan2D
+                            fp={state}
+                            scale={resolveScale(state)}
+                            paperSize={paperSize}
+                            floorLabel={floorLabel}
+                            showFurniture={showFurniture}
+                            showLabels={showLabels}
+                        />
+                    )
+                })
+            } catch (err) {
+                cleanup()
+                reject(err)
+                return
+            }
+
+            const startedAt = performance.now()
+
+            const poll = () => {
+                const svgEl = container.querySelector('svg') as SVGSVGElement | null
+                if (svgEl) {
+                    waitForImages(svgEl)
+                        .then(() => {
+                            const clone = svgEl.cloneNode(true) as SVGSVGElement
+                            cleanup()
+                            resolve(clone)
+                        })
+                        .catch(err => { cleanup(); reject(err) })
+                    return
+                }
+                if (performance.now() - startedAt > RENDER_TIMEOUT_MS) {
+                    cleanup()
+                    resolve(null) // preserves existing "Could not render {label}" message upstream
+                    return
+                }
+                requestAnimationFrame(poll)
+            }
+
+            requestAnimationFrame(poll)
         })
     }
 
@@ -142,7 +198,7 @@ export function ExportPlanDialog({ fp, projectId, floors, activeFloorId, onClose
                 for (let i = 0; i < selectedFloors.length; i++) {
                     const { floor, state } = selectedFloors[i]!
                     setBusyLabel(`Rendering ${floor.label} (${i + 1}/${selectedFloors.length})…`)
-                    const svgEl = await renderOffscreenSvg(state)
+                    const svgEl = await renderOffscreenSvg(state, floor.label)
                     if (!svgEl) throw new Error(`Could not render ${floor.label}`)
                     downloadBlob(svgToBlob(svgEl), `floor-plan-${projectId}-${safeName(floor.label)}.svg`)
                     if (i < selectedFloors.length - 1) await wait(150)
@@ -151,7 +207,7 @@ export function ExportPlanDialog({ fp, projectId, floors, activeFloorId, onClose
                 for (let i = 0; i < selectedFloors.length; i++) {
                     const { floor, state } = selectedFloors[i]!
                     setBusyLabel(`Rendering ${floor.label} (${i + 1}/${selectedFloors.length})…`)
-                    const svgEl = await renderOffscreenSvg(state)
+                    const svgEl = await renderOffscreenSvg(state, floor.label)
                     if (!svgEl) throw new Error(`Could not render ${floor.label}`)
                     const canvas = await rasterize(svgEl)
                     await new Promise<void>(resolve => {
@@ -170,7 +226,7 @@ export function ExportPlanDialog({ fp, projectId, floors, activeFloorId, onClose
                 for (let i = 0; i < selectedFloors.length; i++) {
                     const { floor, state } = selectedFloors[i]!
                     setBusyLabel(`Rendering ${floor.label} (${i + 1}/${selectedFloors.length})…`)
-                    const svgEl = await renderOffscreenSvg(state)
+                    const svgEl = await renderOffscreenSvg(state, floor.label)
                     if (!svgEl) throw new Error(`Could not render ${floor.label}`)
                     const canvas = await rasterize(svgEl)
                     const widthMm = parseFloat(svgEl.getAttribute('width') || '297')

@@ -122,6 +122,11 @@ function bulbLocalPosition(type: LightFixtureType): [number, number, number] {
     }
 }
 
+// Global cap on how many placed fixtures may cast real-time shadows at once.
+// Point-light shadows render a 6-face cubemap EACH, so this is the main lever
+// against per-placement frame hitches / freezes once several lights exist.
+const MAX_SHADOW_CASTING_LIGHTS = 4
+let activeShadowCasters = 0
 
 export function LightFixtureMesh({
     light,
@@ -147,8 +152,31 @@ export function LightFixtureMesh({
     const targetRef = useRef(new THREE.Object3D())
     const groupRef = useRef<THREE.Group>(null)
     const itemTransparent = transparent || opacity < 1
-    const effectiveCastShadow = forceCastShadow !== undefined ? forceCastShadow : light.castShadow
 
+    // Track whether THIS instance currently holds one of the shadow-caster
+    // "slots" in the global budget, so we don't leak the count across
+    // re-renders/unmounts and don't need external plumbing to cap lights.
+    const holdsShadowSlotRef = useRef(false)
+    const wantsShadow = forceCastShadow !== undefined ? forceCastShadow : !!light.castShadow
+
+    useEffect(() => {
+        if (wantsShadow && !holdsShadowSlotRef.current && activeShadowCasters < MAX_SHADOW_CASTING_LIGHTS) {
+            activeShadowCasters += 1
+            holdsShadowSlotRef.current = true
+        } else if (!wantsShadow && holdsShadowSlotRef.current) {
+            activeShadowCasters -= 1
+            holdsShadowSlotRef.current = false
+        }
+        return () => {
+            if (holdsShadowSlotRef.current) {
+                activeShadowCasters -= 1
+                holdsShadowSlotRef.current = false
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [wantsShadow])
+
+    const effectiveCastShadow = wantsShadow && holdsShadowSlotRef.current
 
     useEffect(() => {
         const root = groupRef.current
@@ -208,11 +236,11 @@ export function LightFixtureMesh({
                     <FixtureBody type={light.type} />
                     <mesh position={bulbPos}>
                         <sphereGeometry args={[0.025, 10, 10]} />
-                        <meshStandardMaterial color={light.color} emissive={light.color} emissiveIntensity={2.5} toneMapped={false} />
+                        <meshStandardMaterial color={light.color} emissive={light.color} emissiveIntensity={2.5} roughness={0.25} metalness={0.1} toneMapped={false} />
                     </mesh>
                     <primitive object={targetRef.current} position={[0, -3, 0]} />
                     <spotLight position={bulbPos} target={targetRef.current} color={light.color} intensity={light.intensity}
-                        angle={0.4} penumbra={0.4} distance={8} decay={2} castShadow={effectiveCastShadow} shadow-mapSize={[512, 512]} />
+                        angle={0.4} penumbra={0.4} distance={8} decay={2} castShadow={effectiveCastShadow} shadow-mapSize={[256, 256]} />
                 </group>
                 {selected && (
                     <mesh renderOrder={999}>
@@ -242,6 +270,8 @@ export function LightFixtureMesh({
                     color={light.color}
                     emissive={light.color}
                     emissiveIntensity={light.type === 'ceiling_recessed' ? 3.5 : 2.2}
+                    roughness={0.25}
+                    metalness={0.1}
                     toneMapped={false}
                 />
             </mesh>
@@ -250,7 +280,7 @@ export function LightFixtureMesh({
                 color={light.color} intensity={light.intensity * (light.type === 'ceiling_recessed' ? 2.2 : 1.8)}
                 decay={1}
                 castShadow={effectiveCastShadow}
-                shadow-mapSize={[512, 512]}
+                shadow-mapSize={[256, 256]}
                 shadow-bias={-0.0005}
                 shadow-normalBias={0.05}
                 shadow-radius={2}
@@ -259,7 +289,7 @@ export function LightFixtureMesh({
                         : light.type === 'outdoor_bollard' ? 8
                             : light.type === 'track_lighting' ? 10
                                 : light.type === 'ceiling_recessed' ? 5
-                                    : light.type === 'wall_sconce' ? 4
+                                    : light.type === 'wall_sconce' ? 2.5
                                         : 10
                 }
             />

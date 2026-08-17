@@ -1852,6 +1852,7 @@ export default function FloorPlanEditor({
                         const midNode: LineNode = { id: uid(), x: (fromNode.x + snapX) / 2, z: (fromNode.z + snapZ) / 2 }
                         const seg: LineSegment = { id: uid(), nodeIds: [fromId, midNode.id, newNode.id], thickness: 0.15, closed: false }
                         lineActiveNodeRef.current = newNode.id
+                        pushHistory()
                         setFp(prev => ({ ...prev, lineNodes: [...prev.lineNodes, midNode, newNode], lineSegments: [...prev.lineSegments, seg] }))
                     } else {
                         const seg: LineSegment = { id: uid(), nodeIds: [fromId, newNode.id], thickness: 0.15, closed: false }
@@ -1870,6 +1871,7 @@ export default function FloorPlanEditor({
                 } else {
                     const newNode: LineNode = { id: uid(), x: snapX, z: snapZ }
                     lineActiveNodeRef.current = newNode.id
+                    pushHistory()
                     setFp(prev => ({ ...prev, lineNodes: [...prev.lineNodes, newNode] }))
                 }
             }
@@ -1929,6 +1931,7 @@ export default function FloorPlanEditor({
                     segmentNodeIds: [fromId, toId],
                     segmentT: clampedT,
                 }
+                pushHistory()
                 setFp(prev => ({ ...prev, openings: [...prev.openings, op] }))
                 setSelectedId(op.id)
                 return
@@ -2028,6 +2031,7 @@ export default function FloorPlanEditor({
             }
             // Place new annotation with a generated id, open editor immediately
             const newAnn: Annotation = { id: uid(), x: snapM(wx), z: snapM(wz), text: '', fontSize: 13 }
+            pushHistory()
             setFp(prev => ({ ...prev, annotations: [...(prev.annotations ?? []), newAnn] }))
             setEditingAnnotation({ id: newAnn.id, text: '', x: e.clientX, y: e.clientY })
             return
@@ -2076,6 +2080,7 @@ export default function FloorPlanEditor({
                 return Math.hypot(e.clientX - rect.left - ax, e.clientY - rect.top - az) < 40
             })
             if (annIdx !== -1) {
+                pushHistory()
                 setFp(prev => ({ ...prev, annotations: (prev.annotations ?? []).filter((_, i) => i !== annIdx) }))
                 return
             }
@@ -2254,7 +2259,7 @@ export default function FloorPlanEditor({
                         position: parseFloat(clampedPos.toFixed(2)),
                         heightOffset: defaults.heightOffset,
                         color: defaults.color, intensity: defaults.intensity,
-                        castShadow: true, scale: 1,
+                        castShadow: false, scale: 1,
                         facingInward: true,
                         ...(lightType === 'spotlight' ? { aimRotation: defaultAim, aimTilt: -0.3 } : {}),
                     }
@@ -2341,6 +2346,7 @@ export default function FloorPlanEditor({
                 const existingNode = fpRef.current.lineNodes.find(n => Math.hypot(snapX - n.x, snapZ - n.z) < 0.5 / zoomRef.current)
                 const nodeId = existingNode?.id ?? (() => {
                     const n: LineNode = { id: uid(), x: snapX, z: snapZ }
+                    pushHistory()
                     setFp(prev => ({ ...prev, lineNodes: [...prev.lineNodes, n] }))
                     return n.id
                 })()
@@ -2398,7 +2404,6 @@ export default function FloorPlanEditor({
             setTool('select')               // NEW — switch back to select so cursor/tool isn't stuck
             return
         }
-
 
     }, [evWorld, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, selectedId, pushHistory, selectedFurnitureType, moveArmedForId, commitMove])
 

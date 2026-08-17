@@ -76,7 +76,7 @@ function renderTread({
 
     const nodes: React.ReactNode[] = [
         <mesh key={key} position={position} castShadow receiveShadow>
-            <boxGeometry args={[sizeX, Math.max(0.02, treadThickness - gap), sizeZ]} />
+            <boxGeometry args={[sizeX, Math.max(0.005, treadThickness), sizeZ]} />
             <TreadMaterial def={treadMaterial} />
         </mesh>,
     ]
@@ -149,7 +149,7 @@ function resolveRailingSkirt(s: PlacedStairs): { railing: RailingConfig; skirt: 
     return { railing, skirt }
 }
 
-function flightSideEnabled(skirt: SkirtConfig, flightIndex: number, side: 'left' | 'right' | 'front') {
+function flightSideEnabled(skirt: SkirtConfig, flightIndex: number, side: 'left' | 'right' | 'front' | 'back') {
     if (!skirt.enabled) return false
     const cfg = skirt.perFlight.find((p: any) => p.flightIndex === flightIndex)
     return cfg?.sides?.includes(side) ?? false
@@ -196,13 +196,14 @@ function FlightRailing({
 // approach as FlightRailing, built the same way StraightStringer builds its
 // sloped stringer box (hypot for length, atan2 for tilt), just wider.
 function FlightSkirt({
-    from, to, color, groundY = 0, material,
+    from, to, color, groundY = 0, material, width = 0.02,
 }: {
     from: [number, number, number]
     to: [number, number, number]
     color: string
     groundY?: number
     material?: ResolvedTreadMaterial
+    width?: number
 }) {
     const dx = to[0] - from[0]
     const dy = to[1] - from[1]
@@ -219,12 +220,60 @@ function FlightSkirt({
     return (
         <group position={mid} rotation={[0, yaw, 0]}>
             <mesh rotation={[pitch, 0, 0]} castShadow receiveShadow>
-                <boxGeometry args={[0.02, panelH, len]} />
+                <boxGeometry args={[width, panelH, len]} />
                 {material?.textureUrl
                     ? <TreadMaterial def={{ ...material, color }} />
                     : <meshStandardMaterial color={color} roughness={0.6} />}
             </mesh>
         </group>
+    )
+}
+
+function SkirtTrianglePrism({
+    front, back, top, color, material, thickness = 0.02, normalAxis = 'x',
+}: {
+    front: [number, number, number]  // pointed bottom-front corner
+    back: [number, number, number]   // right-angle bottom-back corner
+    top: [number, number, number]    // top-back corner
+    color: string
+    material?: ResolvedTreadMaterial
+    thickness?: number
+    normalAxis?: 'x' | 'z'
+}) {
+    const geometry = useMemo(() => {
+        const off: [number, number, number] =
+            normalAxis === 'x' ? [thickness, 0, 0] : [0, 0, thickness]
+
+        const a0 = new THREE.Vector3(...front)
+        const b0 = new THREE.Vector3(...back)
+        const c0 = new THREE.Vector3(...top)
+        const a1 = a0.clone().add(new THREE.Vector3(...off))
+        const b1 = b0.clone().add(new THREE.Vector3(...off))
+        const c1 = c0.clone().add(new THREE.Vector3(...off))
+
+        const pos = [
+            // front triangle
+            a0, b0, c0,
+            // back triangle (reversed winding)
+            c1, b1, a1,
+            // three side quads connecting them
+            a0, a1, b1, a0, b1, b0,
+            b0, b1, c1, b0, c1, c0,
+            c0, c1, a1, c0, a1, a0,
+        ].flatMap(v => [v.x, v.y, v.z])
+
+        const g = new THREE.BufferGeometry()
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+        g.computeVertexNormals()
+        return g
+    }, [front, back, top, thickness, normalAxis])
+
+    return (
+        <mesh geometry={geometry} castShadow receiveShadow>
+            {material?.textureUrl
+                ? <TreadMaterial def={{ ...material, color }} />
+                : <meshStandardMaterial color={color} roughness={0.6} />}
+        </mesh>
     )
 }
 
@@ -373,11 +422,26 @@ function StraightStairs({
     const treadW = w - 0.04
     const skirtColor = skirt.color ?? STAIR_SIDE_COLOR
 
-    const leftFrom: [number, number, number] = [-w / 2, 0, -usedD / 2]
+    const skirtDrop = 0.03 // how far the skirt panel extends below the first stair
+
+    const leftFrom: [number, number, number] = [-w / 2, -skirtDrop, -usedD / 2]
     const leftTo: [number, number, number] = [-w / 2, usedH, usedD / 2]
-    const rightFrom: [number, number, number] = [w / 2, 0, -usedD / 2]
+    const rightFrom: [number, number, number] = [w / 2, -skirtDrop, -usedD / 2]
     const rightTo: [number, number, number] = [w / 2, usedH, usedD / 2]
 
+    const leftSkirtFrom: [number, number, number] = [-w / 2, -skirtDrop, -usedD / 2]
+    const rightSkirtFrom: [number, number, number] = [w / 2, -skirtDrop, -usedD / 2]
+
+    {
+        flightSideEnabled(skirt, 0, 'left') && (
+            <FlightSkirt from={[leftFrom[0] + 0.005, leftFrom[1], leftFrom[2]]} to={[leftTo[0] + 0.005, leftTo[1], leftTo[2]]} color={skirtColor} material={treadMaterial} />
+        )
+    }
+    {
+        flightSideEnabled(skirt, 0, 'right') && (
+            <FlightSkirt from={[rightFrom[0] - 0.005, rightFrom[1], rightFrom[2]]} to={[rightTo[0] - 0.005, rightTo[1], rightTo[2]]} color={skirtColor} material={treadMaterial} />
+        )
+    }
     return (
         <group>
             {Array.from({ length: numTreads }, (_, i) =>
@@ -393,9 +457,6 @@ function StraightStairs({
                 })
             )}
 
-            {/* FIX: stringers now receive treadMaterial so they texture like
-                the rest of the stairs instead of rendering as flat untextured
-                strips. */}
             <StraightStringer
                 from={[leftFrom[0] + 0.02, leftFrom[1], leftFrom[2]]}
                 to={[leftTo[0] + 0.02, leftTo[1], leftTo[2]]}
@@ -411,17 +472,51 @@ function StraightStairs({
             <FlightRailing from={rightFrom} to={rightTo} side="right" railing={railing} flightIndex={0} />
 
             {flightSideEnabled(skirt, 0, 'left') && (
-                <FlightSkirt from={[leftFrom[0] + 0.005, leftFrom[1], leftFrom[2]]} to={[leftTo[0] + 0.005, leftTo[1], leftTo[2]]} color={skirtColor} groundY={0} />
+                <SkirtTrianglePrism
+                    front={[leftFrom[0] + 0.005, leftFrom[1], leftFrom[2]]}
+                    back={[leftFrom[0] + 0.005, leftFrom[1], leftTo[2]]}
+                    top={[leftTo[0] + 0.005, leftTo[1], leftTo[2]]}
+                    color={skirtColor}
+                    material={treadMaterial}
+                    normalAxis="x"
+                />
             )}
             {flightSideEnabled(skirt, 0, 'right') && (
-                <FlightSkirt from={[rightFrom[0] - 0.005, rightFrom[1], rightFrom[2]]} to={[rightTo[0] - 0.005, rightTo[1], rightTo[2]]} color={skirtColor} groundY={0} />
+                <SkirtTrianglePrism
+                    front={[rightFrom[0] - 0.005, rightFrom[1], rightFrom[2]]}
+                    back={[rightFrom[0] - 0.005, rightFrom[1], rightTo[2]]}
+                    top={[rightTo[0] - 0.005, rightTo[1], rightTo[2]]}
+                    color={skirtColor}
+                    material={treadMaterial}
+                    normalAxis="x"
+                />
             )}
+
             {flightSideEnabled(skirt, 0, 'front') && (
                 <mesh position={[0, 0.01, -usedD / 2]} castShadow receiveShadow>
                     <boxGeometry args={[w, 0.02, 0.35]} />
-                    <meshStandardMaterial color={skirtColor} roughness={0.6} />
+                    {treadMaterial?.textureUrl
+                        ? <TreadMaterial def={{ ...treadMaterial, color: skirtColor }} />
+                        : <meshStandardMaterial color={skirtColor} roughness={0.6} />}
                 </mesh>
             )}
+
+            {flightSideEnabled(skirt, 0, 'back') && (() => {
+                const backH = usedH * 0.97
+                return (
+                    <mesh
+                        position={[0, backH / 2, usedD / 2 - 0.01]}
+                        rotation={[-Math.atan2(riser, run) * 0.025, 0, 0]}
+                        castShadow
+                        receiveShadow
+                    >
+                        <boxGeometry args={[w, backH, 0.02]} />
+                        {treadMaterial?.textureUrl
+                            ? <TreadMaterial def={{ ...treadMaterial, color: skirtColor }} />
+                            : <meshStandardMaterial color={skirtColor} roughness={0.6} />}
+                    </mesh>
+                )
+            })()}
         </group>
     )
 }

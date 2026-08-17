@@ -1,6 +1,6 @@
 // components/workspace/export/PrintableFloorPlan2D.tsx
 import React from 'react'
-import { FloorPlanState, LineNode } from '../lib/constants'
+import { EditorOpening, FloorPlanState, LineNode } from '../lib/constants'
 import { deriveClosedPolygons, getSegmentOpeningWorldPos, polygonAreaM2 } from '@/lib/helpers'
 import { OUTDOOR_OBJECT_LABELS } from '../lib/outdoor-constants'
 import { STAIRS_LABELS } from '../lib/stairs-constants'
@@ -25,8 +25,9 @@ interface Props {
     scale: PrintScale
     paperSize: 'A4' | 'A3' | 'Letter'
     projectName?: string
-    showFurniture?: boolean   // NEW
-    showLabels?: boolean      // NEW
+    floorLabel?: string
+    showFurniture?: boolean
+    showLabels?: boolean
 }
 
 // Picks the smallest of the standard scales that fits the plan's bounding
@@ -65,7 +66,7 @@ function mmPerM(scale: PrintScale) { return 1000 / scale }
  * from `fp` and the chosen scale, per the plan's requirement that this be a
  * separate rendering target rather than a stripped-down draw2D.
  */
-export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName, showFurniture = true, showLabels = true }: Props) {
+export function PrintableFloorPlan2D({ fp, scale, paperSize, floorLabel, projectName, showFurniture = true, showLabels = true }: Props) {
     const bounds = computeBoundsM(fp)
     const mmPerMeter = mmPerM(scale)
     const margin = 20 // mm
@@ -165,20 +166,24 @@ export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName, showFu
                 )
             })}
 
-            {/* ── Openings (doors/windows) — simple gap + swing arc, kept
-                  minimal since the print doc's job is dimensions, not full
-                  material fidelity ── */}
+            {/* ── Openings (doors/windows/railings/generic openings) ──────
+                  Real symbols now: door gets a leaf line + swing arc
+                  (direction driven by EditorOpening.swingDirection), window
+                  gets a double tick line across the gap, railing gets a
+                  hatch line, plain 'opening' stays gap-only. Previously
+                  this only ever drew the white erasure line despite the
+                  old comment claiming a swing arc existed — no symbol was
+                  actually implemented, which is why doors never appeared. */}
             {fp.openings.filter(o => !o.segmentNodeIds).map(op => {
                 const room = fp.rooms.find(r => r.id === op.roomId)
                 if (!room) return null
-                const isHorizontal = op.wall === 'north' || op.wall === 'south'
                 const opStart = op.position - op.width / 2
                 let x1: number, y1: number, x2: number, y2: number
                 if (op.wall === 'north') { x1 = px(room.x + opStart); y1 = py(room.z); x2 = px(room.x + opStart + op.width); y2 = y1 }
                 else if (op.wall === 'south') { x1 = px(room.x + opStart); y1 = py(room.z + room.depth); x2 = px(room.x + opStart + op.width); y2 = y1 }
                 else if (op.wall === 'west') { x1 = px(room.x); y1 = py(room.z + opStart); x2 = x1; y2 = py(room.z + opStart + op.width) }
                 else { x1 = px(room.x + room.width); y1 = py(room.z + opStart); x2 = x1; y2 = py(room.z + opStart + op.width) }
-                return <line key={op.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFFFFF" strokeWidth={wallStrokeMm + 0.4} />
+                return <OpeningSymbol key={op.id} x1={x1} y1={y1} x2={x2} y2={y2} wallStrokeMm={wallStrokeMm} opType={op.type} swingDirection={op.swingDirection} />
             })}
             {fp.openings.filter(o => o.segmentNodeIds).map(op => {
                 const pos = getSegmentOpeningWorldPos(op, fp.lineNodes)
@@ -187,23 +192,31 @@ export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName, showFu
                 const nx = Math.cos(pos.angle), nz = Math.sin(pos.angle)
                 const x1 = px(pos.wx - nx * hw), y1 = py(pos.wz - nz * hw)
                 const x2 = px(pos.wx + nx * hw), y2 = py(pos.wz + nz * hw)
-                return <line key={op.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFFFFF" strokeWidth={wallStrokeMm + 0.4} />
+                return <OpeningSymbol key={op.id} x1={x1} y1={y1} x2={x2} y2={y2} wallStrokeMm={wallStrokeMm} opType={op.type} swingDirection={op.swingDirection} />
             })}
+
             {/* ── Furniture ─────────────────────────────────────────────── */}
             {showFurniture && (fp.furniture ?? []).map(f => {
                 const fpDef = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
                 const wMm = fpDef.w * mmPerMeter, dMm = fpDef.d * mmPerMeter
                 const cxMm = px(f.x), cyMm = py(f.z)
                 const angleDeg = (f.rotation * 180) / Math.PI
+                // Counter-rotate the label so it stays upright/readable even
+                // when the furniture itself is rotated ~180° — previously
+                // the label rotated WITH the box, so e.g. "D.Bed" mirrored
+                // into "pəq.Q" for any item facing "backwards".
+                const textCorrection = angleDeg > 90 || angleDeg < -90 ? 180 : 0
                 return (
                     <g key={f.id} transform={`translate(${cxMm},${cyMm}) rotate(${angleDeg})`}>
                         <rect x={-wMm / 2} y={-dMm / 2} width={wMm} height={dMm}
                             fill="none" stroke="#000" strokeWidth={0.2} />
                         {showLabels && (
-                            <text textAnchor="middle" dominantBaseline="middle" fontSize={2}
-                                fontFamily="system-ui" fill="#000">
-                                {FURNITURE_LABELS[f.type] ?? f.type}
-                            </text>
+                            <g transform={`rotate(${textCorrection})`}>
+                                <text textAnchor="middle" dominantBaseline="middle" fontSize={2}
+                                    fontFamily="system-ui" fill="#000">
+                                    {FURNITURE_LABELS[f.type] ?? f.type}
+                                </text>
+                            </g>
                         )}
                     </g>
                 )
@@ -213,13 +226,16 @@ export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName, showFu
             {showFurniture && (fp.stairs ?? []).map(s => {
                 const x = px(s.x), y = py(s.z), wMm = s.width * mmPerMeter, dMm = s.depth * mmPerMeter
                 const angleDeg = (s.rotation * 180) / Math.PI
+                const textCorrection = angleDeg > 90 || angleDeg < -90 ? 180 : 0
                 return (
                     <g key={s.id} transform={`translate(${x + wMm / 2},${y + dMm / 2}) rotate(${angleDeg})`}>
                         <rect x={-wMm / 2} y={-dMm / 2} width={wMm} height={dMm} fill="none" stroke="#000" strokeWidth={0.2} />
                         {showLabels && (
-                            <text y={dMm / 2 + 4} textAnchor="middle" fontSize={2} fontFamily="system-ui" fill="#000">
-                                {STAIRS_LABELS[s.type]}
-                            </text>
+                            <g transform={`rotate(${textCorrection})`}>
+                                <text y={dMm / 2 + 4} textAnchor="middle" fontSize={2} fontFamily="system-ui" fill="#000">
+                                    {STAIRS_LABELS[s.type]}
+                                </text>
+                            </g>
                         )}
                     </g>
                 )
@@ -247,6 +263,7 @@ export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName, showFu
                     {ann.text}
                 </text>
             ))}
+
             {/* ── North arrow (fixed orientation, no real compass logic) ── */}
             <g transform={`translate(${widthMm - margin - 8}, ${margin + 8})`}>
                 <line x1={0} y1={6} x2={0} y2={-6} stroke="#000" strokeWidth={0.4} />
@@ -257,14 +274,108 @@ export function PrintableFloorPlan2D({ fp, scale, paperSize, projectName, showFu
             {/* ── Title block ──────────────────────────────────────────── */}
             <g transform={`translate(0, ${heightMm - titleBlockH})`}>
                 <rect x={0} y={0} width={widthMm} height={titleBlockH} fill="none" stroke="#000" strokeWidth={0.4} />
-                <text x={margin} y={10} fontSize={4} fontWeight={700} fontFamily="system-ui" fill="#000">
+
+                {/* Branding mark — small square + wordmark, left of the title text.
+                    Swap the rect/text below for an actual logo <image> if you have
+                    one; this is a placeholder brand block sized to sit inline with
+                    the title. */}
+                <rect x={margin} y={3} width={6} height={6} rx={1.2} fill="#000" />
+                <text x={margin + 9} y={8} fontSize={3} fontWeight={700} fontFamily="system-ui" fill="#000">
+                    Room Sketch
+                </text>
+
+                <text x={margin} y={16} fontSize={4} fontWeight={700} fontFamily="system-ui" fill="#000">
                     {projectName ?? 'Floor Plan'}
                 </text>
-                <text x={margin} y={18} fontSize={2.6} fontFamily="system-ui" fill="#444">
+                {floorLabel && (
+                    <text x={margin} y={21.5} fontSize={2.6} fontFamily="system-ui" fill="#444">
+                        {floorLabel}
+                    </text>
+                )}
+                <text x={widthMm - margin} y={21.5} textAnchor="end" fontSize={2.6} fontFamily="system-ui" fill="#444">
                     Scale 1:{scale} · {new Date().toLocaleDateString()}
                 </text>
             </g>
         </svg>
+    )
+}
+
+/**
+ * Draws the actual opening symbol across a gap already erased in the wall
+ * stroke. `x1,y1 -> x2,y2` is the opening's span in SVG-space; the wall
+ * normal is derived from that span's direction and flipped by
+ * `swingDirection` (EditorOpening has no explicit hinge-side field, only
+ * in/out — the hinge itself is fixed at the (x1,y1) end here, which is
+ * fine for a print-doc symbol).
+ */
+function OpeningSymbol({
+    x1, y1, x2, y2, wallStrokeMm, opType, swingDirection,
+}: {
+    x1: number; y1: number; x2: number; y2: number
+    wallStrokeMm: number
+    opType: EditorOpening['type']
+    swingDirection?: EditorOpening['swingDirection']
+}) {
+    const widthPx = Math.hypot(x2 - x1, y2 - y1)
+    const angle = Math.atan2(y2 - y1, x2 - x1)
+    const swingSign = swingDirection === 'outward' ? -1 : 1
+    const nx = -Math.sin(angle) * swingSign, nz = Math.cos(angle) * swingSign
+
+    const gap = (
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFFFFF" strokeWidth={wallStrokeMm + 0.4} />
+    )
+
+    if (opType === 'opening') {
+        return <g>{gap}</g>
+    }
+
+    if (opType === 'window') {
+        const off = wallStrokeMm * 0.5
+        return (
+            <g>
+                {gap}
+                <line x1={x1 + nx * off} y1={y1 + nz * off} x2={x2 + nx * off} y2={y2 + nz * off} stroke="#000" strokeWidth={0.2} />
+                <line x1={x1 - nx * off} y1={y1 - nz * off} x2={x2 - nx * off} y2={y2 - nz * off} stroke="#000" strokeWidth={0.2} />
+            </g>
+        )
+    }
+
+    if (opType === 'railing') {
+        const off = wallStrokeMm * 0.5
+        const ticks = Math.max(2, Math.round(widthPx / 3))
+        return (
+            <g>
+                {gap}
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#000" strokeWidth={0.25} />
+                {Array.from({ length: ticks + 1 }).map((_, i) => {
+                    const t = i / ticks
+                    const cx = x1 + (x2 - x1) * t, cy = y1 + (y2 - y1) * t
+                    return (
+                        <line key={i}
+                            x1={cx - nx * off} y1={cy - nz * off}
+                            x2={cx + nx * off} y2={cy + nz * off}
+                            stroke="#000" strokeWidth={0.2}
+                        />
+                    )
+                })}
+            </g>
+        )
+    }
+
+    // door: leaf line perpendicular to the wall at the hinge end, plus a
+    // quarter-circle swing arc back to the opposite end.
+    const leafEndX = x1 + nx * widthPx
+    const leafEndZ = y1 + nz * widthPx
+    const largeArc = 0
+    const sweep = swingSign > 0 ? 1 : 0
+    const arcPath = `M ${leafEndX} ${leafEndZ} A ${widthPx} ${widthPx} 0 ${largeArc} ${sweep} ${x2} ${y2}`
+
+    return (
+        <g>
+            {gap}
+            <line x1={x1} y1={y1} x2={leafEndX} y2={leafEndZ} stroke="#000" strokeWidth={0.25} />
+            <path d={arcPath} fill="none" stroke="#000" strokeWidth={0.15} strokeDasharray="0.6,0.6" />
+        </g>
     )
 }
 

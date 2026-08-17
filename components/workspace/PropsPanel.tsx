@@ -1408,7 +1408,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             </PropField>
                         ) : null}
 
-                        {(['left', 'right', 'front'] as const).map(side => {
+                        {(['left', 'right', 'front', 'back'] as const).map(side => {
                             const activeFlight = (stairs.type === 'stairs-l' || stairs.type === 'stairs-u') ? Number(skirtFlightTab) : 0
                             const flightCfg = stairs.skirt?.perFlight?.find(p => p.flightIndex === activeFlight)
                             const active = flightCfg?.sides?.includes(side) ?? false

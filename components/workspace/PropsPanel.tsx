@@ -49,6 +49,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
     const wallMaterials = getMaterialsFor('wall')
     const floorMaterials = getMaterialsFor('floor')
     const furnitureMaterials = getMaterialsFor('furniture')
+    const doorMaterials = getMaterialsFor('door')
     const [skirtFlightTab, setSkirtFlightTab] = useState<'0' | '1'>('0')
     const wallSel = selectedId?.includes('::wall::')
         ? { roomId: selectedId.split('::wall::')[0], wall: selectedId.split('::wall::')[1] as 'north' | 'south' | 'east' | 'west' }
@@ -1116,14 +1117,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         </div>
                         <MaterialTexturePicker
                             label="Material"
-                            items={getMaterialsForDomain('door').map(({ key, def }) => ({
-                                id: key,
-                                label: def.label ?? key,
-                                swatch: def.color,
-                                thumbnail: def.textureUrl,
-                                category: def.category as any,
-                                appliesTo: ['door'],
-                            }))}
+                            items={doorMaterials}
                             currentId={opening.material}
                             onSelect={(id) => patchOpening({ material: id as any })}
                             onClear={() => patchOpening({ material: undefined })}
@@ -1184,6 +1178,85 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         <Button flex variant="secondary" onClick={() => patchFurniture({ rotation: furniture.rotation + Math.PI / 2 })}>↻ +90°</Button>
                     </div>
                 </Card>
+
+                <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <span style={{ fontSize: 12.5, color: COLOR.textFaint }}>Rotation</span>
+                        <input
+                            type="number"
+                            value={Math.round(((furniture.rotation ?? 0) * 180 / Math.PI))}
+                            onChange={(e) => {
+                                const deg = Number(e.target.value)
+                                if (Number.isNaN(deg)) return
+                                const normalizedDeg = ((deg % 360) + 360) % 360
+                                patchFurniture({ rotation: normalizedDeg * Math.PI / 180 })
+                            }}
+                            style={{
+                                width: 60,
+                                fontSize: 13,
+                                padding: '4px 6px',
+                                border: `1px solid ${COLOR.border}`,
+                                borderRadius: 6,
+                                textAlign: 'right',
+                            }}
+                        />
+                        <span style={{ fontSize: 12.5, color: COLOR.textFaint, marginLeft: -4 }}>°</span>
+                    </div>
+
+                    <input
+                        type="range"
+                        min={0}
+                        max={359}
+                        step={1}
+                        value={Math.round(((furniture.rotation ?? 0) * 180 / Math.PI + 360) % 360)}
+                        onChange={(e) => {
+                            const deg = Number(e.target.value)
+                            patchFurniture({ rotation: deg * Math.PI / 180 })
+                        }}
+                        style={{ width: '100%' }}
+                    />
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button
+                            onClick={() => {
+                                const current = furniture.rotation ?? 0
+                                patchFurniture({ rotation: current - Math.PI / 2 })
+                            }}
+                            style={{
+                                flex: 1,
+                                padding: '8px 0',
+                                fontSize: 13,
+                                fontWeight: 500,
+                                color: '#5B4FE8',
+                                background: '#EDEBFB',
+                                border: 'none',
+                                borderRadius: 8,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            ↺ −90°
+                        </button>
+                        <button
+                            onClick={() => {
+                                const current = furniture.rotation ?? 0
+                                patchFurniture({ rotation: current + Math.PI / 2 })
+                            }}
+                            style={{
+                                flex: 1,
+                                padding: '8px 0',
+                                fontSize: 13,
+                                fontWeight: 500,
+                                color: '#5B4FE8',
+                                background: '#EDEBFB',
+                                border: 'none',
+                                borderRadius: 8,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            ↻ +90°
+                        </button>
+                    </div>
+                </div>
 
                 {furniture && (
                     <Card>

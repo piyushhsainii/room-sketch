@@ -99,14 +99,6 @@ export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPaddi
         return shapes
     }, [fp.rooms, floorAbove, cutoutHoles])
 
-    // ── Irregular line-drawn areas — LIMITATION: this still caps the
-    // full closed-shape extent rather than intersecting with what's above,
-    // since a general polygon boolean intersect isn't implemented here.
-    // Rectangular `fp.rooms` above (the common case) are handled correctly
-    // via roomCapShapes; only irregular-vs-irregular overlap is approximate.
-    // TODO: swap in a real polygon clipper (e.g. martinez-polygon-clipping)
-    // if irregular floors-above-floors becomes common, to intersect
-    // properly instead of capping the whole line-shape unconditionally.
     const lineShapes = useMemo(() => {
         if (!floorAbove) return []
         const shapes: THREE.Shape[] = []
@@ -142,16 +134,26 @@ export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPaddi
     const allShapes = [...roomCapShapes, ...lineShapes]
     if (allShapes.length === 0) return null
 
+    const CAP_THICKNESS = 0.12
+
     return (
         <group position={[0, height, 0]}>
             {allShapes.map((shape, i) => (
-                <mesh key={i} rotation={[Math.PI / 2, 0, 0]} receiveShadow castShadow>
-                    <shapeGeometry args={[shape]} />
+                <mesh
+                    key={i}
+                    position={[0, -CAP_THICKNESS / 2, 0]}
+                    rotation={[-Math.PI / 2, 0, 0]}
+                    receiveShadow
+                    castShadow
+                >
+                    <extrudeGeometry
+                        args={[shape, { depth: CAP_THICKNESS, bevelEnabled: false }]}
+                    />
                     <meshStandardMaterial
                         color={color}
                         roughness={0.85}
                         metalness={0}
-                        side={THREE.DoubleSide}
+                        side={THREE.FrontSide}
                     />
                 </mesh>
             ))}

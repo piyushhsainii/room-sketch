@@ -7,6 +7,7 @@ import type { FloorPlanState } from "@/components/workspace/lib/constants";
 import type { ProjectFloorPlan } from "@/components/workspace/lib/floor-data";
 import { SceneConfig } from "@/components/workspace/FloorPlanEditor";
 import { migrateToMultiFloor } from "@/components/workspace/lib/migrateToMultiFloor";
+import Loading from "@/app/loading";
 
 const WorkspaceContainer = dynamic(
     () => import("@/components/workspace/WorkspaceContainer"),
@@ -61,9 +62,7 @@ export default function ProjectViewerPage() {
 
     if (loading) {
         return (
-            <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", background: "#0F0E0C", color: "rgba(148,163,184,0.6)", fontSize: 13 }}>
-                Loading project…
-            </div>
+            <Loading />
         );
     }
 

@@ -15,7 +15,7 @@ import { resolveShadowEligibleLightIdsAcrossFloors } from "./lib/lights/resolveL
 export type Scene3DHandle = {
     flyTo: (view: CameraView) => void
     getCurrentView: () => { position: [number, number, number]; target: [number, number, number] } | null
-    captureSnapshot: () => Promise<Blob | null>
+    captureSnapshot: (view?: CameraView) => Promise<Blob | null>
 }
 
 type Scene3DProps = {
@@ -84,15 +84,19 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 target: controls.target.toArray() as [number, number, number],
             }
         },
-        captureSnapshot: async (): Promise<Blob | null> => {
+        captureSnapshot: async (view?: CameraView): Promise<Blob | null> => {
             const canvasEl = gl.domElement
             const aspect = canvasEl.width / canvasEl.height
             const fovDegrees = (camera as THREE.PerspectiveCamera).fov ?? 45
-            const topView = computeTopDownView(activeFp, aspect, fovDegrees)
+
+            // Use the caller-provided view if given; otherwise keep the existing
+            // default (computed top-down framing of the active floor's content).
+            const resolvedPosition = view?.position ?? computeTopDownView(activeFp, aspect, fovDegrees).position
+            const resolvedTarget = view?.target ?? computeTopDownView(activeFp, aspect, fovDegrees).target
 
             const snapCamera = camera.clone() as THREE.PerspectiveCamera
-            snapCamera.position.set(...topView.position)
-            snapCamera.lookAt(new THREE.Vector3(...topView.target))
+            snapCamera.position.set(...resolvedPosition)
+            snapCamera.lookAt(new THREE.Vector3(...resolvedTarget))
             snapCamera.updateProjectionMatrix()
 
             const width = canvasEl.width
@@ -194,23 +198,25 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     let floorsToRender: { floor: Floor; opacity: number; renderCap?: boolean }[] = []
 
     if (viewMode === 'single') {
-        // Only the active floor. Nothing else.
         floorsToRender = activeFloor ? [{ floor: activeFloor, opacity: 1 }] : []
     } else if (viewMode === 'stacked') {
-        // Active floor + every floor below it, all full opacity — no fading.
         floorsToRender = floors
             .filter(f => f.visible && (f.id === activeFloorId || (activeFloor && f.order < activeFloor.order)))
             .map(f => ({
                 floor: f,
                 opacity: 1,
-                renderCap: activeFloor ? f.order < activeFloor.order : false,
+                renderCap: activeFloor
+                    ? (f.order < activeFloor.order || f.id === activeFloorId)
+                    : false,
             }))
     } else {
         // stacked-full — everything, full opacity, regardless of active floor's position
         floorsToRender = floors.filter(f => f.visible).map(f => ({
             floor: f,
             opacity: 1,
-            renderCap: activeFloor ? f.order < activeFloor.order : false,
+            renderCap: activeFloor
+                ? (f.order < activeFloor.order || f.id === activeFloorId)
+                : false,
         }))
     }
     const lowestGroupY = floorsToRender.length > 0
@@ -224,6 +230,14 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     )
     const envPreset = useMemo(() => (sunEnabled ? "sunset" : "apartment"), [sunEnabled])
     const shadowExtent = Math.max(sunSpan * 1.15, 4)
+
+    // NOTE: removed `console.log('3d scene')` that used to sit here. It ran on
+    // every render of this component (it was in the render body, not an effect),
+    // which is what was flooding the console whenever anything caused Scene3D to
+    // re-render — including 2D-canvas hover state changes in a shared parent.
+    // If you need render-count debugging again, use:
+    //   useEffect(() => { console.log('Scene3D rendered') })
+    // and remove it once you've confirmed the fix below is working.
 
     useEffect(() => {
         invalidate()
@@ -298,9 +312,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
 
             {floorsToRender.map(({ floor, opacity, renderCap }) => {
                 const floorAbove = renderCap
-                    ? floors
-                        .filter(f => f.visible && f.order > floor.order)
-                        .sort((a, b) => a.order - b.order)[0]
+                    ? floors.filter(f => f.visible && f.order > floor.order).sort((a, b) => a.order - b.order)[0]
                     : undefined
 
                 const floorAboveFp = floorAbove
@@ -347,4 +359,31 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     )
 })
 
-export default memo(Scene3D)
+// Custom equality check instead of the default shallow-prop comparison.
+// Scene3D was already wrapped in memo(), but was still re-rendering on every
+// 2D-canvas hover tick — meaning some prop reference (a callback, a Set, or
+// activeFp itself) was being recreated in the parent on every hover-state
+// update. This explicit comparator stops Scene3D (and the whole 3D tree,
+// including FloorGeometry and its shadow map recomputation) from re-rendering
+// unless a prop that actually matters to the 3D scene changed.
+//
+// IMPORTANT: this treats onSelect/onToggleDoorOpen/exportRootRef as "always
+// equal" (i.e. not compared) — see the note in the chat reply about why, and
+// wrap those in useCallback in the parent so this assumption is actually safe.
+function scene3DPropsAreEqual(prev: Scene3DProps, next: Scene3DProps) {
+    return (
+        prev.floors === next.floors &&
+        prev.activeFloorId === next.activeFloorId &&
+        prev.activeFp === next.activeFp &&
+        prev.viewMode === next.viewMode &&
+        prev.showUnderlay === next.showUnderlay &&
+        prev.sceneConfig === next.sceneConfig &&
+        prev.walkMode === next.walkMode &&
+        prev.interactiveMode === next.interactiveMode &&
+        prev.selectedId === next.selectedId &&
+        prev.overlappingIds === next.overlappingIds &&
+        prev.cutoutDrawInProgress === next.cutoutDrawInProgress
+    )
+}
+
+export default memo(Scene3D, scene3DPropsAreEqual)

@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { Room3D } from "./3dRoom"
 import { LineWalls3D } from "./objects/line-walls-3d"
 import { StairsMesh } from "./mesh/stairsMesh"
@@ -26,12 +27,19 @@ type FloorGeometryProps = {
     cutoutDrawInProgress: boolean
 }
 
-export function FloorGeometry({
+function FloorGeometryImpl({
     fp, cfg, exportRootRef, interactive, selectedId, onSelect, onToggleDoorOpen,
     opacity, overlappingIds, renderCap, floorAboveFp, shadowEligibleIds, floorAboveId, cutoutDrawInProgress
 }: FloorGeometryProps) {
     const transparent = opacity < 1
-    console.log('[FP ROOMS CHECK]', fp.rooms.map(r => ({ id: r.id, label: r.label, x: r.x, x2: r.x + r.width, z: r.z, z2: r.z + r.depth })))
+    // NOTE: removed two console.logs that used to sit here:
+    //   console.log('[FP ROOMS CHECK]', ...)          — ran once per render of this component
+    //   console.log('[CUTOUT DEBUG]', room.label, ...) — ran once PER ROOM per render (worse)
+    // Both were in the render body (not gated behind an effect or a dev flag),
+    // so every re-render — including ones caused by unrelated 2D-canvas hover
+    // state in a shared parent — was spamming these to the console, once per
+    // room for the cutout one. If you need this debug info again, gate it:
+    //   if (process.env.NODE_ENV === 'development' && DEBUG_CUTOUTS) console.log(...)
     return (
         <>
             {renderCap && floorAboveFp && (
@@ -45,15 +53,6 @@ export function FloorGeometry({
                         .map(sh => sh.nodeIds.map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean) as { x: number; z: number }[])
                         .filter(poly => poly.some(p => p.x >= room.x && p.x <= room.x + room.width && p.z >= room.z && p.z <= room.z + room.depth))
 
-
-                    console.log('[CUTOUT DEBUG]', room.label, {
-                        roomBounds: { x: room.x, x2: room.x + room.width, z: room.z, z2: room.z + room.depth },
-                        allCutoutShapes: (fp.closedShapes ?? []).filter(sh => sh.cutout?.enabled).map(sh => ({
-                            id: sh.id,
-                            points: sh.nodeIds.map(id => fp.lineNodes.find(n => n.id === id)).filter(Boolean),
-                        })),
-                        matchedForThisRoom: roomCutouts,
-                    })
                     return (
                         <Room3D
                             key={room.id}
@@ -142,3 +141,11 @@ export function FloorGeometry({
         </>
     )
 }
+
+// Wrapped in memo with the default shallow prop comparison. This is safe here
+// (unlike Scene3D, no custom comparator needed) as long as the parent passes
+// stable references for onSelect/onToggleDoorOpen (see Scene3D fix — those
+// must be wrapped in useCallback upstream) and overlappingIds (useState/useMemo,
+// not recreated inline). If FloorGeometry still re-renders unexpectedly after
+// this, the leak is a prop reference from Scene3D or its parent, not this file.
+export const FloorGeometry = memo(FloorGeometryImpl)

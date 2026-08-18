@@ -510,7 +510,7 @@ export function FurnitureMesh({
             {f.type === 'dining_table' && (
                 <group>
                     <RoundedBox args={[1.5 * s, 0.05 * s, 1.5 * s]} radius={0.015 * s} smoothness={6} position={[0, 0.76 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial color="#EAE6E0" roughness={0.25} metalness={0.04} envMapIntensity={1.2} />
+                        <meshStandardMaterial key={`${materialKey}-tabletop`} {...bodyMaterialProps} color={bodyColor} roughness={0.25} metalness={0.04} envMapIntensity={1.2} />
                     </RoundedBox>
                     {([-0.62, 0.62] as number[]).flatMap(x => [-0.62, 0.62].map(z => (
                         <mesh key={`${x}${z}`} position={[x * s, 0.38 * s, z * s]} castShadow>
@@ -523,7 +523,7 @@ export function FurnitureMesh({
             {f.type === 'desk' && (
                 <group>
                     <RoundedBox args={[1.4 * s, 0.04 * s, 0.7 * s]} radius={0.01 * s} smoothness={6} position={[0, 0.76 * s, 0]} castShadow receiveShadow>
-                        <meshStandardMaterial color="#C8B898" roughness={0.35} />
+                        <meshStandardMaterial key={`${materialKey}-desktop`} {...bodyMaterialProps} color={bodyColor} roughness={0.35} />
                     </RoundedBox>
                     {([-0.62, 0.62] as number[]).flatMap(x => [-0.3, 0.3].map(z => (
                         <mesh key={`${x}${z}`} position={[x * s, 0.38 * s, z * s]} castShadow>

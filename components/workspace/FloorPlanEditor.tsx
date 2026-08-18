@@ -1,9 +1,9 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ResilientCanvas from './ResilientCanvas'
 import { TOOL_CURSORS, Toolbar } from './Tools/ToolBar'
-import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATALOG, FURNITURE_CATEGORIES, FurnitureCategory, getFurnitureByCategory, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, OPENING_VARIANT_LABELS, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, STAIRS_LABELS, WALL_DECOR_DEFAULTS, WALL_DECOR_LABELS, WallDecorType, WallMaterial } from './lib/constants'
+import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATEGORIES, FurnitureCategory, getFurnitureByCategory, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, WALL_DECOR_DEFAULTS, WallDecorType, WallMaterial } from './lib/constants'
 import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getFloorContentBounds, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import * as THREE from 'three'
 import * as Icons from 'lucide-react'
@@ -17,13 +17,12 @@ import ToolHintBar from '../ui/ToolHint'
 import { createPortal } from 'react-dom'
 import { LIGHT_FIXTURE_DEFAULTS, LIGHT_PLACEMENT_KIND, LightFixtureType, PlacedLight } from './lights-constant'
 import { OUTDOOR_OBJECT_FOOTPRINTS, OutdoorObjectType, PlacedOutdoorObject } from './lib/outdoor-constants'
-import { CameraView, getBuiltInViews } from './lib/camera'
-import { CameraViewPicker } from './CameraViewPicker'
+import { getBuiltInViews } from './lib/camera'
 import { duplicateClosedShape, duplicateRoom, MirrorAxis, mirrorRoom } from './lib/duplicate'
 import { duplicateFurniture, duplicateOpening, duplicateOutdoorObject, duplicateStairs, duplicateWallDecor } from './lib/duplicate-items'
 import { FloatingDock } from '../ui/FloatingDock'
 import { useFurnitureCollisions } from './hooks/useFurnitureCollisions'
-import { FURNITURE_FOOTPRINTS, FURNITURE_LABELS, FurnitureType, PlacedFurniture } from './lib/furniture-constants'
+import { FURNITURE_FOOTPRINTS, FurnitureType, PlacedFurniture } from './lib/furniture-constants'
 import { bendSegment, classifySelection, getSelectionAnchorWorld, QuickActionMenu } from './QuickActionMenu'
 import { RoomTemplate, WallPreset } from './lib/presets'
 import { PresetsPanel } from '../ui/PresetPanel'
@@ -382,6 +381,13 @@ export default function FloorPlanEditor({
         setSelectedId(id)
         if (id) setRightTab('materials')
     }
+    const handleToggleDoorOpen = useCallback((openingId: string) => {
+        setFp(prev => ({
+            ...prev,
+            openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o)
+        }))
+    }, [])
+
     type HistoryEntry = {
         fp: FloorPlanState
         sceneConfig: SceneConfig
@@ -478,24 +484,34 @@ export default function FloorPlanEditor({
     const [furnitureAnchorRect, setFurnitureAnchorRect] = useState<DOMRect | null>(null)
     const [presetsAnchorRect, setPresetsAnchorRect] = useState<DOMRect | null>(null)
     const scene3DRef = useRef<Scene3DHandle>(null)
-    const pendingTooltipRef = useRef<{ text: string; x: number; y: number } | null | undefined>(undefined)
-    const tooltipRafRef = useRef<number | null>(null)
+    const hoverHitTestRafRef = useRef<number | null>(null)
+    const pendingHoverPosRef = useRef<{ wx: number; wz: number; clientX: number; clientY: number } | null>(null)
     const exportRootRef = useRef<THREE.Group>(null)
+    const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const lastTooltipHoverIdRef = useRef<string | null>(null)
 
-    function scheduleTooltipUpdate(next: { text: string; x: number; y: number } | null) {
-        pendingTooltipRef.current = next
-        if (tooltipRafRef.current !== null) return // already scheduled this frame
-        tooltipRafRef.current = requestAnimationFrame(() => {
-            tooltipRafRef.current = null
-            setHoverTooltip(prev => {
-                const p = pendingTooltipRef.current
-                if (p === undefined) return prev
-                if (!p) return prev === null ? prev : null
-                if (prev && prev.text === p.text && Math.abs(prev.x - p.x) < 2 && Math.abs(prev.y - p.y) < 2) return prev
-                return p
-            })
-        })
-    }
+    const scheduleTooltipUpdate = useCallback(
+        (payload: { text: string; x: number; y: number } | null) => {
+            // Any change (including leaving a target) cancels the pending show
+            if (tooltipTimerRef.current) {
+                clearTimeout(tooltipTimerRef.current)
+                tooltipTimerRef.current = null
+            }
+
+            if (!payload) {
+                lastTooltipHoverIdRef.current = null
+                setHoverTooltip(null)
+                return
+            }
+
+            // Debounce: only schedule a new timer, don't show immediately
+            tooltipTimerRef.current = setTimeout(() => {
+                setHoverTooltip(payload)
+                tooltipTimerRef.current = null
+            }, 400)
+        },
+        []
+    )
     const getShapeNodeIds = useCallback((shapeId: string): string[] | null => {
         const existing = (fpRef.current.closedShapes ?? []).find(sh => sh.id === shapeId)
         if (existing) return existing.nodeIds
@@ -2407,6 +2423,89 @@ export default function FloorPlanEditor({
 
     }, [evWorld, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, selectedId, pushHistory, selectedFurnitureType, moveArmedForId, commitMove])
 
+    const runHoverHitTest = useCallback((wx: number, wz: number, clientX: number, clientY: number) => {
+        let newHoverId: string | null = null
+        const node = hitLineNode(wx, wz)
+        if (node) {
+            newHoverId = node.id
+        } else {
+            const hovDecor = hitWallDecor(wx, wz)
+            if (hovDecor) {
+                newHoverId = hovDecor.id
+            } else {
+                const hoveredOpening = hitOpening(wx, wz)
+                if (hoveredOpening) {
+                    newHoverId = hoveredOpening.id
+                } else {
+                    const wallHit = hitRoomWall(wx, wz)
+                    if (wallHit) {
+                        newHoverId = `${wallHit.room.id}::wall::${wallHit.wall}`
+                    } else {
+                        const segHit = hitLineSegment(wx, wz)
+                        if (segHit) {
+                            newHoverId = segHit.seg.id
+                        } else {
+                            const hovShape = hitClosedShape(wx, wz)
+                            if (hovShape) {
+                                newHoverId = hovShape.id
+                            } else {
+                                const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
+                                    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                                    const dx = wx - f.x, dz = wz - f.z
+                                    const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
+                                    const lx = dx * cosR - dz * sinR
+                                    const lz = dx * sinR + dz * cosR
+                                    return Math.abs(lx) < (fp2.w * (f.scale ?? 1)) / 2 + 0.05 && Math.abs(lz) < (fp2.d * (f.scale ?? 1)) / 2 + 0.05
+                                })
+                                if (hovFurniture) {
+                                    newHoverId = hovFurniture.id
+                                } else {
+                                    const hovStairs = (fpRef.current.stairs ?? []).findLast(st => {
+                                        const dx2 = wx - (st.x + st.width / 2), dz2 = wz - (st.z + st.depth / 2)
+                                        const cosR2 = Math.cos(-st.rotation), sinR2 = Math.sin(-st.rotation)
+                                        const lx2 = dx2 * cosR2 - dz2 * sinR2, lz2 = dx2 * sinR2 + dz2 * cosR2
+                                        return Math.abs(lx2) < st.width / 2 + 0.05 && Math.abs(lz2) < st.depth / 2 + 0.05
+                                    })
+                                    if (hovStairs) {
+                                        newHoverId = hovStairs.id
+                                    } else {
+                                        const room = hitRoom(wx, wz)
+                                        newHoverId = room?.id ?? null
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (hoveredIdRef.current !== newHoverId) {
+            hoveredIdRef.current = newHoverId
+            setHoveredId(newHoverId)
+            scheduleRedraw()
+        }
+        if (!newHoverId) {
+            scheduleTooltipUpdate(null)
+        } else if (lastTooltipHoverIdRef.current !== newHoverId) {
+            lastTooltipHoverIdRef.current = newHoverId
+            scheduleTooltipUpdate({ text: labelForHover(newHoverId, fpRef.current), x: clientX, y: clientY })
+        } else if (tooltipTimerRef.current === null) {
+            setHoverTooltip(prev => prev ? { ...prev, x: clientX, y: clientY } : prev)
+        }
+    }, [hitLineNode, hitWallDecor, hitOpening, hitRoomWall, hitLineSegment, hitClosedShape, hitRoom, scheduleRedraw, scheduleTooltipUpdate])
+
+    const scheduleHoverHitTest = useCallback((wx: number, wz: number, clientX: number, clientY: number) => {
+        pendingHoverPosRef.current = { wx, wz, clientX, clientY }
+        if (hoverHitTestRafRef.current !== null) return // already scheduled this frame
+
+        hoverHitTestRafRef.current = requestAnimationFrame(() => {
+            hoverHitTestRafRef.current = null
+            const p = pendingHoverPosRef.current
+            if (p) runHoverHitTest(p.wx, p.wz, p.clientX, p.clientY)
+        })
+    }, [runHoverHitTest])
+
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         const { wx, wz, cx, cy } = evWorld(e)
 
@@ -2763,6 +2862,12 @@ export default function FloorPlanEditor({
 
         const wasActiveDrag = runActiveDrag(dragEntries, dragOriginRef, cx, cy, wx, wz)
         if (wasActiveDrag) {
+            if (tooltipTimerRef.current) {
+                clearTimeout(tooltipTimerRef.current)
+                tooltipTimerRef.current = null
+            }
+            lastTooltipHoverIdRef.current = null
+            setHoverTooltip(null)
             if (pastThreshold(dragOriginRef.current, cx, cy)) dragConfirmedRef.current = true
 
             if (groupDragStartRef.current) {
@@ -2882,7 +2987,6 @@ export default function FloorPlanEditor({
                 }
             }
         }
-
         if (hoveredIdRef.current !== newHoverId) {
             hoveredIdRef.current = newHoverId
             setHoveredId(newHoverId)
@@ -2890,10 +2994,14 @@ export default function FloorPlanEditor({
         }
         if (!newHoverId) {
             scheduleTooltipUpdate(null)
-        } else {
+        } else if (lastTooltipHoverIdRef.current !== newHoverId) {
+            lastTooltipHoverIdRef.current = newHoverId
             scheduleTooltipUpdate({ text: labelForHover(newHoverId, fpRef.current), x: e.clientX, y: e.clientY })
+        } else if (tooltipTimerRef.current === null) {
+            setHoverTooltip(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : prev)
         }
-    }, [evWorld, midPan, tool, hitRoom, hitLineNode, hitLineSegment, hitClosedShape, hitOpening, hitRoomWall, hitWallDecor, scheduleRedraw])
+        scheduleHoverHitTest(wx, wz, e.clientX, e.clientY)
+    }, [evWorld, midPan, tool, scheduleRedraw, scheduleHoverHitTest])
 
     const handleMouseUp = useCallback(() => {
         isMouseDownRef.current = false
@@ -3132,13 +3240,21 @@ export default function FloorPlanEditor({
         setArmedTemplateId(template.id)
         pendingWallPresetRef.current = null
         setArmedWallPresetId(null)
-
         setTool('template-place')
     }, [])
 
     useEffect(() => {
         if (canvasRef.current) centerOnContent(fpRef.current, canvasRef.current)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    useEffect(() => {
+        return () => {
+            if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current)
+            if (hoverHitTestRafRef.current !== null) {
+                cancelAnimationFrame(hoverHitTestRafRef.current)
+                hoverHitTestRafRef.current = null
+            }
+        }
     }, [])
 
     useEffect(() => {
@@ -3416,6 +3532,7 @@ export default function FloorPlanEditor({
                         onSetShowUnderlay={setShowUnderlay}
                         showUnderlay={showUnderlay}
                         lastSavedSnapshot={lastSavedSnapshot}
+                        scene3DRef={scene3DRef}
                     />
                 </div>
                 {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -3637,10 +3754,15 @@ export default function FloorPlanEditor({
                                 setMidPan(null);
                                 dragRoomRef.current = null;
                                 segDragRef.current = null;
+                                if (tooltipTimerRef.current) {
+                                    clearTimeout(tooltipTimerRef.current)
+                                    tooltipTimerRef.current = null
+                                }
+                                lastTooltipHoverIdRef.current = null
                                 setHoverTooltip(null)
                                 shapeResizeRef.current = null
                                 lightDragRef.current = null
-                                wallDragRef.current = null   // ← add this too
+                                wallDragRef.current = null
                             }}
                             onContextMenu={handleContextMenu}
 
@@ -3782,7 +3904,7 @@ export default function FloorPlanEditor({
                                             interactiveMode={interactiveMode}
                                             selectedId={selectedId}
                                             onSelect={handleSceneSelect}
-                                            onToggleDoorOpen={(openingId) => setFp(prev => ({ ...prev, openings: prev.openings.map(o => o.id === openingId ? { ...o, isOpen: !o.isOpen } : o) }))}
+                                            onToggleDoorOpen={handleToggleDoorOpen}
                                             overlappingIds={overlappingIds}
                                             cutoutDrawInProgress={cutoutArmed}
                                         />

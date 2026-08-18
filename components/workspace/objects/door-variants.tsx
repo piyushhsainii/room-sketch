@@ -1,47 +1,39 @@
 import * as THREE from 'three'
-import { DoorMat } from './doormat' // adjust path if different
+import { DoorMat } from './doormat'
 import { EditorOpening } from '../lib/constants';
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { AluminumMat, GlassConfig, PanoramaGlassFace } from './doors/door-glass';
 
+export const T = 0.045
 
-export const T = 0.045 // panel thickness
-
-// Central material helper — every plain (non-glass) mesh in this file goes
-// through this so item-level ghosting (opacity < 1) is applied consistently.
 export function m(color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}, itemOpacity = 1, itemTransparent = false) {
     return <meshStandardMaterial color={color} {...extra} opacity={itemOpacity} transparent={itemTransparent || !!extra.transparent} />
 }
 
-// ── Door knob (lever + rosette + rod), hoisted so it doesn't get torn down
-// and rebuilt every time the owning DoorVariant3D re-renders. ──
 function DoorKnob({ zSide, hingeSign, itemOpacity, itemTransparent }: {
     zSide: 1 | -1; hingeSign: 1 | -1; itemOpacity: number; itemTransparent: boolean
 }) {
     const rosetteZ = zSide * (T / 2 + 0.003)
-    const rodLen = 0.045
-    const rodZ = zSide * (T / 2 + rodLen / 2)
-    const leverZ = zSide * (T / 2 + rodLen)
-    const leverX = -hingeSign * 0.06
-    const capX = -hingeSign * 0.115
+    const shaftLen = 0.05
+    const shaftZ = zSide * (T / 2 + shaftLen / 2)
+    const knobZ = zSide * (T / 2 + shaftLen)
     return (
         <group>
+            {/* rosette (backplate flush against the door) */}
             <mesh position={[0, 0, rosetteZ]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-                <cylinderGeometry args={[0.028, 0.028, 0.006, 16]} />
-                {m('#C9C9C2', { metalness: 0.7, roughness: 0.25 }, itemOpacity, itemTransparent)}
+                <cylinderGeometry args={[0.03, 0.03, 0.006, 20]} />
+                {m('#C9C9C2', { metalness: 0.75, roughness: 0.2 }, itemOpacity, itemTransparent)}
             </mesh>
-            <mesh position={[0, 0, rodZ]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-                <cylinderGeometry args={[0.011, 0.011, rodLen, 12]} />
-                {m('#B9B9B4', { metalness: 0.6, roughness: 0.3 }, itemOpacity, itemTransparent)}
+            {/* shaft connecting rosette to knob */}
+            <mesh position={[0, 0, shaftZ]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+                <cylinderGeometry args={[0.012, 0.012, shaftLen, 12]} />
+                {m('#B9B9B4', { metalness: 0.7, roughness: 0.25 }, itemOpacity, itemTransparent)}
             </mesh>
-            <mesh position={[leverX, -0.012, leverZ]} rotation={[0.3, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[0.009, 0.009, 0.12, 12]} />
-                {m('#B9B9B4', { metalness: 0.65, roughness: 0.28 }, itemOpacity, itemTransparent)}
-            </mesh>
-            <mesh position={[capX, -0.03, leverZ]} castShadow>
-                <sphereGeometry args={[0.009, 10, 10]} />
-                {m('#B9B9B4', { metalness: 0.65, roughness: 0.28 }, itemOpacity, itemTransparent)}
+            {/* round knob */}
+            <mesh position={[0, 0, knobZ]} castShadow>
+                <sphereGeometry args={[0.032, 20, 20]} />
+                {m('#C9C9C2', { metalness: 0.8, roughness: 0.18 }, itemOpacity, itemTransparent)}
             </mesh>
         </group>
     )
@@ -206,8 +198,6 @@ function PivotPins({ height, pivotX, itemOpacity, itemTransparent }: {
     )
 }
 
-// ── Face variants (what's rendered on the swinging/pivoting panel) ──
-
 type FaceProps = {
     width: number; height: number; hingeSign: 1 | -1
     resolvedStyle: string; itemOpacity: number; itemTransparent: boolean
@@ -222,21 +212,10 @@ function DoorFace({ width, height, hingeSign, resolvedStyle, itemOpacity, itemTr
                 <boxGeometry args={[width, height, T]} />
                 <DoorMat style={resolvedStyle} />
             </mesh>
-            <PanelMolding width={width} height={height} zSide={1} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
-            <PanelMolding width={width} height={height} zSide={-1} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
             <group position={[knobX, 0, 0]}>
                 <DoorKnob zSide={1} hingeSign={hingeSign} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
                 <DoorKnob zSide={-1} hingeSign={hingeSign} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
             </group>
-            <DoorHinges width={width} height={height} hingeSign={hingeSign} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
-            <mesh position={[0, -height / 2 + 0.09, T / 2 + 0.0015]}>
-                <boxGeometry args={[width - inset, 0.16, 0.002]} />
-                {m('#8f8f88', { metalness: 0.5, roughness: 0.4 }, itemOpacity, itemTransparent)}
-            </mesh>
-            <mesh position={[0, -height / 2 + 0.09, -T / 2 - 0.0015]}>
-                <boxGeometry args={[width - inset, 0.16, 0.002]} />
-                {m('#8f8f88', { metalness: 0.5, roughness: 0.4 }, itemOpacity, itemTransparent)}
-            </mesh>
         </group>
     )
 }
@@ -293,8 +272,6 @@ function PivotFace({ width, height, hingeSign, resolvedStyle, itemOpacity, itemT
         </group>
     )
 }
-
-// ── Frames (static, non-panel geometry around the opening) ──
 
 function DoorFrame({ width, height, basePos, angle, itemOpacity, itemTransparent }: {
     width: number; height: number; basePos: [number, number, number]; angle: number
@@ -789,9 +766,6 @@ function SwingHinge({
     )
 }
 
-// ── SlidingLeaf — translates a leaf along the wall direction between its
-// rest position (centerOffset) and open position (centerOffset + openOffset).
-// Same reconstruction caveat as SwingHinge above. ──
 function SlidingLeaf({
     basePos, dirX, dirZ, angle, centerOffset, panelWidth, openOffset,
     isOpen, interactive, onToggleOpen, children,
@@ -837,9 +811,6 @@ function SlidingLeaf({
     )
 }
 
-
-// ── Folding/bifold door — animates panelCount leaves between flat (closed)
-// and accordion-folded (open) via a shared frac ref eased through useFrame. ──
 function FoldingDoor({
     width, height, panelCount, foldAngleMax, glazed = false,
     basePos, angle, dirX, dirZ, perpX, perpZ, swingSign,
@@ -903,7 +874,6 @@ function FoldingDoor({
     )
 }
 
-// ── Garage door — animates a slatted panel lifting up into the head. ──
 function AnimatedGarageDoor({
     width, height, basePos, angle, resolvedStyle, isOpen, interactive, onToggleOpen,
     itemOpacity, itemTransparent,
@@ -954,9 +924,6 @@ function AnimatedGarageDoor({
         </group>
     )
 }
-
-// ── Sliding-glass door face — used by door-sliding-double. Large single
-// pane with a thin perimeter frame, distinct from FrenchFace's mullion grid. ──
 function SlidingGlassFace({ width, height, hingeSign, resolvedStyle, itemOpacity, itemTransparent }: FaceProps) {
     const margin = 0.06
     const glassW = width - margin * 2

@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { useEffect, useRef } from 'react'
-import { LightFixtureType, PlacedLight, LIGHT_PLACEMENT_KIND } from '../lights-constant'
+import { LightFixtureType, PlacedLight } from '../lights-constant'
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/Addons.js'
 
 function FixtureBody({ type }: { type: LightFixtureType }) {
     switch (type) {
@@ -84,7 +85,6 @@ function FixtureBody({ type }: { type: LightFixtureType }) {
                     <meshStandardMaterial color="#3A3A38" roughness={0.5} metalness={0.4} />
                 </mesh>
             )
-        case 'shelf_strip':
         case 'string_lights':
             return null
         case 'floor_lamp':
@@ -160,6 +160,10 @@ export function LightFixtureMesh({
     const wantsShadow = forceCastShadow !== undefined ? forceCastShadow : !!light.castShadow
 
     useEffect(() => {
+        RectAreaLightUniformsLib.init()
+    }, [])
+
+    useEffect(() => {
         if (wantsShadow && !holdsShadowSlotRef.current && activeShadowCasters < MAX_SHADOW_CASTING_LIGHTS) {
             activeShadowCasters += 1
             holdsShadowSlotRef.current = true
@@ -209,15 +213,41 @@ export function LightFixtureMesh({
         }
         : {}
 
+
+
     if (light.type === 'shelf_strip') {
         const w = (light.width ?? 1) * scale
+        const segmentCount = Math.max(5, Math.round(w / 0.2))
+        const perLightIntensity = (light.intensity * 2.5) / segmentCount
+
         return (
             <group ref={groupRef} position={position} rotation={[0, rotation, 0]} {...clickHandlers}>
-                <mesh position={[0, 0, 0.017]}>
-                    <boxGeometry args={[w * 0.96, 0.022, 0.008]} />
-                    <meshStandardMaterial color={light.color} emissive={light.color} emissiveIntensity={2.2} roughness={0.3} toneMapped={false} />
+                <mesh position={[0, 0, 0.02]}>
+                    <boxGeometry args={[w * 0.96, 0.03, 0.015]} />
+                    <meshStandardMaterial
+                        color={light.color}
+                        emissive={light.color}
+                        emissiveIntensity={1.8}
+                        roughness={0.6}
+                        metalness={0}
+                        toneMapped={false}
+                    />
                 </mesh>
-                <pointLight position={[0, -0.02, 0.03]} color={light.color} intensity={light.intensity * 1.5} distance={5} decay={1} castShadow={false} />
+                {Array.from({ length: segmentCount }, (_, i) => {
+                    const t = segmentCount === 1 ? 0.5 : i / (segmentCount - 1)
+                    const xOff = (t - 0.5) * (w * 0.96)
+                    return (
+                        <pointLight
+                            key={i}
+                            position={[xOff, 0, 0.08]}
+                            color={light.color}
+                            intensity={perLightIntensity}
+                            distance={1.2}
+                            decay={1.5}
+                            castShadow={false}
+                        />
+                    )
+                })}
                 {selected && (
                     <mesh renderOrder={999}>
                         <boxGeometry args={[w * 1.05, 0.1, 0.1]} />
@@ -288,7 +318,7 @@ export function LightFixtureMesh({
                     light.type === 'chandelier' ? 14
                         : light.type === 'outdoor_bollard' ? 8
                             : light.type === 'track_lighting' ? 10
-                                : light.type === 'ceiling_recessed' ? 5
+                                : light.type === 'ceiling_recessed' ? 3
                                     : light.type === 'wall_sconce' ? 2.5
                                         : 10
                 }

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { THEME } from '../workspace/FloorPlanEditor';
 import { DEFAULT_FP, FloorPlanState } from '../workspace/lib/constants';
@@ -11,6 +11,7 @@ import { exportSVG } from '../workspace/lib/export/exportsvg';
 import FloorSwitcher from './FloorSwitcherUI';
 import { Floor } from '../workspace/lib/floor-data';
 import { ExportMenuCard, ExportMenuSection, FormatIcon } from './MenuCard';
+import { Scene3DHandle } from '../workspace/3DScene';
 
 
 interface WorkspaceNavProps {
@@ -30,7 +31,6 @@ interface WorkspaceNavProps {
     sceneRootRef?: React.RefObject<any>
     lastSavedSnapshot?: { fp: FloorPlanState; sceneConfig: any } | null
 
-    // NEW — floor switcher, threaded straight through, no logic here
     floors: Floor[]
     activeFloorId: string
     viewMode: 'single' | 'stacked' | 'stacked-full'
@@ -41,7 +41,11 @@ interface WorkspaceNavProps {
     onRenameFloor: (floorId: string, newLabel: string) => void
     onSetViewMode: (mode: "single" | "stacked" | "stacked-full") => void
     onSetShowUnderlay: (value: boolean) => void
+
+    // NEW — for 3D snapshot export
+    scene3DRef: React.RefObject<Scene3DHandle | null>
 }
+
 
 
 function ensureMenuAnimationStyle() {
@@ -107,6 +111,7 @@ const WorkspaceNav = ({
     onToggleFloorVisible,
     onRenameFloor,
     onSetViewMode,
+    scene3DRef,
     onSetShowUnderlay,
     showUnderlay
 }: WorkspaceNavProps) => {
@@ -134,11 +139,18 @@ const WorkspaceNav = ({
 
     const saveMenuPortalRef = useRef<HTMLDivElement>(null)
 
-    // ── Dirty check ──────────────────────────────────────────────────────
-    // If the parent passes `lastSavedSnapshot`, we know precisely whether
-    // there's anything new to persist. If it's omitted, we conservatively
-    // treat the plan as dirty (old always-save behavior) rather than
-    // silently blocking saves the parent isn't yet set up to skip.
+    const switchFloorForExport = useCallback((floorId: string): Promise<void> => {
+        onSelectFloor(floorId)
+        return new Promise<void>(resolve => {
+            let remaining = 3
+            const step = () => {
+                remaining -= 1
+                if (remaining <= 0) resolve()
+                else requestAnimationFrame(step)
+            }
+            requestAnimationFrame(step)
+        })
+    }, [onSelectFloor])
     const isDirty = lastSavedSnapshot === undefined
         ? true
         : !snapshotsEqual(lastSavedSnapshot, fp, sceneConfig)
@@ -471,6 +483,8 @@ const WorkspaceNav = ({
                     activeFloorId={activeFloorId}
                     onClose={() => setExportPlanOpen(false)}
                     onOpenShare={() => { setExportPlanOpen(false); setShareDialogOpen(true) }}
+                    onSwitchFloorForExport={switchFloorForExport}
+                    scene3DRef={scene3DRef}
                 />
             )}
             {pendingAction === 'export' && (

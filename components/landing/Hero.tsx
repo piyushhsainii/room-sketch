@@ -17,7 +17,7 @@ export default function Hero() {
           </h1>
           <p className="text-[1.1rem] font-normal text-black max-w-[420px] mb-9 leading-[1.] tracking-tight ">
             RoomSketch turns a floor plan you sketch in the browser into a
-            live, walkable 3D model — instantly. Draw walls, place furniture
+            live, walkable 3D model instantly. Draw walls, place furniture
             and lighting, then walk through the result before anything is
             built.
           </p>

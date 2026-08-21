@@ -27,7 +27,7 @@ export function FurnitureRenderer(props: {
     console.log('[FurnitureRenderer]', f.type, 'hasDef:', !!FURNITURE_MODELS[f.type], 'forceProcedural:', f.forceProcedural)
     return (
         <GLTFErrorBoundary fallback={<FurnitureMesh {...props} />}>
-            <Suspense fallback={previewUrl ? <BillboardPreview url={previewUrl} f={f} /> : <FurnitureMesh {...props} />}>
+            <Suspense fallback={null}>
                 <GLTFFurnitureMesh {...props} def={def} />
             </Suspense>
         </GLTFErrorBoundary>

@@ -175,8 +175,14 @@ export default function FloorPlanEditor({
         const target = floors.find(f => f.id === newFloorId)
         if (!target) return
 
-        setFloors(prev => prev.map(f => f.id === activeFloorId ? { ...f, state: fpRef.current } : f))
-        setFp(target.state)
+        const folded = floors.map(f =>
+            f.id === activeFloorId ? { ...f, state: fpRef.current } : f
+        )
+        const recomputed = recomputeFloorElevations(folded)
+
+        setFloors(recomputed)
+        const newTarget = recomputed.find(f => f.id === newFloorId)!
+        setFp(newTarget.state)
         setActiveFloorId(newFloorId)
         setSelectedId(null)
         setSelectedIds([])
@@ -235,7 +241,15 @@ export default function FloorPlanEditor({
     const [showUnderlay, setShowUnderlay] = useState<boolean>(
         initialProjectFloorPlan?.showUnderlay ?? true
     )
-
+    useEffect(() => {
+        setFloors(prev => {
+            const folded = prev.map(f =>
+                f.id === activeFloorId ? { ...f, state: { ...f.state, roomHeight: fp.roomHeight } } : f
+            )
+            return recomputeFloorElevations(folded)
+        })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fp.roomHeight, activeFloorId])
 
     // ─────────────────────────────────────────────────────────────────────────
     // Tool / mode
@@ -2891,7 +2905,10 @@ export default function FloorPlanEditor({
             }
             lastTooltipHoverIdRef.current = null
             setHoverTooltip(null)
-            if (pastThreshold(dragOriginRef.current, cx, cy)) dragConfirmedRef.current = true
+            if (pastThreshold(dragOriginRef.current, cx, cy)) {
+                dragConfirmedRef.current = true
+                if (!isDraggingSelection) setIsDraggingSelection(true)
+            }
 
             if (groupDragStartRef.current) {
                 const draggedId =
@@ -3050,7 +3067,7 @@ export default function FloorPlanEditor({
 
         dragOriginRef.current = null
         dragConfirmedRef.current = false
-
+        setIsDraggingSelection(false)
         if (hadDrag) pushHistory()
 
         if (marqueeRef.current) {
@@ -3599,8 +3616,8 @@ export default function FloorPlanEditor({
                                     position: 'fixed',
                                     top: furnitureAnchorRect.top,
                                     left: furnitureAnchorRect.right + 10,
-                                    background: THEME.bgPanel,
-                                    border: `1px solid ${THEME.border}`,
+                                    background: '#F5F1E8',
+                                    border: '1px solid #E8E0D0',
                                     borderRadius: 12,
                                     width: 280,
                                     display: 'flex',
@@ -3612,28 +3629,26 @@ export default function FloorPlanEditor({
                             >
                                 <div style={{
                                     padding: '10px 12px',
-                                    borderBottom: `1px solid ${THEME.border}`,
+                                    borderBottom: '1px solid #E8E0D0',
                                     fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
-                                    color: THEME.textMuted,
+                                    color: '#9B9280',
                                 }}>
                                     FURNITURE
                                 </div>
                                 <div style={{ padding: '8px' }}>
                                     <ScrollableList maxHeight={340}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                            {(Object.keys(furnitureByCategory) as FurnitureCategory[]).map(catId => {
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            {(Object.keys(furnitureByCategory) as FurnitureCategory[]).map((catId, i) => {
                                                 const items = furnitureByCategory[catId]
                                                 if (!items || items.length === 0) return null
                                                 const isOpen = openFurnitureCats.has(catId)
+                                                const isLast = i === Object.keys(furnitureByCategory).length - 1
                                                 return (
                                                     <div
                                                         key={catId}
                                                         style={{
-                                                            borderRadius: 10,
-                                                            border: `1px solid ${isOpen ? THEME.accent : THEME.border}`,
-                                                            background: isOpen ? 'rgba(99,102,241,0.06)' : 'transparent',
+                                                            borderBottom: isLast ? 'none' : '1px solid #E8E0D0',
                                                             overflow: 'hidden',
-                                                            transition: 'border-color 150ms, background 150ms',
                                                         }}
                                                     >
                                                         <button
@@ -3644,37 +3659,37 @@ export default function FloorPlanEditor({
                                                             })}
                                                             style={{
                                                                 width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                                                                padding: '8px 10px', background: 'transparent', border: 'none',
+                                                                padding: '12px 6px', background: 'transparent', border: 'none',
                                                                 cursor: 'pointer', textAlign: 'left',
                                                             }}
                                                         >
+                                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8A8270" strokeWidth="2.5"
+                                                                style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }}>
+                                                                <polyline points="9 18 15 12 9 6" />
+                                                            </svg>
                                                             <span style={{
-                                                                fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text,
+                                                                fontSize: 12.5, fontWeight: 700, letterSpacing: '0.03em', flex: 1,
+                                                                color: '#5C5646', textTransform: 'uppercase',
                                                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                             }}>
                                                                 {CATEGORY_LABELS[catId]}
                                                             </span>
                                                             <span style={{
-                                                                fontSize: 10.5, fontWeight: 700, color: THEME.accent,
-                                                                background: 'rgba(99,102,241,0.12)', borderRadius: 999,
-                                                                padding: '1px 7px', flexShrink: 0, minWidth: 18, textAlign: 'center',
+                                                                fontSize: 12, fontWeight: 500, color: '#A39A85',
+                                                                flexShrink: 0, minWidth: 14, textAlign: 'right',
                                                             }}>
                                                                 {items.length}
                                                             </span>
-                                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
-                                                                style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }}>
-                                                                <polyline points="9 18 15 12 9 6" />
-                                                            </svg>
                                                         </button>
 
                                                         {isOpen && (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 8px 8px' }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 6px 10px' }}>
                                                                 {items.map(catalogEntry => {
                                                                     const id = catalogEntry.type
                                                                     const isNew = isFurnitureNew(catalogEntry)
                                                                     const Icon = (Icons as any)[catalogEntry.icon] ?? Icons.Box
                                                                     const selected = selectedFurnitureType === id
-                                                                    const previewUrl = getPreviewUrl(id) // NEW
+                                                                    const previewUrl = getPreviewUrl(id)
 
                                                                     return (
                                                                         <button
@@ -3683,14 +3698,14 @@ export default function FloorPlanEditor({
                                                                             style={{
                                                                                 display: 'flex', alignItems: 'center', gap: 8,
                                                                                 padding: '6px 8px', borderRadius: 8, border: 'none',
-                                                                                background: selected ? 'rgba(99,102,241,0.1)' : 'transparent',
+                                                                                background: selected ? 'rgba(139,125,90,0.12)' : 'transparent',
                                                                                 cursor: 'pointer', textAlign: 'left', width: '100%',
                                                                             }}
                                                                         >
                                                                             <div style={{
                                                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                 width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-                                                                                background: selected ? 'rgba(99,102,241,0.14)' : THEME.bgCanvas,
+                                                                                background: selected ? 'rgba(139,125,90,0.18)' : '#EFE9DC',
                                                                                 overflow: 'hidden',
                                                                             }}>
                                                                                 {previewUrl ? (
@@ -3706,12 +3721,12 @@ export default function FloorPlanEditor({
                                                                                         }}
                                                                                     />
                                                                                 ) : (
-                                                                                    <Icon size={14} strokeWidth={1.8} color={selected ? THEME.accent : THEME.textMuted} />
+                                                                                    <Icon size={14} strokeWidth={1.8} color={selected ? '#7A6E52' : '#A39A85'} />
                                                                                 )}
                                                                             </div>
                                                                             <span style={{
                                                                                 flex: 1, fontSize: 12, fontWeight: selected ? 600 : 400,
-                                                                                color: selected ? THEME.accent : THEME.text,
+                                                                                color: selected ? '#5C5646' : '#5C5646',
                                                                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                                             }}>
                                                                                 {catalogEntry.label}
@@ -3719,7 +3734,7 @@ export default function FloorPlanEditor({
                                                                             {isNew && (
                                                                                 <span style={{
                                                                                     fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
-                                                                                    color: '#fff', background: THEME.accent,
+                                                                                    color: '#fff', background: '#8A8270',
                                                                                     borderRadius: 4, padding: '2px 5px', flexShrink: 0,
                                                                                 }}>
                                                                                     NEW

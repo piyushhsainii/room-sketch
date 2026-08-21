@@ -75,43 +75,6 @@ function Tooltip({ label, shortcut, children }: { label: string; shortcut?: stri
     )
 }
 
-// ── GroupButton (flyout via portal) ──────────────────────────────────────────
-
-
-// ─────────────────────────────────────────────────────────────────────────
-// CHANGES vs. the version you pasted:
-//
-// 1. Open/close-timer + outside-click logic extracted to `useHoverFlyout`
-//    (identical behavior, just shared now instead of living only here).
-// 2. NEW: `group.renderFlyout` escape hatch. If present, it's used instead
-//    of the default 3-column icon grid — this is what lets furniture and
-//    presets render their own content through the SAME hover mechanism as
-//    every other tool group, instead of FloorPlanEditor.tsx maintaining
-//    separate `furnitureAnchorRect`/`presetsAnchorRect` state + a
-//    `tool === 'furniture'` effect.
-// 3. Flyout now opens whenever `hasVariants || group.renderFlyout` is true
-//    (previously gated on `hasVariants` alone, which is why furniture/
-//    presets — single-leaf groups — never got a flyout via this component).
-// 4. Visual shell swapped to `FlyoutPanel` (COLOR/SPACE tokens), so this
-//    now matches PropsPanel's palette instead of the old inline THEME
-//    styling. The trigger button itself (48px icon square) is UNCHANGED —
-//    only flagging this in case you want the button restyled too; wasn't
-//    asked for, so left as-is.
-//
-// REQUIRED type addition (wherever `ToolGroup` is defined, likely
-// `lib/tool-constants.ts` or `lib/constants.ts`):
-//
-//   export type ToolGroup = {
-//     id: string
-//     label: string
-//     leaves: { id: EditorTool; label: string; icon: ReactNode; key?: string }[]
-//     renderFlyout?: (ctx: { onSelect: (tool: EditorTool) => void; close: () => void }) => ReactNode
-//     flyoutWidth?: number   // optional, defaults to 200 (grid) / 280 (custom)
-//   }
-// ─────────────────────────────────────────────────────
-
-
-
 export function GroupButton({
     group,
     activeTool,
@@ -131,8 +94,20 @@ export function GroupButton({
     const hasVariants = group.leaves.length > 1
     const hasFlyout = hasVariants || !!group.renderFlyout
 
-    const { open, anchorRect, setOpen, anchorProps, flyoutTriggerProps } =
-        useHoverFlyout({ id: group.id, enabled: hasFlyout })
+    const trigger = group.renderFlyout ? "click" : "hover"
+
+    const { open, anchorRect, setOpen, anchorProps, flyoutTriggerProps, toggleOpen } =
+        useHoverFlyout({ id: group.id, enabled: hasFlyout, trigger })
+
+    const isActive = group.leaves.some(l => l.id === activeTool)
+
+    // Close automatically once this group is no longer the active tool —
+    // covers switching to any other toolbar tool (keyboard shortcut,
+    // programmatic setTool, etc.), not just clicks that land outside this
+    // component's DOM, which the outside-mousedown listener alone can't catch.
+    useEffect(() => {
+        if (trigger === "click" && open && !isActive) setOpen(false)
+    }, [isActive])
 
     const setAnchorNode = (el: HTMLDivElement | null) => {
         anchorProps.ref.current = el
@@ -142,7 +117,6 @@ export function GroupButton({
     const currentLeaf = hasVariants
         ? group.leaves.find(l => l.id === lastUsed[group.id]) ?? group.leaves[0]
         : group.leaves[0]
-    const isActive = group.leaves.some(l => l.id === activeTool)
 
     const closeFlyout = () => setOpen(false)
 
@@ -159,7 +133,10 @@ export function GroupButton({
                     onMouseEnter={() => setHover(true)}
                     onMouseDown={() => setPressed(true)}
                     onMouseUp={() => setPressed(false)}
-                    onClick={() => onSelect(currentLeaf.id)}
+                    onClick={() => {
+                        onSelect(currentLeaf.id)
+                        if (trigger === "click") toggleOpen()
+                    }}
                     style={{
                         width: 48, height: 48, borderRadius: 10,
                         border: isActive ? '1.5px solid rgba(99,102,241,0.7)' : hover ? '1.5px solid rgba(15,15,15,0.14)' : '1.5px solid transparent',

@@ -17,13 +17,6 @@ live. After editing, re-view to confirm the change landed.
 
 **Per-floor plan data** — unchanged from the original single-floor design:
 
-```ts
-FloorPlanState {
-  rooms, lineNodes, lineSegments, closedShapes, openings,
-  furniture, stairs, wallDecor, lights, outdoorObjects, annotations, roomHeight
-}
-```
-
 `fp`/`setFp`/`fpRef` in `FloorPlanEditor.tsx` = the **currently-edited
 floor's live state**. Every mouse handler, panel, and 2D render reads/writes
 this directly, exactly as before multi-floor existed.
@@ -332,22 +325,12 @@ Don't reintroduce that coupling.
 
    After this branching, a confirmed-correct-but-inverted-output swap is
    applied:
-
-```ts
-[interiorMat, exteriorMat] = [exteriorMat, interiorMat];
-```
-
-This must run BEFORE segment-level explicit overrides (next point),
-so a user's own Interior/Exterior pick on a wall segment always wins
-as-authored and never gets re-flipped by this line.
+   This must run BEFORE segment-level explicit overrides (next point),
+   so a user's own Interior/Exterior pick on a wall segment always wins
+   as-authored and never gets re-flipped by this line.
 
 **Segment-level explicit override** (from `PropsPanel`'s per-segment
 Interior/Exterior/Both picker) always wins over shape-derived defaults:
-
-```ts
-if (selectedWallMaterial) interiorMat = selectedWallMaterial;
-if (selectedWallExteriorMaterial) exteriorMat = selectedWallExteriorMaterial;
-```
 
 sourced from `segWallMaterial`/`segWallExteriorMaterial` maps, built once
 per render from `roomSceneConfigs` (`RoomSceneConfig.wallMaterial` /
@@ -357,15 +340,6 @@ per render from `roomSceneConfigs` (`RoomSceneConfig.wallMaterial` /
 `PropsPanel`'s wall-segment `MaterialTexturePicker` `onSelect`/`onClear`
 must branch on the active `segWallSide` tab and write to the matching
 field:
-
-```ts
-onSelect={(id) => {
-    const patch: Partial<RoomSceneConfig> = {}
-    if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = id as WallMaterial
-    if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = id as WallMaterial
-    patchRoomSceneById(seg.id, patch)
-}}
-```
 
 A prior version always wrote `wallMaterial` regardless of which tab was
 active — Exterior picks silently landed on the interior field, making
@@ -389,6 +363,39 @@ the wrong material into `shapeFacingA`/`shapeFacingB` unpredictably.
 drop it. When creating a not-yet-persisted shape's first `ClosedShape`
 row (either side), reuse `shape.id` as-is — do NOT mint a
 `crypto.randomUUID()` for it, or the two write paths will diverge again.
+
+### 4j. Furniture rendering — GLTF-first, procedural fallback
+
+Furniture rendering now dispatches through `FurnitureRenderer.tsx`, not
+directly through `FurnitureMesh`. `FurnitureMesh` (`mesh/furnitureMesh.tsx`)
+is UNCHANGED in role and still actively used — it's the fallback for: (1)
+no `FurnitureModelDef` registered for `f.type` in
+`furniture-model-registry.ts`, (2) `f.forceProcedural: true` (debug escape
+hatch on `PlacedFurniture`), (3) GLTF load/render error
+(`GLTFErrorBoundary`) or, pre-resolve, a Suspense fallback option.
+`GLTFFurnitureMesh.tsx` also imports `useTextureMaterialProps` directly
+from `furnitureMesh.tsx` — the two files are coupled, not independent.
+
+**Fixed this cycle:**
+
+- **Leather materials missing `textureUrl`** — Leather registry entries
+  only had `color`/swatch populated, no texture path, so selecting Leather
+  silently fell back to a flat swatch with no weave/grain texture. Fixed
+  by populating `textureUrl` for all Leather entries.
+- **GLB's own baked materials fighting selected textures** — the cloned
+  GLTF scene's original materials were interfering with override
+  textures (selected material wouldn't visibly apply, or applied
+  incorrectly). Fixed by properly cloning each mesh's material before
+  mutating (`srcMat.clone()`) and explicitly overriding its map(s) rather
+  than mutating shared/cached material instances in place.
+- **Texture tiling too dense** — repeat values were too high, textures
+  looked unrealistically busy/small-scale on furniture surfaces. Tiling
+  repeat values tuned down to a realistic scale.
+- **GLB models rendering too small** — measured-bbox-based scale
+  calculation in `GLTFFurnitureMesh.tsx` was undersizing imported models.
+  Fixed with a 2× baseline size multiplier applied on top of the existing
+  scale-slider behavior (`f.scale` still works as before, multiplier is a
+  baseline correction underneath it, not a replacement for user scaling).
 
 ---
 

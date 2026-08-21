@@ -8,9 +8,11 @@ const CLOSE_DELAY_MS = 150;
 export function useHoverFlyout({
   id,
   enabled = true,
+  trigger = "hover",
 }: {
   id: string;
   enabled?: boolean;
+  trigger?: "hover" | "click";
 }) {
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -38,16 +40,22 @@ export function useHoverFlyout({
   }, [open, id]);
 
   const scheduleOpen = () => {
-    if (!enabled) return;
+    if (!enabled || trigger !== "hover") return;
     if (closeTimer.current) clearTimeout(closeTimer.current);
     openTimer.current = setTimeout(() => setOpen(true), OPEN_DELAY_MS);
   };
   const scheduleClose = () => {
+    if (trigger !== "hover") return;
     if (openTimer.current) clearTimeout(openTimer.current);
     closeTimer.current = setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
   };
   const cancelClose = () => {
+    if (trigger !== "hover") return;
     if (closeTimer.current) clearTimeout(closeTimer.current);
+  };
+  const toggleOpen = () => {
+    if (!enabled || trigger !== "click") return;
+    setOpen((prev) => !prev);
   };
 
   useEffect(() => {
@@ -61,6 +69,7 @@ export function useHoverFlyout({
     open,
     anchorRect,
     setOpen,
+    toggleOpen,
     anchorProps: {
       ref: anchorRef,
       onMouseEnter: scheduleOpen,

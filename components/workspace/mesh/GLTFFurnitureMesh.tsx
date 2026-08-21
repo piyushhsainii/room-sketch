@@ -195,7 +195,10 @@ export function GLTFFurnitureMesh({
         textureScale,
         textureScale,
     )
-
+    const materialReady =
+        !overrideMat?.textureUrl ||
+        status === 'loaded' ||
+        status === 'failed'
     // -------------------------------------------------------------------------
     // DEBUG GLTF MATERIALS / UVs
     // -------------------------------------------------------------------------
@@ -606,8 +609,15 @@ export function GLTFFurnitureMesh({
         <group
             ref={groupRef}
             position={[f.x, f.heightOffset ?? 0, f.z]}
-            rotation={[0, -f.rotation + (f.rotationOffset ?? 0) + (def.rotationOffset?.[1] ?? 0), 0]}
+            rotation={[
+                0,
+                f.rotation +
+                (f.rotationOffset ?? 0) +
+                (def.rotationOffset?.[1] ?? 0),
+                0,
+            ]}
             scale={scale}
+            visible={materialReady}
             onClick={handleClick}
             onPointerOver={handleOver}
             onPointerOut={handleOut}

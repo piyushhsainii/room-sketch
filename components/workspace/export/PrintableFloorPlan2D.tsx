@@ -4,7 +4,7 @@ import { EditorOpening, FloorPlanState, LineNode } from '../lib/constants'
 import { deriveClosedPolygons, getSegmentOpeningWorldPos, polygonAreaM2 } from '@/lib/helpers'
 import { OUTDOOR_OBJECT_LABELS } from '../lib/outdoor-constants'
 import { STAIRS_LABELS } from '../lib/stairs-constants'
-import { FURNITURE_FOOTPRINTS, FURNITURE_LABELS } from '../lib/furniture-constants'
+import { FURNITURE_LABELS, getFurnitureFootprint } from '../lib/furniture-constants'
 
 
 // Standard architectural print scales — denominator is "1 unit on paper = N
@@ -197,7 +197,7 @@ export function PrintableFloorPlan2D({ fp, scale, paperSize, floorLabel, project
 
             {/* ── Furniture ─────────────────────────────────────────────── */}
             {showFurniture && (fp.furniture ?? []).map(f => {
-                const fpDef = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                const fpDef = getFurnitureFootprint(f.type, undefined);
                 const wMm = fpDef.w * mmPerMeter, dMm = fpDef.d * mmPerMeter
                 const cxMm = px(f.x), cyMm = py(f.z)
                 const angleDeg = (f.rotation * 180) / Math.PI

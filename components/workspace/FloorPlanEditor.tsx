@@ -22,7 +22,7 @@ import { duplicateClosedShape, duplicateRoom, MirrorAxis, mirrorRoom } from './l
 import { duplicateFurniture, duplicateOpening, duplicateOutdoorObject, duplicateStairs, duplicateWallDecor } from './lib/duplicate-items'
 import { FloatingDock } from '../ui/FloatingDock'
 import { useFurnitureCollisions } from './hooks/useFurnitureCollisions'
-import { FURNITURE_FOOTPRINTS, FurnitureType, PlacedFurniture } from './lib/furniture-constants'
+import { FurnitureType, getFurnitureFootprint, PlacedFurniture } from './lib/furniture-constants'
 import { bendSegment, classifySelection, getSelectionAnchorWorld, QuickActionMenu } from './QuickActionMenu'
 import { RoomTemplate, WallPreset } from './lib/presets'
 import { PresetsPanel } from '../ui/PresetPanel'
@@ -42,6 +42,7 @@ import { computeDerivedFloorData } from './computeDerivedFloorData'
 import ViewModeControl from '../ui/ViewModeControl'
 import { useAnimatedMount } from './hooks/useAnimatedMount'
 import { getToolGroups } from './lib/tool-constants'
+import { getPreviewUrl } from './mesh/furniture-model-registry'
 
 export type RoomSceneConfig = {
     roomId: string
@@ -181,6 +182,28 @@ export default function FloorPlanEditor({
         setSelectedIds([])
     }, [activeFloorId, floors])
 
+    const deleteFloor = useCallback((floorId: string) => {
+        setFloors(prev => {
+            if (prev.length <= 1) return prev // never delete the last floor
+            const remaining = prev.filter(f => f.id !== floorId)
+            return recomputeFloorElevations(remaining)
+        })
+        if (activeFloorId === floorId) {
+            const remaining = floors.filter(f => f.id !== floorId)
+            const fallback = remaining[0]
+            if (fallback) {
+                setActiveFloorId(fallback.id)
+                setFp(fallback.state)
+            }
+        }
+        setSelectedId(null)
+        setSelectedIds([])
+    }, [floors, activeFloorId])
+
+    const reorderFloors = useCallback((newFloors: Floor[]) => {
+        setFloors(newFloors)
+    }, [])
+
     const addFloor = useCallback((direction: 'above' | 'below' = 'above') => {
         const maxOrder = Math.max(...floors.map(f => f.order))
         const minOrder = Math.min(...floors.map(f => f.order))
@@ -296,7 +319,7 @@ export default function FloorPlanEditor({
     } | null>(null)
     // Furniture placement + collisions
     // ─────────────────────────────────────────────────────────────────────────
-    const [selectedFurnitureType, setSelectedFurnitureType] = useState<FurnitureType>('sofa')
+    const [selectedFurnitureType, setSelectedFurnitureType] = useState<string>('sofa')
     const [openFurnitureCats, setOpenFurnitureCats] = useState<any>(new Set(FURNITURE_CATEGORIES.map(c => c.id)))
     const { checkCollisions, overlappingRef, hasChanged, clear } = useFurnitureCollisions()
     const [overlappingIds, setOverlappingIds] = useState<Set<string>>(new Set())
@@ -1566,7 +1589,7 @@ export default function FloorPlanEditor({
                 const hitSeg = hitLineSegment(wx, wz)
                 const hitShape = hitClosedShape(wx, wz)
                 const hitFurn = (fpRef.current.furniture ?? []).findLast(f => {
-                    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                    const fp2 = getFurnitureFootprint(f.type, undefined);
                     const dx = wx - f.x, dz = wz - f.z
                     const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
                     const lx = dx * cosR - dz * sinR, lz = dx * sinR + dz * cosR
@@ -1632,7 +1655,7 @@ export default function FloorPlanEditor({
 
             // 4. Furniture & Stairs
             const hitFurnitureFirst = (fpRef.current.furniture ?? []).findLast(f => {
-                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                const fp2 = getFurnitureFootprint(f.type, undefined);
                 const dx = wx - f.x, dz = wz - f.z
                 const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
                 const lx = dx * cosR - dz * sinR
@@ -2003,7 +2026,7 @@ export default function FloorPlanEditor({
         }
         if (tool === 'furniture') {
             const clickedFurniture = (fpRef.current.furniture ?? []).find(f => {
-                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                const fp2 = getFurnitureFootprint(f.type, undefined);
                 // Rotate the test point into furniture local space
                 const dx = wx - f.x, dz = wz - f.z
                 const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
@@ -2018,7 +2041,7 @@ export default function FloorPlanEditor({
             // Place new furniture
             const newF: PlacedFurniture = {
                 id: uid(),
-                type: selectedFurnitureType,
+                type: selectedFurnitureType as FurnitureType,
                 x: snapFurniture(wx),
                 z: snapFurniture(wz),
                 rotation: 0,
@@ -2064,7 +2087,7 @@ export default function FloorPlanEditor({
 
             // Delete furniture
             const furIdx = (fpRef.current.furniture ?? []).findIndex(f => {
-                const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                const fp2 = getFurnitureFootprint(f.type, undefined);
                 const dx = wx - f.x, dz = wz - f.z
                 const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
                 const lx = dx * cosR - dz * sinR, lz = dx * sinR + dz * cosR
@@ -2450,7 +2473,7 @@ export default function FloorPlanEditor({
                                 newHoverId = hovShape.id
                             } else {
                                 const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
-                                    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                                    const fp2 = getFurnitureFootprint(f.type, undefined);
                                     const dx = wx - f.x, dz = wz - f.z
                                     const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
                                     const lx = dx * cosR - dz * sinR
@@ -2958,7 +2981,7 @@ export default function FloorPlanEditor({
                                 newHoverId = hovShape.id
                             } else {
                                 const hovFurniture = (fpRef.current.furniture ?? []).findLast(f => {
-                                    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+                                    const fp2 = getFurnitureFootprint(f.type, undefined);
                                     const dx = wx - f.x, dz = wz - f.z
                                     const cosR = Math.cos(-f.rotation), sinR = Math.sin(-f.rotation)
                                     const lx = dx * cosR - dz * sinR
@@ -3528,11 +3551,14 @@ export default function FloorPlanEditor({
                         onAddFloor={addFloor}
                         onToggleFloorVisible={toggleFloorVisible}
                         onRenameFloor={renameFloor}
+                        onDeleteFloor={deleteFloor}
+                        onReorderFloors={reorderFloors}
                         onSetViewMode={setViewMode}
                         onSetShowUnderlay={setShowUnderlay}
                         showUnderlay={showUnderlay}
                         lastSavedSnapshot={lastSavedSnapshot}
                         scene3DRef={scene3DRef}
+
                     />
                 </div>
                 {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -3648,6 +3674,8 @@ export default function FloorPlanEditor({
                                                                     const isNew = isFurnitureNew(catalogEntry)
                                                                     const Icon = (Icons as any)[catalogEntry.icon] ?? Icons.Box
                                                                     const selected = selectedFurnitureType === id
+                                                                    const previewUrl = getPreviewUrl(id) // NEW
+
                                                                     return (
                                                                         <button
                                                                             key={id}
@@ -3663,8 +3691,23 @@ export default function FloorPlanEditor({
                                                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                 width: 26, height: 26, borderRadius: 7, flexShrink: 0,
                                                                                 background: selected ? 'rgba(99,102,241,0.14)' : THEME.bgCanvas,
+                                                                                overflow: 'hidden',
                                                                             }}>
-                                                                                <Icon size={14} strokeWidth={1.8} color={selected ? THEME.accent : THEME.textMuted} />
+                                                                                {previewUrl ? (
+                                                                                    <img
+                                                                                        src={previewUrl}
+                                                                                        alt=""
+                                                                                        width={26}
+                                                                                        height={26}
+                                                                                        style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                                                                                        loading="lazy"
+                                                                                        onError={(e) => {
+                                                                                            ; (e.currentTarget as HTMLImageElement).style.display = 'none'
+                                                                                        }}
+                                                                                    />
+                                                                                ) : (
+                                                                                    <Icon size={14} strokeWidth={1.8} color={selected ? THEME.accent : THEME.textMuted} />
+                                                                                )}
                                                                             </div>
                                                                             <span style={{
                                                                                 flex: 1, fontSize: 12, fontWeight: selected ? 600 : 400,

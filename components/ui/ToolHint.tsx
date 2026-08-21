@@ -15,7 +15,7 @@ interface WorkspaceStatusBarProps {
     isOpeningTool: boolean;
     isStairsTool: boolean;
     isWallDecorTool: boolean;
-    selectedFurnitureType: FurnitureType;
+    selectedFurnitureType: string;
 }
 
 const ToolHintBar = ({
@@ -43,7 +43,7 @@ const ToolHintBar = ({
             {tool === 'delete' && 'Click on a room, wall or node to delete it'}
             {tool === 'pencil' && 'Draw freehand — release to create room from bounding box'}
             {tool === 'annotate' && 'Click anywhere to add a label · Click existing label to edit · Delete tool removes labels'}
-            {tool === 'furniture' && `Placing: ${FURNITURE_LABELS[selectedFurnitureType]} · Click canvas to place · Drag to move · Delete tool removes`}
+            {tool === 'furniture' && `Placing: ${FURNITURE_LABELS[selectedFurnitureType as FurnitureType]} · Click canvas to place · Drag to move · Delete tool removes`}
             {isWallDecorTool && 'Click on a wall to place wall decor · Drag along wall to reposition'}
         </div>
     )

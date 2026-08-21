@@ -12,8 +12,8 @@ export interface ToolGroupsContext {
   furnitureByCategory: Record<FurnitureCategory, FurnitureCatalogEntry[]>
   openFurnitureCats: Set<FurnitureCategory>
   setOpenFurnitureCats: React.Dispatch<React.SetStateAction<Set<FurnitureCategory>>>
-  selectedFurnitureType: FurnitureType | null
-  setSelectedFurnitureType: (id: FurnitureType) => void
+  selectedFurnitureType: any | null
+  setSelectedFurnitureType: (id: any) => void
   isFurnitureNew: (entry: FurnitureCatalogEntry) => boolean
   armedWallPresetId: string | null
   armedTemplateId: string | null

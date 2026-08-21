@@ -13,8 +13,8 @@ import {
   WallMaterial,
 } from "@/components/workspace/lib/constants";
 import {
-  FURNITURE_FOOTPRINTS,
   FURNITURE_LABELS,
+  getFurnitureFootprint,
 } from "@/components/workspace/lib/furniture-constants";
 import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
 
@@ -858,7 +858,7 @@ export function bboxForEntity(
 
   const f = (fp.furniture ?? []).find((f) => f.id === id);
   if (f) {
-    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 };
+    const fp2 = getFurnitureFootprint(f.type, undefined);
     const hw = (fp2.w * (f.scale ?? 1)) / 2,
       hd = (fp2.d * (f.scale ?? 1)) / 2;
     // axis-aligned bbox of the rotated footprint — conservative (uses the

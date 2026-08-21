@@ -1,3 +1,4 @@
+import { LucideIcon } from "lucide-react"
 import { SceneConfig } from "../FloorPlanEditor"
 import { PlacedLight } from "../lights-constant"
 import { MaterialCategory } from "../texture/materials-registry"
@@ -1061,12 +1062,13 @@ export type FurnitureCategory =
     | 'wall'
 
 export interface FurnitureCatalogEntry {
-    type: FurnitureType
+    type: string
     label: string
     icon: string // lucide-react icon name, e.g. 'Sofa', 'Lamp', 'Armchair'
     category: FurnitureCategory
     isNew?: boolean
-    newSince?: string // ISO date, e.g. '2026-07-01'
+    newSince?: string
+    previewUrl?: string // only new addition
 }
 
 export const FURNITURE_CATALOG: FurnitureCatalogEntry[] = [

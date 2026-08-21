@@ -205,18 +205,14 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             .map(f => ({
                 floor: f,
                 opacity: 1,
-                renderCap: activeFloor
-                    ? (f.order < activeFloor.order || f.id === activeFloorId)
-                    : false,
+                renderCap: activeFloor ? f.order < activeFloor.order : false,
             }))
     } else {
         // stacked-full — everything, full opacity, regardless of active floor's position
         floorsToRender = floors.filter(f => f.visible).map(f => ({
             floor: f,
             opacity: 1,
-            renderCap: activeFloor
-                ? (f.order < activeFloor.order || f.id === activeFloorId)
-                : false,
+            renderCap: activeFloor ? f.order < activeFloor.order : false,
         }))
     }
     const lowestGroupY = floorsToRender.length > 0

@@ -94,14 +94,7 @@ function LineWalls3DImpl({
     const FACE_EPS = 0.003
     const [hovered, setHovered] = React.useState(false)
 
-    // REVERTED — back to reading fp.lineNodes/fp.lineSegments directly.
-    // The blanket coordinate-based merge (mergeCoincidentNodes) fused
-    // unrelated rooms whose corners happened to be close together
-    // (e.g. Area 8 + Area 10) and desynced fp.closedShapes' nodeIds
-    // from the merged ids, which broke cutout matching. Do NOT
-    // reintroduce a global epsilon merge here — any dedup fix needs to
-    // target only the specific known-duplicate node ids AND remap them
-    // inside closedShapes at the same time.
+
     const derivedPolygons = React.useMemo(
         () => deriveClosedPolygons(fp.lineNodes, fp.lineSegments),
         [fp.lineNodes, fp.lineSegments]
@@ -140,7 +133,7 @@ function LineWalls3DImpl({
 
                 const isRoomSelected = interactive && selectedId === seg.id
                 const panels: React.ReactNode[] = []
-                const effH = seg.height ?? H
+                const effH = H
                 const segT = seg.thickness ?? 0.15
 
                 for (let i = 0; i < nodes.length - 1; i++) {

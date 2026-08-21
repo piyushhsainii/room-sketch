@@ -13,7 +13,7 @@ import {
   RotRect,
   rotRectsOverlap,
 } from "../lib/collision";
-import { FURNITURE_FOOTPRINTS } from "../lib/furniture-constants";
+import { getFurnitureFootprint } from "../lib/furniture-constants";
 
 const COLLISION_EXEMPT: Set<string> = new Set([
   // Matches the highlightH === 0 wall-mounted group already established in
@@ -62,10 +62,17 @@ export function useFurnitureCollisions() {
           overlappingRef.current = next;
           return next;
         }
-        const footprint = FURNITURE_FOOTPRINTS[draggedFurniture.type] ?? {
-          w: 1,
-          d: 1,
-        };
+        const footprint = getFurnitureFootprint(
+          draggedFurniture.type,
+          undefined,
+        ); // scale applied below by furnitureToRect
+        dragRect = furnitureToRect(
+          proposedX,
+          proposedZ,
+          draggedFurniture.rotation,
+          footprint,
+          draggedFurniture.scale ?? 1,
+        );
         dragRect = furnitureToRect(
           proposedX,
           proposedZ,
@@ -100,7 +107,7 @@ export function useFurnitureCollisions() {
           dz = f.z - proposedZ;
         if (Math.hypot(dx, dz) > dragRadius + PREFILTER_MARGIN) continue;
 
-        const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 };
+        const fp2 = getFurnitureFootprint(f.type, undefined);
         const rect = furnitureToRect(f.x, f.z, f.rotation, fp2, f.scale ?? 1);
         if (rotRectsOverlap(dragRect, rect)) {
           next.add(draggedId);

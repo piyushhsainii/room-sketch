@@ -10,10 +10,22 @@ export function ScrollableList({ children, maxHeight }: { children: React.ReactN
         const el = contentRef.current
         if (!el) return
         const { scrollHeight, clientHeight, scrollTop } = el
-        if (scrollHeight <= clientHeight) { setThumb({ height: 0, top: 0, visible: false }); return }
+
+        if (scrollHeight <= clientHeight) {
+            setThumb(prev => (prev.visible ? { height: 0, top: 0, visible: false } : prev))
+            return
+        }
+
         const thumbHeight = Math.max(24, (clientHeight / scrollHeight) * clientHeight)
         const thumbTop = (scrollTop / (scrollHeight - clientHeight)) * (clientHeight - thumbHeight)
-        setThumb({ height: thumbHeight, top: thumbTop, visible: true })
+
+        setThumb(prev => {
+            const changed =
+                Math.abs(prev.height - thumbHeight) > 0.5 ||
+                Math.abs(prev.top - thumbTop) > 0.5 ||
+                !prev.visible
+            return changed ? { height: thumbHeight, top: thumbTop, visible: true } : prev
+        })
     }, [])
 
     // Re-measure on mount, on content change, AND on parent resize — a

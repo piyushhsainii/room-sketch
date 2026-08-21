@@ -476,6 +476,18 @@ core feature set) is unaffected and still shipped.
   shape for `Scene3D`, but the underlying single-floor-only limitation at
   the API/data layer is unresolved.
 
+- **Custom user-uploaded GLB furniture support** — FUTURE SCOPE, not
+  started. Current pipeline only supports developer-registered,
+  build-time-known models with hand-authored `FurnitureModelDef` entries
+  (materialSlots, target dimensions, preview images). A user-upload flow
+  would need: runtime registry entry creation (no build-time def),
+  automatic `materialSlots` detection (the manual per-model console-log
+  workflow doesn't scale to arbitrary user uploads), sane default sizing
+  without a curated `defaultTargetWidth/Depth` (bbox-measurement + the
+  new 2x baseline multiplier only, no per-model override available),
+  and upload-time asset validation (file size limits, malformed GLB
+  handling — `GLTFErrorBoundary` covers render-time failures only).
+
 ---
 
 ## 8. Standing gotchas (still apply)

@@ -1,3 +1,7 @@
+import {
+  FURNITURE_CATALOG,
+  FURNITURE_MODELS,
+} from "../mesh/furniture-model-registry";
 import { FurnitureCategory } from "./constants";
 
 export type FurnitureType =
@@ -16,7 +20,9 @@ export type FurnitureType =
   | "toilet"
   | "plant"
   | "chair"
+  | "desk_chair"
   | "coffee_table"
+  | "side_table"
   | "lamp"
   | "mirror"
   | "kitchen_stove"
@@ -28,7 +34,12 @@ export type FurnitureType =
   | "wall_panel_pvc"
   | "painting"
   | "lounge_recliner"
-  // NEW — kitchen expansion
+  | "bench"
+  | "stool_bar"
+  | "bookcase"
+  | "cabinet_bed"
+  | "coat_rack"
+  | "ceiling_fan"
   | "kitchen_cabinet_base"
   | "kitchen_cabinet_wall"
   | "kitchen_countertop_slab"
@@ -53,57 +64,24 @@ export type PlacedFurniture = {
   variant?: FurnitureVariant;
   orientation?: FurnitureOrientation;
   heightOffset?: number;
+  targetWidth?: number;
+  targetDepth?: number;
+  heightScale?: number;
+  rotationOffset?: number;
+  /** Escape hatch: force procedural fallback rendering even if a GLTF model
+   *  is registered for this type (debugging / while a new asset is broken). */
+  forceProcedural?: boolean;
 };
 
-export const FURNITURE_FOOTPRINTS: Record<
-  FurnitureType,
-  { w: number; d: number }
-> = {
-  sofa: { w: 2.2, d: 0.95 },
-  bed: { w: 1.7, d: 2.1 },
-  dining_table: { w: 1.5, d: 1.5 },
-  desk: { w: 1.4, d: 0.7 },
-  wardrobe: { w: 1.9, d: 0.62 },
-  bathtub: { w: 0.82, d: 1.6 },
-  toilet: { w: 0.46, d: 0.68 },
-  plant: { w: 0.4, d: 0.4 },
-  chair: { w: 0.55, d: 0.55 },
-  coffee_table: { w: 1.2, d: 0.65 },
-  single_sofa: { w: 0.95, d: 0.9 },
-  lamp: { w: 0.35, d: 0.35 },
-  mirror: { w: 0.7, d: 0.06 },
-  kitchen_stove: { w: 0.6, d: 0.6 },
-  chimney: { w: 0.9, d: 0.55 },
-  commode: { w: 0.5, d: 0.45 },
-  shower: { w: 0.9, d: 0.9 },
-  shoe_rack: { w: 0.9, d: 0.32 },
-  led_strip: { w: 1.25, d: 0.05 },
-  wall_panel_pvc: { w: 1.2, d: 0.05 },
-  painting: { w: 0.9, d: 0.05 },
-  lounge_recliner: { w: 2, d: 2 },
-
-  // New types
-  sofa_l: { w: 2.6, d: 1.9 }, // main run + chaise leg, bounding box
-  bed_single: { w: 1.15, d: 2.1 }, // includes classical arched headboard width
-  bed_double: { w: 1.95, d: 2.2 }, // includes classical carved headboard
-  bed_bunk: { w: 1.15, d: 2.05 }, // includes ladder projection on open side
-  dressing_table: { w: 1.2, d: 0.9 }, // includes stool space in front of table
-  kitchen_cabinet_base: { w: 0.6, d: 0.6 }, // standard base unit width, 60cm depth counters
-  kitchen_cabinet_wall: { w: 0.6, d: 0.35 }, // wall units are shallower
-  kitchen_countertop_slab: { w: 1.2, d: 0.62 }, // spans ~2 base units by default; scale to fit a run
-  kitchen_sink: { w: 0.8, d: 0.55 }, // sits inset into a countertop run
-  kitchen_fridge: { w: 0.75, d: 0.75 },
-  kitchen_island: { w: 1.6, d: 0.9 },
-  kitchen_dishwasher: { w: 0.6, d: 0.6 },
-  kitchen_backsplash_panel: { w: 1.0, d: 0.03 },
-};
 export function getFurnitureFootprint(
   type: FurnitureType,
   scale: number | undefined,
 ): { w: number; d: number } {
-  const base = FURNITURE_FOOTPRINTS[type];
+  const def = FURNITURE_MODELS[type];
   const s = scale ?? 1;
-  return { w: base.w * s, d: base.d * s };
+  const w = (def?.defaultTargetWidth ?? def?.nativeSize?.[0] ?? 1) * s;
+  const d = (def?.defaultTargetDepth ?? def?.nativeSize?.[2] ?? 1) * s;
+  return { w, d };
 }
 
 export function getFurnitureFootprintFor(f: {
@@ -113,54 +91,22 @@ export function getFurnitureFootprintFor(f: {
   return getFurnitureFootprint(f.type, f.scale);
 }
 
-export const FURNITURE_LABELS: Record<FurnitureType, string> = {
-  sofa: "Sofa",
-  bed: "Bed",
-  dining_table: "Table",
-  desk: "Desk",
-  wardrobe: "WRB",
-  bathtub: "Bath",
-  toilet: "WC",
-  plant: "♣",
-  chair: "Chair",
-  coffee_table: "C.T",
-  single_sofa: "S.Sofa",
-  lamp: "Lamp",
-  mirror: "Mirr",
-  kitchen_stove: "Stove",
-  chimney: "Chimney",
-  commode: "Commode",
-  shower: "Shower",
-  shoe_rack: "Shoe-Rack",
-  led_strip: "LED",
-  wall_panel_pvc: "PVC Panel",
-  painting: "Art",
-  lounge_recliner: "Recliner",
-  sofa_l: "L-Sofa",
-  bed_single: "S.Bed",
-  bed_double: "D.Bed",
-  bed_bunk: "Bunk Bed",
-  dressing_table: "Dresser",
-  kitchen_cabinet_base: "Base Cabinet",
-  kitchen_cabinet_wall: "Wall Cabinet",
-  kitchen_countertop_slab: "Countertop",
-  kitchen_sink: "Kitchen Sink",
-  kitchen_fridge: "Fridge",
-  kitchen_island: "Kitchen Island",
-  kitchen_dishwasher: "Dishwasher",
-  kitchen_backsplash_panel: "Backsplash",
-};
+export const FURNITURE_LABELS: Record<string, string> = Object.fromEntries(
+  FURNITURE_CATALOG.map((e) => [e.type, e.label]),
+);
 export const FURNITURE_COLORS: Record<FurnitureType, string> = {
   sofa: "rgba(160,148,130,0.88)",
   bed: "rgba(130,120,155,0.88)",
   dining_table: "rgba(155,125,95,0.88)",
   desk: "rgba(110,130,155,0.88)",
+  desk_chair: "rgba(120,140,160,0.88)", // near `desk`
   wardrobe: "rgba(70,60,50,0.88)",
   bathtub: "rgba(140,175,185,0.88)",
   toilet: "rgba(200,200,200,0.88)",
   plant: "rgba(65,140,65,0.88)",
   chair: "rgba(145,135,115,0.88)",
   coffee_table: "rgba(140,118,88,0.88)",
+  side_table: "rgba(148,124,92,0.88)", // near `coffee_table`
   single_sofa: "rgba(170,150,125,0.88)",
   lamp: "rgba(230,200,120,0.88)",
   mirror: "rgba(180,200,215,0.88)",
@@ -173,14 +119,17 @@ export const FURNITURE_COLORS: Record<FurnitureType, string> = {
   wall_panel_pvc: "rgba(228,221,207,0.88)",
   painting: "rgba(120,105,85,0.88)",
   lounge_recliner: "rgb(185, 94, 3)",
-  // New types — kept in the same family as their closest existing relative
-  // (sofa, bed, desk) so they read as part of the same set on a floor plan.
-  sofa_l: "rgba(165,150,128,0.88)", // near `sofa`
-  bed_single: "rgba(135,124,158,0.88)", // near `bed`
-  bed_double: "rgba(128,116,152,0.88)", // near `bed`, slightly deeper
-  bed_bunk: "rgba(120,110,148,0.88)", // near `bed`, deepest of the three
-  dressing_table: "rgba(150,128,150,0.88)", // desk/mirror hybrid tone
-
+  bench: "rgba(150,138,120,0.88)", // near `sofa`
+  stool_bar: "rgba(160,145,120,0.88)", // near `chair`
+  bookcase: "rgba(90,70,55,0.88)", // near `wardrobe`
+  cabinet_bed: "rgba(80,68,58,0.88)", // near `wardrobe`
+  coat_rack: "rgba(100,85,68,0.88)",
+  ceiling_fan: "rgba(200,205,210,0.88)",
+  sofa_l: "rgba(165,150,128,0.88)",
+  bed_single: "rgba(135,124,158,0.88)",
+  bed_double: "rgba(128,116,152,0.88)",
+  bed_bunk: "rgba(120,110,148,0.88)",
+  dressing_table: "rgba(150,128,150,0.88)",
   kitchen_cabinet_base: "rgba(150,120,85,0.88)",
   kitchen_cabinet_wall: "rgba(165,135,98,0.88)",
   kitchen_countertop_slab: "rgba(210,205,195,0.9)",

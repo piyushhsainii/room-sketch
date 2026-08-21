@@ -39,6 +39,8 @@ interface WorkspaceNavProps {
     onAddFloor: (direction: "above" | "below") => void
     onToggleFloorVisible: (floorId: string) => void
     onRenameFloor: (floorId: string, newLabel: string) => void
+    onDeleteFloor: (floorId: string) => void
+    onReorderFloors: (newFloors: Floor[]) => void
     onSetViewMode: (mode: "single" | "stacked" | "stacked-full") => void
     onSetShowUnderlay: (value: boolean) => void
 
@@ -113,7 +115,9 @@ const WorkspaceNav = ({
     onSetViewMode,
     scene3DRef,
     onSetShowUnderlay,
-    showUnderlay
+    showUnderlay,
+    onDeleteFloor,
+    onReorderFloors
 }: WorkspaceNavProps) => {
 
     const [shareDialogOpen, setShareDialogOpen] = useState(false)
@@ -151,6 +155,25 @@ const WorkspaceNav = ({
             requestAnimationFrame(step)
         })
     }, [onSelectFloor])
+
+    const setViewModeForExport = useCallback((mode: 'single' | 'stacked' | 'stacked-full'): Promise<void> => {
+        onSetViewMode(mode)
+        return new Promise<void>(resolve => {
+            let remaining = 3
+            const step = () => { remaining -= 1; if (remaining <= 0) resolve(); else requestAnimationFrame(step) }
+            requestAnimationFrame(step)
+        })
+    }, [onSetViewMode])
+
+    const setShowUnderlayForExport = useCallback((value: boolean): Promise<void> => {
+        onSetShowUnderlay(value)
+        return new Promise<void>(resolve => {
+            let remaining = 2
+            const step = () => { remaining -= 1; if (remaining <= 0) resolve(); else requestAnimationFrame(step) }
+            requestAnimationFrame(step)
+        })
+    }, [onSetShowUnderlay])
+
     const isDirty = lastSavedSnapshot === undefined
         ? true
         : !snapshotsEqual(lastSavedSnapshot, fp, sceneConfig)
@@ -299,6 +322,8 @@ const WorkspaceNav = ({
                 onAddFloor={onAddFloor}
                 onToggleFloorVisible={onToggleFloorVisible}
                 onRenameFloor={onRenameFloor}
+                onDeleteFloor={onDeleteFloor}
+                onReorderFloors={onReorderFloors}
                 onSetViewMode={onSetViewMode}
             />
             <div style={{ flex: 1 }} />
@@ -483,8 +508,12 @@ const WorkspaceNav = ({
                     activeFloorId={activeFloorId}
                     onClose={() => setExportPlanOpen(false)}
                     onOpenShare={() => { setExportPlanOpen(false); setShareDialogOpen(true) }}
-                    onSwitchFloorForExport={switchFloorForExport}
                     scene3DRef={scene3DRef}
+                    onSwitchFloorForExport={switchFloorForExport}
+                    viewMode={viewMode}
+                    showUnderlay={showUnderlay}
+                    onSetViewModeForExport={setViewModeForExport}
+                    onSetShowUnderlayForExport={setShowUnderlayForExport}
                 />
             )}
             {pendingAction === 'export' && (

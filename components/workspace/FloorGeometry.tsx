@@ -9,6 +9,7 @@ import type { SceneConfig } from "./FloorPlanEditor"
 import type { RefObject } from "react"
 import { FloorCap } from "./FloorCap"
 import { LightsLayer } from "./lib/lights/LightsLayer"
+import { FurnitureRenderer } from "./FurnitureRenderer"
 
 type FloorGeometryProps = {
     fp: FloorPlanState
@@ -115,10 +116,23 @@ function FloorGeometryImpl({
                     cutoutDrawInProgress={cutoutDrawInProgress}
                 />
             </group>
-            {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
+            {/* {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
                 <group key={f.id}>
                     <FurnitureMesh f={f} selected={interactive && selectedId === f.id} opacity={opacity} transparent={transparent}
                         overlapping={overlappingIds?.has(f.id)} />
+                </group>
+            ))} */}
+            {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
+                <group key={f.id}>
+                    <FurnitureRenderer
+                        f={f}
+                        selected={interactive && selectedId === f.id}
+                        opacity={opacity}
+                        transparent={transparent}
+                        overlapping={overlappingIds?.has(f.id)}
+                        interactive={interactive}
+                        onSelect={onSelect}
+                    />
                 </group>
             ))}
             {cfg.showFurniture !== false && (fp.stairs ?? []).map(s => {

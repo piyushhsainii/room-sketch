@@ -2,7 +2,7 @@ import { drawStairIcon, getSegmentOpeningWorldPos, toCanvas } from "@/lib/helper
 import { EditorTool, FloorPlanState, LineNode, MIN_ROOM, PX_PER_M, STAIRS_LABELS, WALL_DECOR_LABELS } from "./lib/constants";
 import { LIGHT_FIXTURE_LABELS, LIGHT_PLACEMENT_KIND } from "./lights-constant";
 import { OUTDOOR_FLAT_TYPES, OUTDOOR_OBJECT_FOOTPRINTS, OUTDOOR_OBJECT_LABELS } from "./lib/outdoor-constants";
-import { FURNITURE_COLORS, FURNITURE_FOOTPRINTS, FURNITURE_LABELS } from "./lib/furniture-constants";
+import { FURNITURE_COLORS, FURNITURE_LABELS, getFurnitureFootprint } from "./lib/furniture-constants";
 
 const labelWidthCache = new Map<string, number>()
 
@@ -1067,7 +1067,7 @@ export function draw2D(
     // ── Furniture overlays (2D top-down icons) ────────────────────────────────
     for (const f of fp.furniture ?? []) {
         if (!showFurniture) continue
-        const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+        const fp2 = getFurnitureFootprint(f.type, f.scale)
         const fw = fp2.w * scale
         const fd = fp2.d * scale
         const fx = toCanvas(f.x, pan.x, zoom)

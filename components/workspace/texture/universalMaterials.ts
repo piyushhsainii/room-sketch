@@ -1,28 +1,5 @@
-import {
-  DOOR_MATERIALS,
-  FLOOR_MAT_DEFS,
-  FURNITURE_MATERIALS,
-  MATERIAL_REGISTRY,
-  MaterialDomain,
-  WALL_MAT_DEFS,
-  WALL_MATERIALS,
-} from "../lib/constants";
+import { MATERIAL_REGISTRY, MaterialDomain } from "../lib/constants";
 import { MaterialCategory } from "./materials-registry";
-import { categoryFromThumbnail, thumbnailFromDef } from "./textureCategorize";
-
-// If you have a FURNITURE_MATERIALS export (used in PropsPanel's furniture
-// texture section — "Light Wood / Dark Wood / Grey Fabric / Blue Fabric /
-// Black Leather / Chrome" from your screenshot), import it here too:
-//
-// import { FURNITURE_MATERIALS } from './furnitureMaterials'
-
-// export type ApplicableTo =
-//   | "wall"
-//   | "floor"
-//   | "door"
-//   | "furniture"
-//   | "outdoor"
-//   | "stairs"; // add 'outdoor'
 
 export type ApplicableTo = MaterialDomain;
 
@@ -34,6 +11,13 @@ export interface UniversalMaterial {
   category: MaterialCategory;
   appliesTo: ApplicableTo[];
   textureUrl?: string;
+  normalMapUrl?: string;
+  roughnessMapUrl?: string;
+  aoMapUrl?: string;
+  repeatScale?: number;
+  roughness?: number;
+  metalness?: number;
+  textureScale?: number;
 }
 
 function buildCatalog(): UniversalMaterial[] {

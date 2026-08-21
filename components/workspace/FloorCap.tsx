@@ -108,9 +108,6 @@ export function FloorCap({ fp, floorAbove, height, color = '#DCD8D0', stairPaddi
                 .filter((n): n is NonNullable<typeof n> => !!n)
             if (pts.length < 3) continue
 
-            // Only render this cap if the floor above has ANY room
-            // overlapping this polygon's bounding box — crude but avoids
-            // capping totally empty voids.
             const xs = pts.map(p => p.x), zs = pts.map(p => p.z)
             const bbox: AABB = { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) }
             const hasSomethingAbove = floorAbove.rooms.some(r => aabbIntersect(bbox, roomAABB(r)))

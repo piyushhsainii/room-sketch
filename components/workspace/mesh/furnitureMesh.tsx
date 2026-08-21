@@ -1,16 +1,9 @@
 import React, { useEffect, useRef } from 'react'
 import { RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
-import { getMaterialsForDomain } from '../texture/materials-registry'
-import { FURNITURE_FOOTPRINTS, PlacedFurniture } from '../lib/furniture-constants'
+import { getFurnitureFootprint, PlacedFurniture } from '../lib/furniture-constants'
 import { getMaterialsFor } from '../texture/universalMaterials'
 
-const FABRIC_TEX_URLS = {
-    map: '/textures/Fabric049_1K-JPG_Color.jpg',
-    normalMap: '/textures/Fabric049_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/Fabric049_1K-JPG_Roughness.jpg',
-    aoMap: '/textures/Fabric049_1K-JPG_AmbientOcclusion.jpg',
-}
 const MAP_KEYS = ['map', 'normalMap', 'roughnessMap', 'aoMap'] as const
 
 function normalizeMaterialProps(obj: Record<string, THREE.Texture | undefined>) {
@@ -18,29 +11,6 @@ function normalizeMaterialProps(obj: Record<string, THREE.Texture | undefined>) 
     for (const k of MAP_KEYS) out[k] = obj[k]
     return out
 }
-
-function getMaterialTextureUrls(def: any): Record<string, string> | null {
-    const urls: Record<string, string> = {}
-
-    if (def.textureUrl) {
-        urls.map = def.textureUrl
-    }
-
-    if (def.normalMapUrl) {
-        urls.normalMap = def.normalMapUrl
-    }
-
-    if (def.roughnessMapUrl) {
-        urls.roughnessMap = def.roughnessMapUrl
-    }
-
-    if (def.aoMapUrl) {
-        urls.aoMap = def.aoMapUrl
-    }
-
-    return Object.keys(urls).length > 0 ? urls : null
-}
-
 const _texCache = new Map<string, THREE.Texture>()   // only ever holds a REAL loaded texture now
 const _pending = new Set<string>()                    // tracks in-flight loads
 const _failed = new Set<string>()
@@ -71,15 +41,27 @@ function loadTextureSafe(url: string): THREE.Texture | null {
             (tex) => {
                 clearTimeout(timeout)
                 _pending.delete(url)
+
+                // JPG/PNG used as a color/diffuse texture.
+                if (
+                    url.toLowerCase().endsWith('.jpg') ||
+                    url.toLowerCase().endsWith('.jpeg') ||
+                    url.toLowerCase().endsWith('.png')
+                ) {
+                    tex.colorSpace = THREE.SRGBColorSpace
+                }
+
+                tex.needsUpdate = true
+
                 _texCache.set(url, tex)
-                notify(url) // NEW: wake up every hook waiting on this URL
+                notify(url)
             },
             undefined,
             () => {
                 clearTimeout(timeout)
                 _pending.delete(url)
                 _failed.add(url)
-                notify(url) // NEW: also notify on failure, so waiters stop waiting
+                notify(url)
             }
         )
     } catch {
@@ -90,52 +72,7 @@ function loadTextureSafe(url: string): THREE.Texture | null {
     }
     return null
 }
-
-function useFabricMaterialProps(repeatX = 2, repeatY = 2) {
-    const [tick, forceTick] = React.useState(0)
-
-    const textures = React.useMemo(() => {
-        const out: Record<string, THREE.Texture | undefined> = {}
-        for (const [key, url] of Object.entries(FABRIC_TEX_URLS)) {
-            const cached = _texCache.get(url)
-            if (cached) out[key] = cached
-        }
-        return out
-    }, [tick])
-
-    React.useEffect(() => {
-
-        let cancelled = false
-        const unsubs: (() => void)[] = []
-
-        for (const url of Object.values(FABRIC_TEX_URLS)) {
-            if (_failed.has(url) || _texCache.get(url)) continue
-            loadTextureSafe(url)
-            unsubs.push(subscribe(url, () => {
-                if (!cancelled) forceTick((n) => n + 1)
-            }))
-        }
-
-        return () => {
-            cancelled = true
-            unsubs.forEach((u) => u())
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
-
-    React.useMemo(() => {
-        Object.values(textures).forEach((t) => {
-            if (!t) return
-            t.wrapS = t.wrapT = THREE.RepeatWrapping
-            t.repeat.set(repeatX, repeatY)
-            t.needsUpdate = true
-        })
-    }, [textures, repeatX, repeatY])
-
-    return textures
-}
-
-function useTextureMaterialProps(
+export function useTextureMaterialProps(
     urls: Record<string, string> | null,
     repeatX = 2,
     repeatY = 2
@@ -285,7 +222,7 @@ export function FurnitureMesh({
     const groupRef = useRef<THREE.Group>(null)
 
     const s = f.scale ?? 1
-    const fp2 = FURNITURE_FOOTPRINTS[f.type] ?? { w: 1, d: 1 }
+    const fp2 = getFurnitureFootprint(f.type, undefined);
     const [hovered, setHovered] = React.useState(false)
 
     const overrideMat = f.materialId
@@ -856,24 +793,26 @@ export function FurnitureMesh({
 
                     {(!f.variant || f.variant === 'modern') && (
                         <group>
-                            {/* Main run base */}
+                            {/* Main run base — spans x:[-1.35, 1.35], z:[-0.475, 0.475] */}
                             <RoundedBox
-                                args={[2.4 * s, 0.32 * s, 0.90 * s]}
-                                radius={0.09 * s}
+                                args={[2.70 * s, 0.34 * s, 0.95 * s]}
+                                radius={0.10 * s}
                                 smoothness={8}
-                                position={[-0.1 * s, 0.20 * s, 0]}
+                                position={[0, 0.20 * s, 0]}
                                 castShadow
                                 receiveShadow
                             >
                                 <meshStandardMaterial key={`${materialKey}-base`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} metalness={0} />
                             </RoundedBox>
 
-                            {/* Chaise extension base (perpendicular leg of the L) */}
+                            {/* Chaise extension base — flush against main run's front edge (z=0.475),
+            centered on the main run's right edge (x=1.35) so the inner corner
+            is a true seamless join, not an offset overlap */}
                             <RoundedBox
-                                args={[0.95 * s, 0.32 * s, 1.55 * s]}
-                                radius={0.09 * s}
+                                args={[0.95 * s, 0.34 * s, 1.70 * s]}
+                                radius={0.10 * s}
                                 smoothness={8}
-                                position={[1.0 * s, 0.20 * s, 0.62 * s]}
+                                position={[1.35 * s, 0.20 * s, 1.32 * s]}
                                 castShadow
                                 receiveShadow
                             >
@@ -882,10 +821,10 @@ export function FurnitureMesh({
 
                             {/* Backrest along main run */}
                             <RoundedBox
-                                args={[2.35 * s, 0.58 * s, 0.16 * s]}
-                                radius={0.08 * s}
+                                args={[2.66 * s, 0.62 * s, 0.18 * s]}
+                                radius={0.09 * s}
                                 smoothness={8}
-                                position={[-0.1 * s, 0.60 * s, -0.36 * s]}
+                                position={[0, 0.62 * s, -0.42 * s]}
                                 rotation={[0.06, 0, 0]}
                                 castShadow
                             >
@@ -894,10 +833,10 @@ export function FurnitureMesh({
 
                             {/* Left arm (main run end) */}
                             <RoundedBox
-                                args={[0.20 * s, 0.50 * s, 0.92 * s]}
-                                radius={0.08 * s}
+                                args={[0.22 * s, 0.54 * s, 0.97 * s]}
+                                radius={0.09 * s}
                                 smoothness={8}
-                                position={[-1.28 * s, 0.40 * s, 0]}
+                                position={[-1.35 * s, 0.42 * s, 0]}
                                 castShadow
                             >
                                 <meshStandardMaterial key={`${materialKey}-base`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
@@ -905,20 +844,20 @@ export function FurnitureMesh({
 
                             {/* Chaise low armless edge (open end) — subtle bolster */}
                             <RoundedBox
-                                args={[0.90 * s, 0.14 * s, 0.16 * s]}
-                                radius={0.06 * s}
+                                args={[0.95 * s, 0.16 * s, 0.18 * s]}
+                                radius={0.07 * s}
                                 smoothness={8}
-                                position={[1.0 * s, 0.42 * s, 1.36 * s]}
+                                position={[1.35 * s, 0.44 * s, 2.15 * s]}
                                 castShadow
                             >
                                 <meshStandardMaterial key={`${materialKey}-base`} {...bodyMaterialProps} color={bodyColor} roughness={0.95} />
                             </RoundedBox>
 
-                            {/* Seat cushions — main run (3) */}
-                            {[-0.9, -0.1, 0.68].map((x, i) => (
+                            {/* Seat cushions — main run (3), stop short of the chaise corner overlap */}
+                            {[-1.02, -0.13, 0.76].map((x, i) => (
                                 <RoundedBox
                                     key={`seat-${i}`}
-                                    args={[0.74 * s, 0.16 * s, 0.82 * s]}
+                                    args={[0.82 * s, 0.17 * s, 0.86 * s]}
                                     radius={0.07 * s}
                                     smoothness={8}
                                     position={[x * s, 0.38 * s, 0.02 * s]}
@@ -930,23 +869,23 @@ export function FurnitureMesh({
 
                             {/* Chaise seat cushion (long) */}
                             <RoundedBox
-                                args={[0.88 * s, 0.16 * s, 1.45 * s]}
+                                args={[0.86 * s, 0.17 * s, 1.62 * s]}
                                 radius={0.07 * s}
                                 smoothness={8}
-                                position={[1.0 * s, 0.38 * s, 0.62 * s]}
+                                position={[1.35 * s, 0.38 * s, 1.32 * s]}
                                 castShadow
                             >
                                 <meshStandardMaterial key={`${materialKey}-chaiseSeat`} {...cushionMaterialProps} color={bodyColor} roughness={0.96} />
                             </RoundedBox>
 
                             {/* Back pillows */}
-                            {[-0.9, -0.1, 0.68].map((x, i) => (
+                            {[-1.02, -0.13, 0.76].map((x, i) => (
                                 <RoundedBox
                                     key={`pillow-${i}`}
-                                    args={[0.30 * s, 0.28 * s, 0.10 * s]}
+                                    args={[0.32 * s, 0.30 * s, 0.11 * s]}
                                     radius={0.08 * s}
                                     smoothness={8}
-                                    position={[x * s, 0.56 * s, -0.16 * s]}
+                                    position={[x * s, 0.58 * s, -0.20 * s]}
                                     rotation={[0.15, (i - 1) * 0.15, 0.03]}
                                     castShadow
                                 >
@@ -954,18 +893,18 @@ export function FurnitureMesh({
                                 </RoundedBox>
                             ))}
 
-                            {/* Slim metal legs */}
+                            {/* Slim metal legs — repositioned to match new footprint corners */}
                             {[
-                                [-1.28, -0.38], [-1.28, 0.38], [0.6, -0.38],
-                                [1.42, 0.02], [1.42, 1.30], [0.58, 1.30]
+                                [-1.35, -0.42], [-1.35, 0.42], [0.85, -0.42],
+                                [1.78, 0.05], [1.78, 2.05], [0.9, 2.05]
                             ].map(([x, z], i) => (
                                 <mesh key={`leg-${i}`} position={[x * s, 0.06 * s, z * s]} castShadow>
-                                    <cylinderGeometry args={[0.022 * s, 0.03 * s, 0.13 * s, 16]} />
+                                    <cylinderGeometry args={[0.024 * s, 0.032 * s, 0.13 * s, 16]} />
                                     <meshStandardMaterial key={`${materialKey}-leg`} color="#2b2b2b" metalness={0.7} roughness={0.25} {...bodyMaterialProps} />
                                 </mesh>
                             ))}
                         </group>
-                    )}
+                    )}``
 
                     {f.variant === 'classical' && (
                         <group>

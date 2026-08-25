@@ -7,7 +7,8 @@ import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, W
 import { DoorVariant3D } from "./objects/door-variants";
 import { Railing3D } from "./objects/railing-3d";
 import * as THREE from 'three'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
+import { makeClickVsDragHandlers } from "@/lib/helpers";
 
 function Room3D({
     room,
@@ -54,7 +55,7 @@ function Room3D({
     const cx = room.x + room.width / 2
     const cz = room.z + room.depth / 2
     const W = room.width, D = room.depth, H = roomHeight, T = 0.15
-
+    const floorDownPos = useRef<{ x: number; y: number } | null>(null)
     const walls = [
         { name: 'north' as const, axis: 'x' as const },
         { name: 'south' as const, axis: 'x' as const },
@@ -144,7 +145,16 @@ function Room3D({
         <group>
             {/* Floor */}
             <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow
-                onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(room.id) } : undefined}
+                onPointerDown={interactive ? (e) => { floorDownPos.current = { x: e.clientX, y: e.clientY } } : undefined}
+                onPointerUp={interactive ? (e) => {
+                    const d = floorDownPos.current
+                    floorDownPos.current = null
+                    if (!d) return
+                    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5) {
+                        e.stopPropagation()
+                        onSelect?.(room.id)
+                    }
+                } : undefined}
                 onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
                 onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
             >
@@ -162,11 +172,10 @@ function Room3D({
                 const resolvedWallMaterial = wallOverride?.material ?? wallMaterial
                 const resolvedWallColor = wallOverride?.color ?? wallColor
                 const wallClickHandlers = interactive ? {
-                    onClick: (e: any) => { e.stopPropagation(); onSelect?.(wallId) },
+                    ...makeClickVsDragHandlers((e: any) => { e.stopPropagation(); onSelect?.(wallId) }),
                     onPointerOver: (e: any) => { e.stopPropagation(); document.body.style.cursor = 'pointer' },
                     onPointerOut: () => { document.body.style.cursor = 'auto' },
                 } : {}
-
                 if (wallOpenings.length === 0) {
                     return (
                         <mesh key={wall.name} position={wPos} castShadow receiveShadow {...wallClickHandlers}>

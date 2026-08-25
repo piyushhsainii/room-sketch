@@ -15,6 +15,19 @@ import SettingsPanel from "./SettingsPanel";
 import CollectionsPanel from "./CollectionsPanel";
 import type { PlanId } from "@/lib/pricing";
 
+// ---- Claymorphism theme tokens (shared across dashboard components) ----
+const CLAY = {
+  canvas: "#E5E5E5",
+  surface: "#EAEAEA",
+  surfaceChip: "#F5F5F5",
+  textPrimary: "#1A1A1A",
+  textMuted: "#5A5A5A",
+  textPlaceholder: "#999999",
+  lightShadow: "rgba(255,255,255,0.75)",
+  darkShadow: "rgba(0,0,0,0.14)",
+  font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+};
+
 type InitialUser = { email: string };
 
 interface DashboardClientProps {
@@ -139,6 +152,45 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
     }
   }
 
+  async function handleArchiveProject(projectId: string) {
+    const prev = projects;
+    // optimistic: remove from the visible list immediately
+    setProjects((p: any[]) => {
+      const next = p.filter((proj) => proj.id !== projectId);
+      setCache({ projects: next, me: { authed: true, email: userEmail, plan } });
+      return next;
+    });
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: true }),
+      });
+      if (!res.ok) throw new Error("Archive failed");
+    } catch (err) {
+      console.error("Failed to archive project", err);
+      setProjects(prev); // rollback
+      setCache({ projects: prev, me: { authed: true, email: userEmail, plan } });
+    }
+  }
+
+  async function handleDeleteProject(projectId: string) {
+    const prev = projects;
+    setProjects((p: any[]) => {
+      const next = p.filter((proj) => proj.id !== projectId);
+      setCache({ projects: next, me: { authed: true, email: userEmail, plan } });
+      return next;
+    });
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+    } catch (err) {
+      console.error("Failed to delete project", err);
+      setProjects(prev); // rollback — card reappears if the server rejected it
+      setCache({ projects: prev, me: { authed: true, email: userEmail, plan } });
+    }
+  }
+
   async function handleCreateFromTemplate(template: WorkspaceTemplate) {
     try {
       const res = await fetch("/api/projects", {
@@ -159,7 +211,7 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
   function renderContent() {
     if (activeFeature === "3d_viewer") {
       return (
-        <div style={{ padding: "28px 36px 40px" }}>
+        <div className="ra-content-pad">
           <DashboardHeader
             count={projects.length}
             loading={projectsLoading}
@@ -178,6 +230,8 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
             onRetry={() => void refreshProjects()}
             onOpenProject={(id) => router.push(`/projects/${id}`)}
             onRenameProject={handleRenameProject}
+            onArchiveProject={handleArchiveProject}
+            onDeleteProject={handleDeleteProject}
             onCreateNew={handleNewProject}
             onBrowseTemplates={() => quickStartRef.current?.scrollIntoView({ behavior: "smooth" })}
             onNavigate={setActiveFeature}
@@ -207,44 +261,126 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
       style={{
         display: "flex",
         minHeight: "100vh",
-        background: "#F8FAFC",
+        background: CLAY.canvas,
+        fontFamily: CLAY.font,
       }}
     >
-      <Sidebar
-        open={sidebarOpen}
-        userEmail={userEmail}
-        plan={plan}
-        authed={true}
-        activeFeature={activeFeature}
-        onFeatureChange={(f: any) => {
-          setActiveFeature(f);
-        }}
-        onSignOut={handleSignOut}
-        onSignIn={() => setAuthDialogOpen(true)}
-      />
+      <style>{`
+        .ra-sidebar-wrap {
+          flex-shrink: 0;
+        }
+        .ra-main {
+          margin-left: 220px;
+        }
+        .ra-mobile-topbar {
+          display: none;
+        }
+        .ra-content-pad {
+          padding: 28px 36px 40px;
+        }
+
+        @media (max-width: 860px) {
+          .ra-sidebar-wrap {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            z-index: 20;
+            transform: translateX(${sidebarOpen ? "0" : "-100%"});
+            transition: transform 220ms ease;
+          }
+          .ra-main {
+            margin-left: 0;
+          }
+          .ra-mobile-topbar {
+            display: flex;
+          }
+          .ra-content-pad {
+            padding: 18px 16px 28px;
+          }
+        }
+      `}</style>
+
+      <div className="ra-sidebar-wrap">
+        <Sidebar
+          open={sidebarOpen}
+          userEmail={userEmail}
+          plan={plan}
+          authed={true}
+          activeFeature={activeFeature}
+          onFeatureChange={(f: ActiveFeature) => {
+            if (f === "community") {
+              router.push("/community");
+              return;
+            }
+            setActiveFeature(f);
+            setSidebarOpen(false);
+          }}
+          onSignOut={handleSignOut}
+          onSignIn={() => setAuthDialogOpen(true)}
+        />
+      </div>
 
       {sidebarOpen && (
         <div
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(15,23,42,0.22)",
-            zIndex: 9,
+            background: "rgba(0,0,0,0.22)",
+            zIndex: 19,
           }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <div
+        className="ra-main"
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          marginLeft: 220,
           minWidth: 0,
           transition: "margin-left 200ms ease",
         }}
       >
+        {/* Mobile-only top bar: hamburger to open the drawer, since the
+            sidebar has no other entry point once it's off-canvas. */}
+        <div
+          className="ra-mobile-topbar"
+          style={{
+            alignItems: "center",
+            gap: 12,
+            padding: "14px 16px",
+            background: CLAY.surface,
+            boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`,
+            position: "sticky",
+            top: 0,
+            zIndex: 15,
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Open menu"
+            onClick={() => setSidebarOpen(true)}
+            style={{
+              width: 36, height: 36, borderRadius: "50%", border: "none",
+              background: CLAY.surfaceChip,
+              boxShadow: "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.16)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", color: CLAY.textPrimary, flexShrink: 0,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
+          <span style={{ fontSize: 14, fontWeight: 500, color: CLAY.textPrimary, fontFamily: CLAY.font }}>
+            roomsketch
+          </span>
+        </div>
+
         <div
           style={{
             flex: 1,

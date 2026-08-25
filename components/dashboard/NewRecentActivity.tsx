@@ -3,6 +3,24 @@
 import { Clock } from "lucide-react";
 import { ProjectCard, ProjectCardSkeleton } from "./ProjectsGrid";
 import type { ActiveFeature } from "@/components/sidebar/Sidebar";
+import { useState } from "react";
+
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+}
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`
 
 function CompassIcon() {
     return (
@@ -16,14 +34,18 @@ function CompassIcon() {
 const VISIBLE_LIMIT = 8;
 
 export default function RecentActivity({
-    projects, loading, error, onRetry, onOpenProject, onRenameProject, onCreateNew, onBrowseTemplates, onNavigate,
+    projects, loading, error, onRetry, onOpenProject, onRenameProject,
+    onArchiveProject, onDeleteProject,
+    onCreateNew, onBrowseTemplates, onNavigate,
 }: {
-    projects: any[]; //project[]
+    projects: any[];
     loading: boolean;
     error: string | null;
     onRetry: () => void;
     onOpenProject: (id: string) => void;
     onRenameProject: (id: string, name: string) => void;
+    onArchiveProject: (id: string) => void;
+    onDeleteProject: (id: string) => void;
     onCreateNew: () => void;
     onBrowseTemplates: () => void;
     onNavigate: (feature: ActiveFeature) => void;
@@ -31,8 +53,8 @@ export default function RecentActivity({
     return (
         <div style={{ marginTop: 40 }} className="max-w-[1600px]">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <div className="flex items-center gap-2">
-                    <Clock size={18} />
+                <div className="flex items-center gap-1 ml-4">
+                    <Clock size={15} />
                     <h3 style={{ margin: 0, fontSize: 16, color: "rgba(15,15,15,0.9)" }} className="tracking-tight">
                         Recent Activity
                     </h3>
@@ -61,46 +83,35 @@ export default function RecentActivity({
             {
                 !error && !loading && projects.length === 0 && (
                     <div style={{
-                        borderRadius: 12,
-                        background: "#fafafa",
-                        border: "1px solid rgba(15,15,15,0.06)",
+                        borderRadius: 24,
+                        background: CLAY.surface,
+                        border: "none",
+                        boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
                         padding: "56px 24px",
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
                         textAlign: "center",
+                        fontFamily: CLAY.font,
                     }}>
                         <div style={{
-                            width: 56, height: 56, borderRadius: "50%", background: "#ffffff",
-                            border: "1px solid rgba(15,15,15,0.08)", display: "flex",
+                            width: 60, height: 60, borderRadius: "50%", background: CLAY.surfaceChip,
+                            border: "none",
+                            boxShadow: "-4px -4px 9px rgba(255,255,255,0.75), 4px 4px 10px rgba(0,0,0,0.14)",
+                            display: "flex",
                             alignItems: "center", justifyContent: "center", marginBottom: 18,
                         }}>
                             <CompassIcon />
                         </div>
-                        <h4 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 700, color: "rgba(15,15,15,0.9)" }}>
+                        <h4 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 500, color: CLAY.textPrimary }}>
                             No projects yet
                         </h4>
-                        <p style={{ margin: "0 0 22px", fontSize: 13.5, color: "rgba(15,15,15,0.5)", maxWidth: 320, lineHeight: 1.5 }}>
+                        <p style={{ margin: "0 0 22px", fontSize: 13.5, color: CLAY.textMuted, maxWidth: 320, lineHeight: 1.5 }}>
                             Start your first 3D floorplan or explore our templates to begin.
                         </p>
-                        <div style={{ display: "flex", gap: 10 }}>
-                            <button
-                                type="button"
-                                onClick={onCreateNew}
-                                style={{ height: 36, padding: "0 18px", borderRadius: 7, border: "none", background: "#111111", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}
-                            >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                                </svg>
-                                Create New Project
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onBrowseTemplates}
-                                style={{ height: 36, padding: "0 18px", borderRadius: 7, border: "1px solid rgba(15,15,15,0.15)", background: "#fff", color: "rgba(15,15,15,0.75)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                            >
-                                Browse Templates
-                            </button>
+                        <div style={{ display: "flex", gap: 12 }}>
+                            <CreateNewProjectButton onClick={onCreateNew} />
+                            <BrowseTemplatesButton onClick={onBrowseTemplates} />
                         </div>
                     </div>
                 )
@@ -116,6 +127,8 @@ export default function RecentActivity({
                                         project={project}
                                         onOpen={() => onOpenProject(project.id)}
                                         onRename={name => onRenameProject(project.id, name)}
+                                        onArchive={() => onArchiveProject(project.id)}
+                                        onDelete={() => onDeleteProject(project.id)}
                                     />
                                 </div>
                             ))}
@@ -146,4 +159,53 @@ export default function RecentActivity({
             }
         </div >
     );
+}
+
+function CreateNewProjectButton({ onClick }: { onClick: () => void }) {
+    const [hovered, setHovered] = useState(false)
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                height: 40, padding: "0 20px", borderRadius: 999, border: "none",
+                background: CLAY.surface, color: CLAY.textPrimary, fontSize: 13, fontWeight: 500,
+                cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
+                fontFamily: CLAY.font,
+                boxShadow: hovered ? clayRaised(true) : clayRaised(false),
+                transform: hovered ? "translateY(-1px)" : "translateY(0)",
+                transition: "box-shadow 180ms ease, transform 180ms ease",
+            }}
+        >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Create New Project
+        </button>
+    )
+}
+
+function BrowseTemplatesButton({ onClick }: { onClick: () => void }) {
+    const [hovered, setHovered] = useState(false)
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                height: 40, padding: "0 20px", borderRadius: 999, border: "none",
+                background: CLAY.surface, color: CLAY.textMuted, fontSize: 13, fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: CLAY.font,
+                boxShadow: hovered ? clayRaised(true) : clayRaised(false),
+                transform: hovered ? "translateY(-1px)" : "translateY(0)",
+                transition: "box-shadow 180ms ease, transform 180ms ease",
+            }}
+        >
+            Browse Templates
+        </button>
+    )
 }

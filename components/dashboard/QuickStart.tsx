@@ -3,6 +3,24 @@
 import { useState } from "react";
 import { WORKSPACE_TEMPLATES, WorkspaceTemplate } from "./workspaceTemplates";
 
+// ---- Claymorphism theme tokens (shared with ProjectCard / CollectionsPanel / Sidebar) ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+};
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
+
 function BoltIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -28,29 +46,33 @@ function TemplateCard({ template, onClick }: { template: WorkspaceTemplate; onCl
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-                border: `1px solid ${hovered ? "rgba(15,23,42,0.12)" : "rgba(15,23,42,0.08)"}`,
-                borderRadius: 14,
+                border: "none",
+                borderRadius: 22,
                 overflow: "hidden",
-                background: "#ffffff",
+                background: CLAY.surface,
                 cursor: "pointer",
-                transition: "box-shadow 180ms ease, border-color 180ms ease, transform 180ms ease",
+                transition: "box-shadow 200ms ease, transform 200ms ease",
                 boxShadow: hovered
-                    ? "0 8px 20px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.04)"
-                    : "0 1px 2px rgba(15,23,42,0.03)",
-                transform: hovered ? "translateY(-1px)" : "none",
+                    ? "0 16px 32px rgba(0,0,0,0.12), -6px -6px 12px rgba(255,255,255,0.6), 6px 6px 14px rgba(0,0,0,0.10)"
+                    : "0 8px 18px rgba(0,0,0,0.08), -5px -5px 10px rgba(255,255,255,0.55), 5px 5px 12px rgba(0,0,0,0.08)",
+                transform: hovered ? "translateY(-2px)" : "none",
                 display: "flex",
                 flexDirection: "column",
+                fontFamily: CLAY.font,
             }}
         >
             <div
                 style={{
                     aspectRatio: "4/3",
-                    background: "#f1f5f9",
+                    background: "#DEDEDE",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     overflow: "hidden",
                     flexShrink: 0,
+                    margin: 10,
+                    borderRadius: 16,
+                    boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
                 }}
             >
                 <img
@@ -60,11 +82,11 @@ function TemplateCard({ template, onClick }: { template: WorkspaceTemplate; onCl
                 />
             </div>
 
-            <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 2 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a", letterSpacing: "-0.01em" }}>
+            <div style={{ padding: "6px 16px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: "normal" }}>
                     {template.label}
                 </span>
-                <span style={{ fontSize: 12, fontWeight: 400, color: "#64748b" }}>
+                <span style={{ fontSize: 12, fontWeight: 400, color: CLAY.textMuted }}>
                     {template.description}
                 </span>
             </div>
@@ -80,41 +102,43 @@ function BlankCanvasCard({ onClick }: { onClick: () => void }) {
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-                border: `1.5px dashed ${hovered ? "rgba(100,116,139,0.4)" : "rgba(100,116,139,0.28)"}`,
-                borderRadius: 14,
-                background: hovered ? "#f1f5f9" : "#f8fafc",
+                border: "none",
+                borderRadius: 22,
+                background: CLAY.surface,
                 cursor: "pointer",
-                transition: "background 180ms ease, border-color 180ms ease",
+                transition: "box-shadow 200ms ease",
+                boxShadow: hovered ? clayRaised(true) : clayRaised(false),
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 10,
+                gap: 12,
                 minHeight: "100%",
                 padding: "20px 16px",
                 textAlign: "center",
+                fontFamily: CLAY.font,
             }}
         >
             <div
                 style={{
-                    width: 36,
-                    height: 36,
+                    width: 40,
+                    height: 40,
                     borderRadius: "50%",
-                    background: "#ffffff",
-                    boxShadow: "0 2px 6px rgba(15,23,42,0.08)",
+                    background: CLAY.surfaceChip,
+                    boxShadow: "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.16)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "#0f172a",
+                    color: CLAY.textPrimary,
                 }}
             >
                 <PlusIcon />
             </div>
             <div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: "#0f172a", letterSpacing: "-0.01em", marginBottom: 2 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: "normal", marginBottom: 2 }}>
                     Blank Canvas
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 400, color: "#64748b" }}>
+                <div style={{ fontSize: 12, fontWeight: 400, color: CLAY.textMuted }}>
                     Start from scratch
                 </div>
             </div>
@@ -130,17 +154,19 @@ export default function QuickStart({
     onBlankCanvas: () => void;
 }) {
     return (
-        <div style={{ marginTop: 28 }}>  {/* was: padding: "0 36px", marginTop: 28 */}
+        <div style={{ marginTop: 28, fontFamily: CLAY.font }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
                 <span style={{ color: "#22c55e", display: "inline-flex" }}>
                     <BoltIcon />
                 </span>
-                <h3 style={{ margin: 0, fontSize: 15, color: "#0f172a", letterSpacing: "-0.01em" }} className="tracking-tight">
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: "normal" }}>
                     Quick Start
                 </h3>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
+            <div
+                style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 20 }}
+            >
                 {WORKSPACE_TEMPLATES.map((template) => (
                     <TemplateCard key={template.id} template={template} onClick={() => onCreateFromTemplate(template)} />
                 ))}

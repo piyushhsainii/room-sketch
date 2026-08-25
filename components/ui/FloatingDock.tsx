@@ -19,6 +19,26 @@ import {
 
 import { useRef, useState } from "react";
 
+// ---- Claymorphism theme tokens (shared across the app) ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    accentSoft: "rgba(99,102,241,0.14)", // faint accent tint for the active tool, kept low-saturation
+    accentText: "#4C4FBF",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+};
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`
+        : `-3px -3px 7px ${CLAY.lightShadow}, 3px 3px 8px ${CLAY.darkShadow}`;
+
 type DockItem = {
     id?: string;
     title: string;
@@ -53,10 +73,37 @@ export const FloatingDock = ({
     );
 };
 
-// ── New: static vertical pill dock ──
-// Matches the reference: a single rounded-full bg-gray-50 pill, icons
-// stacked with even spacing, no size magnification on hover — just a
-// subtle background highlight on hover/active.
+/* Shared style helpers so all three dock variants (vertical / mobile /
+   desktop) render icons the same crisp, high-contrast, "popping out" way —
+   dark stroke, no faded default icon-library color, plus a raised clay
+   circle behind each icon instead of a flat gray fill. */
+function iconWrapStyle(active: boolean, hovered: boolean): React.CSSProperties {
+    return {
+        background: active ? CLAY.accentSoft : CLAY.surfaceChip,
+        boxShadow: active
+            ? clayRaised(true)
+            : hovered
+                ? clayRaised(true)
+                : clayRaised(false),
+        color: active ? CLAY.accentText : CLAY.textPrimary,
+        transition: "box-shadow 180ms ease, background 180ms ease, color 180ms ease",
+    };
+}
+
+const iconCss = `
+    .ra-dock-icon svg {
+        stroke: currentColor !important;
+        filter: drop-shadow(0 1px 0.5px rgba(255,255,255,0.5));
+    }
+    .ra-dock-icon svg[fill]:not([fill="none"]) {
+        fill: currentColor !important;
+    }
+`;
+
+// ── Static vertical pill dock ──
+// Matches the reference: a rounded-full clay pill, icons stacked with even
+// spacing, no size magnification on hover — just a raised/inset clay swap
+// on hover/active, with crisp dark icons instead of faded gray ones.
 const FloatingDockVertical = ({
     items,
     activeId,
@@ -66,29 +113,32 @@ const FloatingDockVertical = ({
     activeId?: string | null;
     className?: string;
 }) => {
+    const [hoveredId, setHoveredId] = useState<string | null>(null);
     return (
         <div
-            className={cn(
-                "flex flex-col items-center gap-1 rounded-full bg-gray-50 p-2",
-                className,
-            )}
+            className={cn("flex flex-col items-center gap-1.5 rounded-full p-1.5", className)}
+            style={{
+                background: CLAY.surface,
+                boxShadow: `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
+                fontFamily: CLAY.font,
+            }}
         >
+            <style>{iconCss}</style>
             {items.map((item) => {
                 const isActive = !!item.id && item.id === activeId;
+                const isHovered = hoveredId === item.title;
                 return (
                     <button
                         key={item.title}
                         type="button"
                         title={item.title}
                         onClick={item.onClick}
-                        className={cn(
-                            "flex h-9 w-9 items-center justify-center rounded-full transition-colors",
-                            isActive
-                                ? "bg-blue-100 text-blue-600"
-                                : "text-neutral-600 hover:bg-gray-200",
-                        )}
+                        onMouseEnter={() => setHoveredId(item.title)}
+                        onMouseLeave={() => setHoveredId(null)}
+                        className="ra-dock-icon flex h-9 w-9 items-center justify-center rounded-full"
+                        style={iconWrapStyle(isActive, isHovered)}
                     >
-                        <div className="h-4 w-4">{item.icon}</div>
+                        <div className="h-5 w-5">{item.icon}</div>
                     </button>
                 );
             })}
@@ -106,57 +156,56 @@ const FloatingDockMobile = ({
     className?: string;
 }) => {
     const [open, setOpen] = useState(false);
+    const [hoveredId, setHoveredId] = useState<string | null>(null);
     return (
-        <div className={cn("relative block md:hidden", className)}>
+        <div className={cn("relative block md:hidden", className)} style={{ fontFamily: CLAY.font }}>
+            <style>{iconCss}</style>
             <AnimatePresence>
                 {open && (
                     <motion.div
                         layoutId="nav"
                         className="absolute inset-x-0 bottom-full mb-2 flex flex-col gap-2"
                     >
-                        {items.map((item, idx) => (
-                            <motion.div
-                                key={item.title}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{
-                                    opacity: 1,
-                                    y: 0,
-                                }}
-                                exit={{
-                                    opacity: 0,
-                                    y: 10,
-                                    transition: {
-                                        delay: idx * 0.05,
-                                    },
-                                }}
-                                transition={{ delay: (items.length - 1 - idx) * 0.05 }}
-                            >
-                                <button
+                        {items.map((item, idx) => {
+                            const isActive = !!item.id && item.id === activeId;
+                            const isHovered = hoveredId === item.title;
+                            return (
+                                <motion.div
                                     key={item.title}
-                                    type="button"
-                                    onClick={() => {
-                                        item.onClick();
-                                        setOpen(false);
-                                    }}
-                                    className={cn(
-                                        "flex h-10 w-10 items-center justify-center rounded-full",
-                                        item.id && activeId === item.id
-                                            ? "bg-blue-100 text-blue-600"
-                                            : "bg-gray-50",
-                                    )}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 10, transition: { delay: idx * 0.05 } }}
+                                    transition={{ delay: (items.length - 1 - idx) * 0.05 }}
                                 >
-                                    <div className="h-4 w-4">{item.icon}</div>
-                                </button>
-                            </motion.div>
-                        ))}
+                                    <button
+                                        key={item.title}
+                                        type="button"
+                                        onClick={() => {
+                                            item.onClick();
+                                            setOpen(false);
+                                        }}
+                                        onMouseEnter={() => setHoveredId(item.title)}
+                                        onMouseLeave={() => setHoveredId(null)}
+                                        className="ra-dock-icon flex h-10 w-10 items-center justify-center rounded-full"
+                                        style={iconWrapStyle(isActive, isHovered)}
+                                    >
+                                        <div className="h-5 w-5">{item.icon}</div>
+                                    </button>
+                                </motion.div>
+                            );
+                        })}
                     </motion.div>
                 )}
             </AnimatePresence>
             <button
                 onClick={() => setOpen(!open)}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-50"
+                className="flex h-10 w-10 items-center justify-center rounded-full"
+                style={{
+                    background: CLAY.surfaceChip,
+                    boxShadow: clayRaised(false),
+                }}
             >
-                <IconLayoutNavbarCollapse className="h-5 w-5 text-neutral-500" />
+                <IconLayoutNavbarCollapse className="h-5 w-5" style={{ color: CLAY.textPrimary }} />
             </button>
         </div>
     );
@@ -176,11 +225,14 @@ const FloatingDockDesktop = ({
         <motion.div
             onMouseMove={(e) => mouseX.set(e.pageX)}
             onMouseLeave={() => mouseX.set(Infinity)}
-            className={cn(
-                "mx-auto hidden h-20 items-end gap-4 rounded-2xl bg-gray-50 px-4 pb-3 md:flex",
-                className,
-            )}
+            className={cn("mx-auto hidden h-20 items-end gap-3 rounded-2xl px-3 pb-2.5 md:flex", className)}
+            style={{
+                background: CLAY.surface,
+                boxShadow: `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
+                fontFamily: CLAY.font,
+            }}
         >
+            <style>{iconCss}</style>
             {items.map((item) => (
                 <IconContainer
                     mouseX={mouseX}
@@ -217,11 +269,11 @@ function IconContainer({
     let widthTransform = useTransform(distance, [-150, 0, 150], [40, 80, 40]);
     let heightTransform = useTransform(distance, [-150, 0, 150], [40, 80, 40]);
 
-    let widthTransformIcon = useTransform(distance, [-150, 0, 150], [20, 40, 20]);
+    let widthTransformIcon = useTransform(distance, [-150, 0, 150], [24, 46, 24]);
     let heightTransformIcon = useTransform(
         distance,
         [-150, 0, 150],
-        [20, 40, 20],
+        [24, 46, 24],
     );
 
     let width = useSpring(widthTransform, {
@@ -254,13 +306,13 @@ function IconContainer({
             onClick={onClick}
             // @ts-ignore
             ref={ref}
-            style={{ width, height }}
+            style={{
+                width, height,
+                ...iconWrapStyle(!!isActive, hovered),
+            }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
-            className={cn(
-                "relative flex aspect-square items-center justify-center rounded-full",
-                isActive ? "bg-blue-100 text-blue-600" : "bg-gray-200",
-            )}
+            className="ra-dock-icon relative flex aspect-square items-center justify-center rounded-full"
         >
             <AnimatePresence>
                 {hovered && (
@@ -268,7 +320,14 @@ function IconContainer({
                         initial={{ opacity: 0, y: 10, x: "-50%" }}
                         animate={{ opacity: 1, y: 0, x: "-50%" }}
                         exit={{ opacity: 0, y: 2, x: "-50%" }}
-                        className="absolute -top-8 left-1/2 w-fit rounded-md border border-gray-200 bg-gray-100 px-2 py-0.5 text-xs whitespace-pre text-neutral-700"
+                        className="absolute -top-9 left-1/2 w-fit whitespace-pre rounded-full px-3 py-1 text-xs"
+                        style={{
+                            background: CLAY.surface,
+                            color: CLAY.textPrimary,
+                            fontFamily: CLAY.font,
+                            fontWeight: 500,
+                            boxShadow: `-3px -3px 7px ${CLAY.lightShadow}, 3px 3px 8px ${CLAY.darkShadow}`,
+                        }}
                     >
                         {title}
                     </motion.div>

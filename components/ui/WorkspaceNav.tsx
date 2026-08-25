@@ -89,6 +89,65 @@ function snapshotsEqual(a: { fp: FloorPlanState; sceneConfig: any } | null | und
     }
 }
 
+// ---- Claymorphism theme tokens (shared across the app) ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+}
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+        : `-4px -4px 9px ${CLAY.lightShadow}, 4px 4px 10px ${CLAY.darkShadow}`
+
+/* ClayPillButton — shared small clay button used across the nav bar so every
+   icon button (Fullscreen, Share, Export, Close, Reset zoom, Clear) has the
+   same raised/inset hover language and the same crisp dark icon treatment. */
+function ClayPillButton({
+    onClick,
+    children,
+    disabled,
+    danger,
+    title,
+}: {
+    onClick?: () => void
+    children: React.ReactNode
+    disabled?: boolean
+    danger?: boolean
+    title?: string
+}) {
+    const [hovered, setHovered] = useState(false)
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            title={title}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                height: 32, padding: '0 13px', borderRadius: 999, border: 'none',
+                background: CLAY.surface,
+                color: danger ? '#B3503F' : CLAY.textPrimary,
+                fontSize: 11.5, fontWeight: 500, fontFamily: CLAY.font,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                opacity: disabled ? 0.55 : 1,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                boxShadow: hovered && !disabled ? clayRaised(true) : clayRaised(false),
+                transition: 'box-shadow 160ms ease',
+            }}
+        >
+            {children}
+        </button>
+    )
+}
+
 const WorkspaceNav = ({
     fp,
     setFp,
@@ -313,7 +372,27 @@ const WorkspaceNav = ({
                         : 'Save Floor Plan'
 
     return (
-        <div style={{ height: 52, flexShrink: 0, background: THEME.bgPanel, borderBottom: `1px solid ${THEME.border}`, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, boxShadow: THEME.shadow }}>
+        <div
+            className="ra-workspace-topbar"
+            style={{
+                height: 60, flexShrink: 0, background: CLAY.canvas,
+                borderBottom: 'none',
+                boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.06)`,
+                display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12,
+                fontFamily: CLAY.font,
+            }}
+        >
+            {/* Crisp, high-contrast icon enforcement for every icon in this bar,
+                plus a hidden-but-functional scrollbar in case the bar overflows
+                on narrow viewports. */}
+            <style>{`
+                .ra-workspace-topbar::-webkit-scrollbar { display: none; }
+                .ra-workspace-topbar svg {
+                    stroke: ${CLAY.textPrimary} !important;
+                    filter: drop-shadow(0 1px 0.5px rgba(255,255,255,0.5));
+                }
+            `}</style>
+
             <FloorSwitcher
                 floors={floors}
                 activeFloorId={activeFloorId}
@@ -327,39 +406,36 @@ const WorkspaceNav = ({
                 onSetViewMode={onSetViewMode}
             />
             <div style={{ flex: 1 }} />
-            <label style={{ fontSize: 11, color: THEME.textMuted }}>Ceiling height</label>
+            <label style={{ fontSize: 11, color: CLAY.textMuted, fontFamily: CLAY.font }}>Ceiling height</label>
             <input type="number" min={2} max={6} step={0.1} value={fp.roomHeight}
                 onChange={e => setFp((p: any) => ({ ...p, roomHeight: parseFloat(e.target.value) || 2.7 }))}
-                style={{ width: 56, height: 30, borderRadius: 6, border: `1px solid ${THEME.borderStrong}`, background: '#FAFAFA', color: THEME.text, fontSize: 12, textAlign: 'center', outline: 'none' }} />
-            <span style={{ fontSize: 11, color: THEME.textFaint }}>m</span>
-            <div style={{ width: 1, height: 24, background: THEME.border }} />
-            <span style={{ fontSize: 11, color: THEME.textMuted }}>{Math.round(zoom * 100)}%</span>
-            <Btn onClick={() => setZoom(1)}>Reset zoom</Btn>
-            <Btn onClick={() => { setFp(DEFAULT_FP); setSelectedId(null) }}>Clear</Btn>
-            <div style={{ width: 1, height: 24, background: THEME.border }} />
-            <button onClick={() => void toggleFullscreen()} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: `1px solid ${THEME.borderStrong}`, background: '#FAFAFA', color: THEME.textMuted, fontSize: 11, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                style={{
+                    width: 56, height: 32, borderRadius: 10, border: 'none',
+                    background: CLAY.surface, color: CLAY.textPrimary, fontSize: 12, textAlign: 'center', outline: 'none',
+                    fontFamily: CLAY.font,
+                    boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+                }} />
+            <span style={{ fontSize: 11, color: CLAY.textPlaceholder }}>m</span>
+            <div style={{ width: 1, height: 22, background: 'rgba(0,0,0,0.08)' }} />
+            <span style={{ fontSize: 11, color: CLAY.textMuted }}>{Math.round(zoom * 100)}%</span>
+            <ClayPillButton onClick={() => setZoom(1)}>Reset zoom</ClayPillButton>
+            <ClayPillButton onClick={() => { setFp(DEFAULT_FP); setSelectedId(null) }}>Clear</ClayPillButton>
+            <div style={{ width: 1, height: 22, background: 'rgba(0,0,0,0.08)' }} />
+            <ClayPillButton onClick={() => void toggleFullscreen()}>
                 {isFullscreen
-                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3" /></svg>
-                    : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>}
+                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3" /></svg>
+                    : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>}
                 {isFullscreen ? 'Exit' : 'Fullscreen'}
-            </button>
-            {onClose && <Btn onClick={() => router.push('/dashboard')} danger>✕ Close</Btn>}
+            </ClayPillButton>
+            {onClose && <ClayPillButton onClick={() => router.push('/dashboard')} danger>✕ Close</ClayPillButton>}
             {projectId && (
-                <button
-                    onClick={() => setShareDialogOpen(true)}
-                    style={{
-                        height: 30, padding: '0 12px', borderRadius: 7,
-                        border: `1px solid ${THEME.borderStrong}`, background: '#FAFAFA',
-                        color: THEME.textMuted, fontSize: 11, cursor: 'pointer',
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                    }}
-                >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <ClayPillButton onClick={() => setShareDialogOpen(true)}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2">
                         <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
                         <line x1="8.6" y1="10.6" x2="15.4" y2="6.4" /><line x1="8.6" y1="13.4" x2="15.4" y2="17.6" />
                     </svg>
                     Share
-                </button>
+                </ClayPillButton>
             )}
             {/* CHANGED — single "Export" trigger replaces the old separate
                 "Export Plan" and "Export Models" buttons. The dropdown below
@@ -367,25 +443,17 @@ const WorkspaceNav = ({
                 the user to guess which button has the format they want. */}
             {projectId && (
                 <div ref={exportMenuRef} style={{ position: 'relative', display: 'inline-flex' }}>
-                    <button
+                    <ClayPillButton
                         onClick={handleOpenExportMenu}
                         disabled={isBusy || modelExportBusy !== null}
-                        style={{
-                            height: 30, padding: '0 12px', borderRadius: 7,
-                            border: `1px solid ${THEME.borderStrong}`, background: '#FAFAFA',
-                            color: THEME.textMuted, fontSize: 11,
-                            cursor: (isBusy || modelExportBusy !== null) ? 'not-allowed' : 'pointer',
-                            opacity: (isBusy || modelExportBusy !== null) ? 0.6 : 1,
-                            display: 'inline-flex', alignItems: 'center', gap: 5,
-                        }}
                     >
                         {(pendingAction === 'export' || modelExportBusy) && <Spinner dark />}
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2">
                             <path d="M12 15V3M12 15l-4-4M12 15l4-4" />
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         </svg>
                         {pendingAction === 'export' ? 'Saving…' : modelExportBusy ? modelExportBusy : 'Export'}
-                    </button>
+                    </ClayPillButton>
                 </div>
             )}
             {exportMenuOpen && exportMenuAnchorRect && typeof document !== 'undefined' && createPortal(
@@ -396,17 +464,18 @@ const WorkspaceNav = ({
                         top: exportMenuAnchorRect.bottom + 8,
                         left: exportMenuAnchorRect.right - 260,
                         width: 260,
-                        background: '#FFFFFF', borderRadius: 12,
-                        border: `1px solid ${THEME.border}`,
-                        boxShadow: THEME.shadowLg,
+                        background: CLAY.surface, borderRadius: 20,
+                        border: 'none',
+                        boxShadow: `0 20px 40px rgba(0,0,0,0.16), -6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
                         overflow: 'hidden', zIndex: 5000,
+                        fontFamily: CLAY.font,
                         animation: 'wsnavMenuIn 140ms ease-out',
                     }}
                 >
                     <ExportMenuSection label="Plan document">
                         <ExportMenuCard
                             icon={
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <rect x="3" y="3" width="18" height="18" rx="2" />
                                     <path d="M8 12h8M8 16h5M8 8h3" />
                                 </svg>
@@ -419,7 +488,7 @@ const WorkspaceNav = ({
                         />
                     </ExportMenuSection>
 
-                    <div style={{ height: 1, background: THEME.border, margin: '2px 0' }} />
+                    <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '2px 0' }} />
 
                     <ExportMenuSection label="3D / 2D model files">
                         {MODEL_EXPORT_FORMATS.map((opt, i) => (
@@ -443,12 +512,18 @@ const WorkspaceNav = ({
                         disabled={isBusy || (!isDirty && isSaved)}
                         title={!isDirty && isSaved ? 'No changes to save' : undefined}
                         style={{
-                            height: 32,
-                            padding: '0 14px', borderRadius: '8px 0 0 8px', border: 'none',
-                            background: isBusy ? '#C9BBA0' : (isSaved && !isDirty) ? '#10B981' : (THEME as any).beige ?? '#D8C7A1',
-                            color: '#3A2E1F', fontSize: 12, fontWeight: 700,
+                            height: 34,
+                            padding: '0 16px', borderRadius: '999px 0 0 999px', border: 'none',
+                            background: isBusy
+                                ? CLAY.surfaceChip
+                                : (isSaved && !isDirty)
+                                    ? 'linear-gradient(145deg, #8fe3c0, #5fcf9e)'
+                                    : 'linear-gradient(145deg, #E6D5AC, #D8C7A1)',
+                            color: '#3A2E1F', fontSize: 12, fontWeight: 500,
+                            fontFamily: CLAY.font,
                             cursor: (isBusy || (!isDirty && isSaved)) ? 'not-allowed' : 'pointer',
-                            opacity: (!isDirty && isSaved) ? 0.85 : 1,
+                            opacity: (!isDirty && isSaved) ? 0.9 : 1,
+                            boxShadow: '0 3px 8px -2px rgba(0,0,0,0.18), inset 0 1px 1px rgba(255,255,255,0.4)',
                             transition: 'background 200ms',
                             display: 'inline-flex', alignItems: 'center', gap: 6,
                         }}>
@@ -463,13 +538,18 @@ const WorkspaceNav = ({
                         disabled={isBusy}
                         aria-label="More save options"
                         style={{
-                            height: 32, width: 26, borderRadius: '0 8px 8px 0', border: 'none',
-                            borderLeft: '1px solid rgba(58,46,31,0.25)',
-                            background: isBusy ? '#C9BBA0' : (isSaved && !isDirty) ? '#10B981' : (THEME as any).beige ?? '#D8C7A1',
+                            height: 34, width: 28, borderRadius: '0 999px 999px 0', border: 'none',
+                            borderLeft: '1px solid rgba(58,46,31,0.18)',
+                            background: isBusy
+                                ? CLAY.surfaceChip
+                                : (isSaved && !isDirty)
+                                    ? 'linear-gradient(145deg, #8fe3c0, #5fcf9e)'
+                                    : 'linear-gradient(145deg, #E6D5AC, #D8C7A1)',
                             color: '#3A2E1F', cursor: isBusy ? 'not-allowed' : 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 3px 8px -2px rgba(0,0,0,0.18), inset 0 1px 1px rgba(255,255,255,0.4)',
                         }}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#3A2E1F" strokeWidth="2.5">
                             <path d="M6 9l6 6 6-6" />
                         </svg>
                     </button>
@@ -483,10 +563,11 @@ const WorkspaceNav = ({
                         top: saveMenuAnchorRect.bottom + 6,
                         left: saveMenuAnchorRect.right - 190,
                         minWidth: 190,
-                        background: '#FFFFFF', borderRadius: 8,
-                        border: `1px solid ${THEME.borderStrong}`,
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                        background: CLAY.surface, borderRadius: 16,
+                        border: 'none',
+                        boxShadow: `0 16px 32px rgba(0,0,0,0.16), -5px -5px 10px ${CLAY.lightShadow}, 5px 5px 12px ${CLAY.darkShadow}`,
                         overflow: 'hidden', zIndex: 5000,
+                        fontFamily: CLAY.font,
                         animation: 'wsnavMenuIn 140ms ease-out',
                     }}
                 >
@@ -518,10 +599,11 @@ const WorkspaceNav = ({
             )}
             {pendingAction === 'export' && (
                 <div style={{
-                    position: 'fixed', top: 62, right: 16, zIndex: 9999,
-                    background: '#111827', color: '#fff', fontSize: 11.5,
-                    padding: '8px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8,
-                    boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+                    position: 'fixed', top: 70, right: 16, zIndex: 9999,
+                    background: '#2A2A2A', color: '#fff', fontSize: 11.5,
+                    padding: '8px 14px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 8,
+                    fontFamily: CLAY.font,
+                    boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
                 }}>
                     <Spinner light />
                     Saving before export…
@@ -529,10 +611,11 @@ const WorkspaceNav = ({
             )}
             {saveError && (
                 <div style={{
-                    position: 'fixed', top: 62, right: 16, zIndex: 9999,
-                    background: '#DC2626', color: '#fff', fontSize: 11.5,
-                    padding: '8px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10,
-                    boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+                    position: 'fixed', top: 70, right: 16, zIndex: 9999,
+                    background: '#B3503F', color: '#fff', fontSize: 11.5,
+                    padding: '8px 14px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 10,
+                    fontFamily: CLAY.font,
+                    boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
                 }}>
                     {saveError}
                     <button onClick={() => setSaveError(null)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }} aria-label="Dismiss">✕</button>
@@ -540,10 +623,11 @@ const WorkspaceNav = ({
             )}
             {modelExportError && (
                 <div style={{
-                    position: 'fixed', top: 62, right: 16, zIndex: 9999,
-                    background: '#DC2626', color: '#fff', fontSize: 11.5,
-                    padding: '8px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10,
-                    boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+                    position: 'fixed', top: 70, right: 16, zIndex: 9999,
+                    background: '#B3503F', color: '#fff', fontSize: 11.5,
+                    padding: '8px 14px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 10,
+                    fontFamily: CLAY.font,
+                    boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
                 }}>
                     {modelExportError}
                     <button onClick={() => setModelExportError(null)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }} aria-label="Dismiss">✕</button>

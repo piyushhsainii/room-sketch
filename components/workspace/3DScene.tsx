@@ -1,11 +1,11 @@
-import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef } from "react"
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react"
 import { Environment, OrbitControls, Sky } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, DEFAULT_FP, FloorPlanState } from "./lib/constants"
 import { WalkModeControls } from "./WalkModeControls"
 import { SceneConfig } from "./FloorPlanEditor"
 import { CameraView } from "./lib/camera"
 import { useThree } from "@react-three/fiber"
-import { computeTopDownView, getFloorContentBounds } from "@/lib/helpers"
+import { computeTopDownView, getFloorContentBounds, useClickVsDrag } from "@/lib/helpers"
 import * as THREE from "three"
 import { sunIntensity, sunLightColor, sunPosition, sunVectorFromAngles } from "./lib/sunPosition"
 import { Floor } from "./lib/floor-data"
@@ -226,14 +226,13 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     )
     const envPreset = useMemo(() => (sunEnabled ? "sunset" : "apartment"), [sunEnabled])
     const shadowExtent = Math.max(sunSpan * 1.15, 4)
+    const downPos = useRef<{ x: number; y: number } | null>(null)
 
-    // NOTE: removed `console.log('3d scene')` that used to sit here. It ran on
-    // every render of this component (it was in the render body, not an effect),
-    // which is what was flooding the console whenever anything caused Scene3D to
-    // re-render — including 2D-canvas hover state changes in a shared parent.
-    // If you need render-count debugging again, use:
-    //   useEffect(() => { console.log('Scene3D rendered') })
-    // and remove it once you've confirmed the fix below is working.
+    const deselect = useCallback((e: any) => {
+        e.stopPropagation()
+        onSelect?.(null)
+    }, [onSelect])
+    const groundClickHandlers = useClickVsDrag(deselect)
 
     useEffect(() => {
         invalidate()
@@ -242,9 +241,24 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         <>
             <color attach="background" args={['#FFFFFF']} />
             <mesh
+                // position={[0, groundPlaneY + 0.01, 0]}
+                // rotation={[-Math.PI / 2, 0, 0]}
+                // onClick={(e) => { e.stopPropagation(); onSelect?.(null) }}
+                // visible={false}
+                // onPointerDown={(e) => { downPos.current = { x: e.clientX, y: e.clientY } }}
+                // onPointerUp={(e) => {
+                //     const d = downPos.current
+                //     downPos.current = null
+                //     if (!d) return
+                //     const moved = Math.hypot(e.clientX - d.x, e.clientY - d.y)
+                //     if (moved < 5) { // px threshold, same spirit as the 2D drag threshold
+                //         e.stopPropagation()
+                //         onSelect?.(null)
+                //     }
+                // }}
                 position={[0, groundPlaneY + 0.01, 0]}
                 rotation={[-Math.PI / 2, 0, 0]}
-                onClick={(e) => { e.stopPropagation(); onSelect?.(null) }}
+                {...groundClickHandlers}
                 visible={false}
             >
                 <planeGeometry args={[500, 500]} />

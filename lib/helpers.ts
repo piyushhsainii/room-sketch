@@ -1,3 +1,4 @@
+"use client";
 import { CameraView } from "@/components/workspace/lib/camera";
 import {
   ClosedShape,
@@ -17,6 +18,7 @@ import {
   getFurnitureFootprint,
 } from "@/components/workspace/lib/furniture-constants";
 import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
+import { useCallback, useRef } from "react";
 
 // export function deriveClosedPolygons(
 //   lineNodes: LineNode[],
@@ -1293,4 +1295,48 @@ export function segmentsForShape(
     const key = [seg.nodeIds[0], seg.nodeIds[1]].sort().join("|");
     return boundaryPairs.has(key);
   });
+}
+
+// hooks/useClickVsDrag.ts
+
+// Hook version — for component-top-level use (e.g. furnitureMesh.tsx)
+export function useClickVsDrag(onRealClick: (e: any) => void, threshold = 5) {
+  const downPos = useRef<{ x: number; y: number } | null>(null);
+  const onPointerDown = useCallback((e: any) => {
+    downPos.current = { x: e.clientX, y: e.clientY };
+  }, []);
+  const onPointerUp = useCallback(
+    (e: any) => {
+      const d = downPos.current;
+      downPos.current = null;
+      if (!d) return;
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < threshold)
+        onRealClick(e);
+    },
+    [onRealClick, threshold],
+  );
+  return { onPointerDown, onPointerUp };
+}
+
+// Factory version — for use inside .map()/loops where hooks aren't allowed.
+// Safe because R3F pointer events don't trigger React re-renders on their
+// own, so the closure variable survives from pointerdown to pointerup
+// within a single render pass.
+export function makeClickVsDragHandlers(
+  onRealClick: (e: any) => void,
+  threshold = 5,
+) {
+  let downPos: { x: number; y: number } | null = null;
+  return {
+    onPointerDown: (e: any) => {
+      downPos = { x: e.clientX, y: e.clientY };
+    },
+    onPointerUp: (e: any) => {
+      const d = downPos;
+      downPos = null;
+      if (!d) return;
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < threshold)
+        onRealClick(e);
+    },
+  };
 }

@@ -4026,7 +4026,14 @@ export default function FloorPlanEditor({
                             {
                                 id: 'properties',
                                 title: 'Properties',
-                                icon: <img className='w-full' src={'/icons/properties.png'} />,
+                                icon: (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-full">
+                                        <rect x="3.5" y="4.5" width="17" height="13" rx="1.6" />
+                                        <path d="M7 14.5l3.2-3.6 2.4 2.4L16.8 9" />
+                                        <circle cx="17.4" cy="16.6" r="2.1" />
+                                        <path d="M17.4 14.8v.4M17.4 17.6v.4M19.2 16.6h-.4M15.6 16.6h.4M18.7 15.1l-.3.3M16.4 17.9l-.3.3M18.7 18.1l-.3-.3M16.4 15.3l-.3-.3" />
+                                    </svg>
+                                ),
                                 onClick: () => {
                                     if (sheetOpen && rightTab === 'properties') setSheetOpen(false)
                                     else { setRightTab('properties'); setSheetOpen(true) }
@@ -4035,7 +4042,13 @@ export default function FloorPlanEditor({
                             {
                                 id: 'scene',
                                 title: 'Scene',
-                                icon: <img className='w-full' src={'/icons/scene.png'} />,
+                                icon: (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-full">
+                                        <path d="M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4" />
+                                        <path d="M4 12h16a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z" />
+                                        <path d="M4 17v2M20 17v2" />
+                                    </svg>
+                                ),
                                 onClick: () => {
                                     if (sheetOpen && rightTab === 'scene') setSheetOpen(false)
                                     else { setRightTab('scene'); setSheetOpen(true) }
@@ -4044,7 +4057,12 @@ export default function FloorPlanEditor({
                             {
                                 id: 'sun',
                                 title: 'Sun & Lighting',
-                                icon: <img className='w-full' src={'/icons/light.png'} />,
+                                icon: (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-full">
+                                        <circle cx="12" cy="12" r="4.2" />
+                                        <path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7" />
+                                    </svg>
+                                ),
                                 onClick: () => {
                                     if (sheetOpen && rightTab === 'sun') setSheetOpen(false)
                                     else { setRightTab('sun'); setSheetOpen(true) }

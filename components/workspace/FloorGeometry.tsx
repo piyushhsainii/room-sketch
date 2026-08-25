@@ -33,14 +33,7 @@ function FloorGeometryImpl({
     opacity, overlappingIds, renderCap, floorAboveFp, shadowEligibleIds, floorAboveId, cutoutDrawInProgress
 }: FloorGeometryProps) {
     const transparent = opacity < 1
-    // NOTE: removed two console.logs that used to sit here:
-    //   console.log('[FP ROOMS CHECK]', ...)          — ran once per render of this component
-    //   console.log('[CUTOUT DEBUG]', room.label, ...) — ran once PER ROOM per render (worse)
-    // Both were in the render body (not gated behind an effect or a dev flag),
-    // so every re-render — including ones caused by unrelated 2D-canvas hover
-    // state in a shared parent — was spamming these to the console, once per
-    // room for the cutout one. If you need this debug info again, gate it:
-    //   if (process.env.NODE_ENV === 'development' && DEBUG_CUTOUTS) console.log(...)
+
     return (
         <>
             {renderCap && floorAboveFp && (
@@ -140,11 +133,21 @@ function FloorGeometryImpl({
                     ? fp.lineSegments?.find(seg => seg.id === s.anchorSegmentId)
                     : undefined
                 const effectiveHeight = anchorSeg?.height ?? fp.roomHeight
+                const stairDownPos = { current: null as { x: number; y: number } | null }
 
                 return (
                     <group
                         key={s.id}
-                        onClick={interactive ? (e) => { e.stopPropagation(); onSelect?.(s.id) } : undefined}
+                        onPointerDown={interactive ? (e) => { stairDownPos.current = { x: e.clientX, y: e.clientY } } : undefined}
+                        onPointerUp={interactive ? (e) => {
+                            const d = stairDownPos.current
+                            stairDownPos.current = null
+                            if (!d) return
+                            if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5) {
+                                e.stopPropagation()
+                                onSelect?.(s.id)
+                            }
+                        } : undefined}
                         onPointerOver={interactive ? () => { document.body.style.cursor = 'pointer' } : undefined}
                         onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
                     >

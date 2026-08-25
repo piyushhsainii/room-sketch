@@ -453,13 +453,17 @@ export type ClosedShape = {
             enabled: boolean
             type: 'wall' | 'railing'        // shape-wide default
             height?: number
+            material?: WallMaterial          // NEW — shape-wide default guard material
+            color?: string                   // NEW — shape-wide default guard color
             railingStyle?: RailingStyle
             railingPostSpacing?: number
             railingWidthDim?: number
             railingColor?: string
-            edgeOverrides?: Record<string, {  // NEW — keyed by `${shapeId}::guard::${edgeIndex}`
+            edgeOverrides?: Record<string, {
                 type: 'wall' | 'railing' | 'open'
                 height?: number
+                material?: WallMaterial      // NEW
+                color?: string                // NEW
                 railingStyle?: RailingStyle
                 railingPostSpacing?: number
                 railingWidthDim?: number

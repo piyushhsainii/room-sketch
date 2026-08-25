@@ -66,24 +66,43 @@ const POPOVER_WIDTH = 360
 const MARGIN = 12
 const GAP = 10
 
+// ---- Claymorphism theme tokens (shared across dashboard components) ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+}
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`
+
 export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: string; onClose: () => void; anchorEl?: HTMLElement | null }) {
     const [shareUrl, setShareUrl] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
     const [copied, setCopied] = useState(false)
     const [pos, setPos] = useState<{ top: number; left: number; pointerLeft: number; openUp: boolean } | null>(null)
     const [visible, setVisible] = useState(false)
+    const [closeHovered, setCloseHovered] = useState(false)
+    const [copyHovered, setCopyHovered] = useState(false)
+    const [hoveredTarget, setHoveredTarget] = useState<string | null>(null)
 
-    // Enter transition — mount at scale(0.95)/opacity 0, flip to full on
-    // the next frame so the browser actually animates the change instead
-    // of skipping straight to the end state.
+    const [published, setPublished] = useState(false)
+    const [publishLoading, setPublishLoading] = useState(true)
+    const [publishBusy, setPublishBusy] = useState(false)
+    const [publishError, setPublishError] = useState<string | null>(null)
+
     useEffect(() => {
         const raf = requestAnimationFrame(() => setVisible(true))
         return () => cancelAnimationFrame(raf)
     }, [])
-
-    // Exit transition — play the reverse animation, THEN unmount via
-    // onClose. Without this, onClose() would remove the component
-    // immediately and there'd be nothing left on screen to animate.
     function handleClose() {
         setVisible(false)
         setTimeout(onClose, 160)
@@ -144,6 +163,21 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
             .finally(() => setLoading(false))
     }, [projectId])
 
+    useEffect(() => {
+        let cancelled = false
+        setPublishLoading(true)
+        fetch(`/api/projects/${projectId}`, { cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                if (cancelled) return
+                const proj = data.project ?? data
+                setPublished(!!proj.published)
+            })
+            .catch(err => console.error('[ShareDialog] failed to load publish state:', err))
+            .finally(() => { if (!cancelled) setPublishLoading(false) })
+        return () => { cancelled = true }
+    }, [projectId])
+
     const handleCopy = () => {
         if (!shareUrl) return
         navigator.clipboard.writeText(shareUrl)
@@ -157,6 +191,29 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
         { label: 'Email', icon: MailIcon, bg: '#4F46E5', href: `mailto:?subject=${encodeURIComponent('Floor plan')}&body=${encodeURIComponent(shareUrl)}` },
     ] : []
 
+    const handleTogglePublish = async (next: boolean) => {
+        setPublishBusy(true)
+        setPublishError(null)
+        try {
+            const res = await fetch(`/api/projects/${projectId}/publish`, {
+                method: next ? 'POST' : 'DELETE',
+            })
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}))
+                throw new Error(body.error ?? 'Failed to update.')
+            }
+            setPublished(next)
+            const body = await res.json().catch(() => null)
+            if (next && body?.share_token && !shareUrl) {
+                setShareUrl(`${window.location.origin}/share/${body.share_token}`)
+            }
+        } catch (err: any) {
+            setPublishError(err.message)
+        } finally {
+            setPublishBusy(false)
+        }
+    }
+
     if (!pos) return null
 
     return createPortal(
@@ -168,14 +225,15 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
                     top: pos.top,
                     left: pos.left,
                     width: POPOVER_WIDTH,
-                    background: THEME.bgPanel,
-                    borderRadius: 14,
-                    padding: 20,
-                    boxShadow: '0 20px 48px rgba(15,23,42,0.18), 0 4px 14px rgba(15,23,42,0.08)',
-                    border: `1px solid ${THEME.borderStrong}`,
+                    background: CLAY.surface,
+                    borderRadius: 24,
+                    padding: 22,
+                    boxShadow: `0 24px 48px rgba(0,0,0,0.16), -6px -6px 14px ${CLAY.lightShadow}, 6px 6px 16px ${CLAY.darkShadow}`,
+                    border: 'none',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 16,
+                    fontFamily: CLAY.font,
                     transformOrigin: pos.openUp ? 'bottom right' : 'top right',
                     transform: `translateY(${pos.openUp ? '-100%' : '0%'}) scale(${visible ? 1 : 0.95})`,
                     opacity: visible ? 1 : 0,
@@ -187,57 +245,106 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
                 <div style={{
                     position: 'absolute',
                     ...(pos.openUp
-                        ? { bottom: -6, borderRight: `1px solid ${THEME.borderStrong}`, borderBottom: `1px solid ${THEME.borderStrong}` }
-                        : { top: -6, borderLeft: `1px solid ${THEME.borderStrong}`, borderTop: `1px solid ${THEME.borderStrong}` }),
+                        ? { bottom: -6 }
+                        : { top: -6 }),
                     left: pos.pointerLeft, width: 12, height: 12,
-                    background: THEME.bgPanel, transform: 'rotate(45deg)',
+                    background: CLAY.surface, transform: 'rotate(45deg)',
+                    boxShadow: pos.openUp
+                        ? `4px 4px 6px -2px rgba(0,0,0,0.10)`
+                        : `-4px -4px 6px -2px rgba(0,0,0,0.10)`,
                 }} />
 
                 {/* Header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: THEME.text, letterSpacing: '-0.01em' }}>Share Floor Plan</span>
+                    <span style={{ fontSize: 15, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: 'normal' }}>Share Floor Plan</span>
                     <button
                         onClick={handleClose}
+                        onMouseEnter={() => setCloseHovered(true)}
+                        onMouseLeave={() => setCloseHovered(false)}
                         style={{
-                            width: 26, height: 26, borderRadius: 7, border: 'none', background: 'transparent',
-                            color: THEME.textMuted, cursor: 'pointer', fontSize: 16, display: 'flex',
-                            alignItems: 'center', justifyContent: 'center', transition: 'background 120ms ease, color 120ms ease',
+                            width: 28, height: 28, borderRadius: '50%', border: 'none', background: closeHovered ? CLAY.surfaceChip : 'transparent',
+                            color: CLAY.textMuted, cursor: 'pointer', fontSize: 16, display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                            boxShadow: closeHovered ? 'inset 2px 2px 5px rgba(0,0,0,0.14), inset -2px -2px 5px rgba(255,255,255,0.7)' : 'none',
+                            transition: 'background 160ms ease, color 160ms ease, box-shadow 160ms ease',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(15,23,42,0.06)'; e.currentTarget.style.color = THEME.text }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = THEME.textMuted }}
                     >
                         ×
                     </button>
                 </div>
 
-                <p style={{ fontSize: 12.5, color: THEME.textMuted, margin: 0, display: 'flex', alignItems: 'flex-start', gap: 7, lineHeight: 1.5 }}>
-                    <span style={{ marginTop: 1, flexShrink: 0 }}><GlobeIcon color={THEME.textMuted} /></span>
+                <p style={{ fontSize: 12.5, color: CLAY.textMuted, margin: 0, display: 'flex', alignItems: 'flex-start', gap: 7, lineHeight: 1.5 }}>
+                    <span style={{ marginTop: 1, flexShrink: 0 }}><GlobeIcon color={CLAY.textMuted} /></span>
                     Anyone with this link can view a read-only version — no account needed.
                 </p>
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    height: 42, borderRadius: 999, border: 'none',
+                    background: CLAY.surface, padding: '0 14px',
+                    boxShadow: `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`,
+                }}>
+                    <label style={{
+                        display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: CLAY.textPrimary,
+                        cursor: publishBusy || publishLoading ? 'not-allowed' : 'pointer',
+                    }}>
+                        <input
+                            type="checkbox"
+                            checked={published}
+                            disabled={publishBusy || publishLoading}
+                            onChange={e => handleTogglePublish(e.target.checked)}
+                        />
+                        List on Community page
+                    </label>
+                    {(publishBusy || publishLoading) && (
+                        <span style={{ fontSize: 10.5, color: CLAY.textPlaceholder }}>
+                            {publishLoading ? '' : 'Saving…'}
+                        </span>
+                    )}
+                </div>
+                {publishError && (
+                    <div style={{ fontSize: 10.5, color: '#c2483f', marginTop: -8 }}>{publishError}</div>
+                )}
+                {published && (
+                    <p style={{ fontSize: 11, color: CLAY.textPlaceholder, margin: '-8px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        ★ Visible on the <a href="/community" style={{ color: CLAY.textPrimary, textDecoration: 'underline' }}>Community page</a>, ranked by stars.
+                    </p>
+                )}
 
                 {/* Link + copy */}
                 <div style={{ display: 'flex', gap: 8 }}>
                     <div style={{
-                        flex: 1, display: 'flex', alignItems: 'center', gap: 8, height: 38, borderRadius: 8,
-                        border: `1px solid ${THEME.borderStrong}`, background: '#FAFAFA', padding: '0 12px', minWidth: 0,
+                        flex: 1, display: 'flex', alignItems: 'center', gap: 8, height: 42, borderRadius: 999,
+                        border: 'none', background: CLAY.surface, padding: '0 14px', minWidth: 0,
+                        boxShadow: `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`,
                     }}>
-                        <span style={{ flexShrink: 0, display: 'flex' }}><LinkIcon color={THEME.textMuted} /></span>
+                        <span style={{ flexShrink: 0, display: 'flex' }}><LinkIcon color={CLAY.textMuted} /></span>
                         <input
                             readOnly
                             value={loading ? 'Generating link…' : shareUrl ?? ''}
                             onFocus={(e) => e.currentTarget.select()}
-                            style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', color: THEME.text, fontSize: 12.5, outline: 'none' }}
+                            style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', color: CLAY.textPrimary, fontSize: 12.5, outline: 'none', fontFamily: CLAY.font }}
                         />
                     </div>
                     <button
                         onClick={handleCopy}
                         disabled={!shareUrl}
                         title="Copy link"
+                        onMouseEnter={() => setCopyHovered(true)}
+                        onMouseLeave={() => setCopyHovered(false)}
                         style={{
-                            display: 'flex', alignItems: 'center', gap: 6, height: 38, padding: '0 16px', borderRadius: 8,
-                            border: 'none', background: copied ? '#10B981' : THEME.accent, color: 'white',
-                            fontSize: 12.5, fontWeight: 600, cursor: shareUrl ? 'pointer' : 'not-allowed',
-                            transition: 'background 150ms ease, transform 100ms ease', flexShrink: 0,
+                            display: 'flex', alignItems: 'center', gap: 6, height: 42, padding: '0 18px', borderRadius: 999,
+                            border: 'none',
+                            background: copied
+                                ? 'linear-gradient(145deg, #8fe3c0, #5fcf9e)'
+                                : CLAY.surface,
+                            color: CLAY.textPrimary,
+                            fontSize: 12.5, fontWeight: 500, cursor: shareUrl ? 'pointer' : 'not-allowed',
+                            fontFamily: CLAY.font,
+                            boxShadow: copied
+                                ? '0 6px 14px -4px rgba(95,207,158,0.45), inset 0 1px 1px rgba(255,255,255,0.4)'
+                                : copyHovered ? clayRaised(true) : clayRaised(false),
+                            transition: 'background 160ms ease, box-shadow 160ms ease, transform 100ms ease',
+                            flexShrink: 0,
                         }}
                         onMouseDown={e => { if (shareUrl) e.currentTarget.style.transform = 'scale(0.96)' }}
                         onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}
@@ -252,27 +359,22 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
                     <div style={{ display: 'flex', gap: 10 }}>
                         {shareTargets.map(t => {
                             const Icon = t.icon;
+                            const isHovered = hoveredTarget === t.label
                             return (
                                 <a
                                     key={t.label}
                                     href={t.href}
                                     target="_blank"
                                     rel="noopener noreferrer"
+                                    onMouseEnter={() => setHoveredTarget(t.label)}
+                                    onMouseLeave={() => setHoveredTarget(null)}
                                     style={{
                                         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7,
-                                        padding: '12px 0 10px', borderRadius: 10, border: `1px solid ${THEME.borderStrong}`,
-                                        background: '#FAFAFA', textDecoration: 'none',
-                                        transition: 'background 150ms ease, border-color 150ms ease, transform 120ms ease',
-                                    }}
-                                    onMouseEnter={e => {
-                                        e.currentTarget.style.background = '#F0F1F5'
-                                        e.currentTarget.style.borderColor = 'rgba(15,23,42,0.18)'
-                                        e.currentTarget.style.transform = 'translateY(-1px)'
-                                    }}
-                                    onMouseLeave={e => {
-                                        e.currentTarget.style.background = '#FAFAFA'
-                                        e.currentTarget.style.borderColor = THEME.borderStrong
-                                        e.currentTarget.style.transform = 'translateY(0)'
+                                        padding: '13px 0 11px', borderRadius: 16, border: 'none',
+                                        background: CLAY.surface, textDecoration: 'none',
+                                        boxShadow: isHovered ? clayRaised(true) : clayRaised(false),
+                                        transform: isHovered ? 'translateY(-1px)' : 'translateY(0)',
+                                        transition: 'box-shadow 180ms ease, transform 180ms ease',
                                     }}
                                 >
                                     <span style={{
@@ -281,7 +383,7 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
                                     }}>
                                         <Icon />
                                     </span>
-                                    <span style={{ fontSize: 11, fontWeight: 500, color: THEME.textMuted }}>{t.label}</span>
+                                    <span style={{ fontSize: 11, fontWeight: 400, color: CLAY.textMuted }}>{t.label}</span>
                                 </a>
                             );
                         })}

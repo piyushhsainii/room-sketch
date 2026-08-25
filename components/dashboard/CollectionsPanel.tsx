@@ -3,16 +3,34 @@
 import { useEffect, useMemo, useState } from "react";
 import StarButton from "../workspace/dashboard/StarButton";
 
+// ---- Claymorphism theme tokens (shared with ProjectCard) ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    font: "'General Sans', system-ui, -apple-system, sans-serif",
+};
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
+
 function SearchIcon() {
     return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(15,23,42,0.4)" strokeWidth="2" strokeLinecap="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(26,26,26,0.4)" strokeWidth="2" strokeLinecap="round">
             <circle cx="11" cy="11" r="7" />
             <path d="M21 21l-4.3-4.3" />
         </svg>
     );
 }
 
-function PlusIcon({ color = "#fff" }: { color?: string }) {
+function PlusIcon({ color = "#1A1A1A" }: { color?: string }) {
     return (
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -22,7 +40,7 @@ function PlusIcon({ color = "#fff" }: { color?: string }) {
 
 function ChevronDownIcon() {
     return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(15,23,42,0.5)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(26,26,26,0.5)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M6 9l6 6 6-6" />
         </svg>
     );
@@ -38,7 +56,7 @@ function DotsIcon() {
 
 function DraftsIcon() {
     return (
-        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(15,23,42,0.28)" strokeWidth="1.6" strokeLinecap="round">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(26,26,26,0.28)" strokeWidth="1.6" strokeLinecap="round">
             <line x1="4" y1="7" x2="16" y2="7" />
             <line x1="4" y1="12" x2="14" y2="12" />
             <line x1="4" y1="17" x2="11" y2="17" />
@@ -62,7 +80,7 @@ function ComingSoonIcon() {
 
 function EmptyStarIcon() {
     return (
-        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="rgba(15,23,42,0.22)" strokeWidth="1.4" strokeLinejoin="round">
+        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="rgba(26,26,26,0.22)" strokeWidth="1.4" strokeLinejoin="round">
             <path d="M12 2l2.9 6.4 7 .7-5.3 4.7 1.6 6.9L12 17l-6.2 3.7 1.6-6.9L2.1 9.1l7-.7L12 2z" />
         </svg>
     );
@@ -128,6 +146,9 @@ export default function CollectionsPanel({
     const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["id"]>("all");
     const [search, setSearch] = useState("");
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [searchFocused, setSearchFocused] = useState(false);
+    const [newCollectionHovered, setNewCollectionHovered] = useState(false);
+    const [browseHovered, setBrowseHovered] = useState(false);
 
     // Starred tab has its own data source (community stars, not the
     // user's own projects prop) — fetched lazily on first visit to the
@@ -198,39 +219,58 @@ export default function CollectionsPanel({
     }, [normalized, search, activeTab]);
 
     return (
-        <div style={{ padding: "28px 36px 60px" }} onClick={() => setOpenMenuId(null)}>
+        <div
+            className="ra-collections-pad"
+            style={{ background: CLAY.canvas, fontFamily: CLAY.font, minHeight: "100%" }}
+            onClick={() => setOpenMenuId(null)}
+        >
+            <style>{`
+                .ra-collections-pad { padding: 28px 36px 60px; }
+                @media (max-width: 860px) {
+                    .ra-collections-pad { padding: 18px 16px 40px; }
+                }
+            `}</style>
+
             {/* Header */}
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 22 }}>
                 <div>
-                    <h1 style={{ margin: "0 0 6px", fontSize: 24, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
+                    <h1 style={{ margin: "0 0 6px", fontSize: 24, fontWeight: 400, color: CLAY.textPrimary, letterSpacing: "normal" }}>
                         Collections
                     </h1>
-                    <p style={{ margin: 0, fontSize: 13.5, color: "rgba(15,23,42,0.5)" }}>
+                    <p style={{ margin: 0, fontSize: 13.5, color: CLAY.textMuted }}>
                         Organize your spatial concepts and blueprints.
                     </p>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{
-                        display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 12px",
-                        borderRadius: 8, border: "1px solid rgba(15,23,42,0.12)", background: "#fff", minWidth: 220,
+                        display: "flex", alignItems: "center", gap: 8, height: 40, padding: "0 14px",
+                        borderRadius: 999, border: "none", background: CLAY.surface, minWidth: 220,
+                        boxShadow: searchFocused ? clayRaised(true) : clayRaised(true),
                     }}>
                         <SearchIcon />
                         <input
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
+                            onFocus={() => setSearchFocused(true)}
+                            onBlur={() => setSearchFocused(false)}
                             placeholder={activeTab === "starred" ? "Search starred..." : "Search collections..."}
-                            style={{ border: "none", outline: "none", fontSize: 13, flex: 1, background: "transparent", color: "#0f172a" }}
+                            style={{ border: "none", outline: "none", fontSize: 13.5, flex: 1, background: "transparent", color: CLAY.textPrimary, fontFamily: CLAY.font }}
                         />
                     </div>
                     {activeTab !== "starred" && (
                         <button
                             type="button"
                             onClick={onCreateCollection}
+                            onMouseEnter={() => setNewCollectionHovered(true)}
+                            onMouseLeave={() => setNewCollectionHovered(false)}
                             style={{
-                                display: "flex", alignItems: "center", gap: 7, height: 38, padding: "0 16px",
-                                borderRadius: 8, border: "none", background: "#0f172a", color: "#fff",
-                                fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                                display: "flex", alignItems: "center", gap: 7, height: 40, padding: "0 18px",
+                                borderRadius: 999, border: "none", background: CLAY.surface, color: CLAY.textPrimary,
+                                fontSize: 13.5, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
+                                fontFamily: CLAY.font,
+                                boxShadow: newCollectionHovered ? clayRaised(true) : clayRaised(false),
+                                transition: "box-shadow 180ms ease",
                             }}
                         >
                             <PlusIcon />
@@ -242,7 +282,10 @@ export default function CollectionsPanel({
 
             {/* Tabs + sort */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{
+                    display: "flex", alignItems: "center", gap: 4, padding: 5, borderRadius: 999,
+                    background: CLAY.surface, boxShadow: clayRaised(true),
+                }}>
                     {TABS.map((tab) => {
                         const active = tab.id === activeTab;
                         return (
@@ -252,9 +295,12 @@ export default function CollectionsPanel({
                                 onClick={() => setActiveTab(tab.id)}
                                 style={{
                                     height: 32, padding: "0 16px", borderRadius: 999, border: "none",
-                                    background: active ? "#0f172a" : "transparent",
-                                    color: active ? "#fff" : "rgba(15,23,42,0.55)",
-                                    fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                    background: active ? CLAY.surfaceChip : "transparent",
+                                    color: active ? CLAY.textPrimary : CLAY.textMuted,
+                                    fontSize: 13, fontWeight: active ? 500 : 400, cursor: "pointer",
+                                    fontFamily: CLAY.font,
+                                    boxShadow: active ? clayRaised(false) : "none",
+                                    transition: "box-shadow 180ms ease, background 180ms ease",
                                 }}
                             >
                                 {tab.label}
@@ -268,7 +314,8 @@ export default function CollectionsPanel({
                         type="button"
                         style={{
                             display: "flex", alignItems: "center", gap: 6, background: "none", border: "none",
-                            color: "rgba(15,23,42,0.6)", fontSize: 13, fontWeight: 500, cursor: "pointer", padding: 0,
+                            color: CLAY.textMuted, fontSize: 13, fontWeight: 500, cursor: "pointer", padding: 0,
+                            fontFamily: CLAY.font,
                         }}
                     >
                         Sort by Name
@@ -281,13 +328,14 @@ export default function CollectionsPanel({
             {activeTab === "shared" && (
                 <div style={{
                     display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
-                    padding: "72px 24px", borderRadius: 14, background: "#fafbfe", border: "1px solid rgba(15,23,42,0.06)",
+                    padding: "72px 24px", borderRadius: 24, background: CLAY.surface,
+                    boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
                 }}>
                     <ComingSoonIcon />
-                    <h4 style={{ margin: "20px 0 8px", fontSize: 17, fontWeight: 700, color: "#0f172a" }}>
+                    <h4 style={{ margin: "20px 0 8px", fontSize: 17, fontWeight: 400, color: CLAY.textPrimary }}>
                         Shared collaboration is coming soon
                     </h4>
-                    <p style={{ margin: 0, fontSize: 13.5, color: "rgba(15,23,42,0.5)", maxWidth: 340, lineHeight: 1.5 }}>
+                    <p style={{ margin: 0, fontSize: 13.5, color: CLAY.textMuted, maxWidth: 340, lineHeight: 1.5 }}>
                         Invite teammates, share collections, and co-edit floorplans in real time — we&apos;re building it now.
                     </p>
                 </div>
@@ -297,13 +345,13 @@ export default function CollectionsPanel({
             {activeTab === "starred" && (
                 <>
                     {starredLoading && (
-                        <div style={{ textAlign: "center", padding: "48px 0", color: "rgba(15,23,42,0.45)", fontSize: 13.5 }}>
+                        <div style={{ textAlign: "center", padding: "48px 0", color: CLAY.textMuted, fontSize: 13.5 }}>
                             Loading starred projects…
                         </div>
                     )}
 
                     {!starredLoading && starredError && (
-                        <div style={{ textAlign: "center", padding: "48px 0", color: "#dc2626", fontSize: 13.5 }}>
+                        <div style={{ textAlign: "center", padding: "48px 0", color: "#c2483f", fontSize: 13.5 }}>
                             {starredError}
                         </div>
                     )}
@@ -311,22 +359,28 @@ export default function CollectionsPanel({
                     {!starredLoading && !starredError && filteredStarred.length === 0 && (
                         <div style={{
                             display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
-                            padding: "72px 24px", borderRadius: 14, background: "#fafbfe", border: "1px solid rgba(15,23,42,0.06)",
+                            padding: "72px 24px", borderRadius: 24, background: CLAY.surface,
+                            boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
                         }}>
                             <EmptyStarIcon />
-                            <h4 style={{ margin: "20px 0 8px", fontSize: 17, fontWeight: 700, color: "#0f172a" }}>
+                            <h4 style={{ margin: "20px 0 8px", fontSize: 17, fontWeight: 400, color: CLAY.textPrimary }}>
                                 {search ? "No starred projects match your search" : "No starred projects yet"}
                             </h4>
-                            <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "rgba(15,23,42,0.5)", maxWidth: 340, lineHeight: 1.5 }}>
+                            <p style={{ margin: "0 0 20px", fontSize: 13.5, color: CLAY.textMuted, maxWidth: 340, lineHeight: 1.5 }}>
                                 Star projects from the community to save them here.
                             </p>
                             {!search && (
                                 <button
                                     type="button"
                                     onClick={() => onNavigate?.("3d_viewer")}
+                                    onMouseEnter={() => setBrowseHovered(true)}
+                                    onMouseLeave={() => setBrowseHovered(false)}
                                     style={{
-                                        height: 36, padding: "0 18px", borderRadius: 8, border: "none",
-                                        background: "#0f172a", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                        height: 38, padding: "0 20px", borderRadius: 999, border: "none",
+                                        background: CLAY.surface, color: CLAY.textPrimary, fontSize: 13, fontWeight: 500,
+                                        cursor: "pointer", fontFamily: CLAY.font,
+                                        boxShadow: browseHovered ? clayRaised(true) : clayRaised(false),
+                                        transition: "box-shadow 180ms ease",
                                     }}
                                 >
                                     Browse Community
@@ -336,7 +390,7 @@ export default function CollectionsPanel({
                     )}
 
                     {!starredLoading && !starredError && filteredStarred.length > 0 && (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 24 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 24 }}>
                             {filteredStarred.map((p) => (
                                 <StarredCard key={p.id} project={p} onOpen={() => onOpenStarredProject?.(p.id)} onUnstar={handleUnstar} />
                             ))}
@@ -347,7 +401,7 @@ export default function CollectionsPanel({
 
             {/* All / Recent: real project grid */}
             {activeTab !== "shared" && activeTab !== "starred" && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 24 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 24 }}>
                     {filtered.map((c) => (
                         <CollectionCard
                             key={c.id}
@@ -364,7 +418,7 @@ export default function CollectionsPanel({
                     {filtered.length === 0 && (
                         <div style={{
                             gridColumn: "1 / -1", textAlign: "center", padding: "48px 0",
-                            color: "rgba(15,23,42,0.45)", fontSize: 13.5,
+                            color: CLAY.textMuted, fontSize: 13.5,
                         }}>
                             {search ? "No collections match your search." : "No projects yet — create one to get started."}
                         </div>
@@ -384,14 +438,20 @@ function StarredCard({
     onOpen: () => void;
     onUnstar: (id: string) => void;
 }) {
+    const [hovered, setHovered] = useState(false);
     return (
         <div style={{ display: "flex", flexDirection: "column" }}>
             <div
                 onClick={onOpen}
+                onMouseEnter={() => setHovered(true)}
+                onMouseLeave={() => setHovered(false)}
                 style={{
-                    aspectRatio: "4/3", borderRadius: 12, overflow: "hidden", cursor: "pointer",
-                    border: "1px solid rgba(15,23,42,0.08)",
-                    background: project.thumbnail_url ? "#f1f5f9" : "#e7ebfb",
+                    aspectRatio: "4/3", borderRadius: 20, overflow: "hidden", cursor: "pointer",
+                    background: CLAY.surface,
+                    boxShadow: hovered
+                        ? `inset 4px 4px 10px ${CLAY.darkShadow}, inset -4px -4px 10px ${CLAY.lightShadow}`
+                        : `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                    transition: "box-shadow 180ms ease",
                     display: "flex", alignItems: "center", justifyContent: "center",
                 }}
             >
@@ -404,13 +464,13 @@ function StarredCard({
 
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
                 <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: "0 0 3px", fontSize: 14.5, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <p style={{ margin: "0 0 3px", fontSize: 14.5, fontWeight: 500, color: CLAY.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {project.name}
                     </p>
-                    <p style={{ margin: "0 0 2px", fontSize: 12, color: "rgba(15,23,42,0.5)" }}>
+                    <p style={{ margin: "0 0 2px", fontSize: 12, color: CLAY.textMuted }}>
                         {project.author_name ? `by ${project.author_name}` : ""}
                     </p>
-                    <p style={{ margin: 0, fontSize: 11.5, color: "rgba(15,23,42,0.38)" }}>
+                    <p style={{ margin: 0, fontSize: 11.5, color: CLAY.textPlaceholder }}>
                         {starredAgo(project.starred_at)}
                     </p>
                 </div>
@@ -435,14 +495,22 @@ function CollectionCard({
     onToggleMenu: (e: React.MouseEvent) => void;
     onOpen: () => void;
 }) {
+    const [hovered, setHovered] = useState(false);
+    const [dotsHovered, setDotsHovered] = useState(false);
+
     return (
         <div style={{ display: "flex", flexDirection: "column" }}>
             <div
                 onClick={onOpen}
+                onMouseEnter={() => setHovered(true)}
+                onMouseLeave={() => setHovered(false)}
                 style={{
-                    aspectRatio: "4/3", borderRadius: 12, overflow: "hidden", cursor: "pointer",
-                    border: "1px solid rgba(15,23,42,0.08)",
-                    background: collection.thumbnail ? "#f1f5f9" : "#e7ebfb",
+                    aspectRatio: "4/3", borderRadius: 20, overflow: "hidden", cursor: "pointer",
+                    background: CLAY.surface,
+                    boxShadow: hovered
+                        ? `inset 4px 4px 10px ${CLAY.darkShadow}, inset -4px -4px 10px ${CLAY.lightShadow}`
+                        : `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                    transition: "box-shadow 180ms ease",
                     display: "flex", alignItems: "center", justifyContent: "center",
                 }}
             >
@@ -455,17 +523,25 @@ function CollectionCard({
 
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginTop: 12, position: "relative" }}>
                 <div>
-                    <p style={{ margin: "0 0 3px", fontSize: 14.5, fontWeight: 700, color: "#0f172a" }}>{collection.name}</p>
-                    <p style={{ margin: 0, fontSize: 12, color: "rgba(15,23,42,0.5)" }}>{collection.meta}</p>
+                    <p style={{ margin: "0 0 3px", fontSize: 14.5, fontWeight: 500, color: CLAY.textPrimary }}>{collection.name}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: CLAY.textMuted }}>{collection.meta}</p>
                 </div>
 
                 <button
                     type="button"
                     onClick={onToggleMenu}
+                    onMouseEnter={() => setDotsHovered(true)}
+                    onMouseLeave={() => setDotsHovered(false)}
                     aria-label="More options"
                     style={{
-                        background: "none", border: "none", cursor: "pointer", color: "rgba(15,23,42,0.4)",
-                        padding: 4, borderRadius: 6, flexShrink: 0,
+                        background: dotsHovered || menuOpen ? CLAY.surfaceChip : "none",
+                        border: "none", cursor: "pointer", color: CLAY.textMuted,
+                        width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: dotsHovered || menuOpen
+                            ? "inset 2px 2px 5px rgba(0,0,0,0.14), inset -2px -2px 5px rgba(255,255,255,0.7)"
+                            : "none",
+                        transition: "box-shadow 180ms ease, background 180ms ease",
                     }}
                 >
                     <DotsIcon />
@@ -475,9 +551,9 @@ function CollectionCard({
                     <div
                         onClick={(e) => e.stopPropagation()}
                         style={{
-                            position: "absolute", top: 26, right: 0, background: "#fff", borderRadius: 10,
-                            border: "1px solid rgba(15,23,42,0.08)", boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
-                            padding: 6, minWidth: 140, zIndex: 20,
+                            position: "absolute", top: 30, right: 0, background: CLAY.surface, borderRadius: 16,
+                            boxShadow: "0 16px 32px rgba(0,0,0,0.14), -4px -4px 10px rgba(255,255,255,0.6), 4px 4px 12px rgba(0,0,0,0.1)",
+                            padding: 6, minWidth: 150, zIndex: 20,
                         }}
                     >
                         {["Rename", "Share", "Archive"].map((label) => (
@@ -486,7 +562,8 @@ function CollectionCard({
                                 type="button"
                                 style={{
                                     display: "block", width: "100%", textAlign: "left", background: "none", border: "none",
-                                    padding: "8px 10px", fontSize: 13, color: "#0f172a", cursor: "pointer", borderRadius: 6,
+                                    padding: "9px 12px", fontSize: 13, color: CLAY.textPrimary, cursor: "pointer", borderRadius: 10,
+                                    fontFamily: CLAY.font, fontWeight: 500,
                                 }}
                             >
                                 {label}
@@ -496,7 +573,8 @@ function CollectionCard({
                             type="button"
                             style={{
                                 display: "block", width: "100%", textAlign: "left", background: "none", border: "none",
-                                padding: "8px 10px", fontSize: 13, color: "#dc2626", cursor: "pointer", borderRadius: 6,
+                                padding: "9px 12px", fontSize: 13, color: "#c2483f", cursor: "pointer", borderRadius: 10,
+                                fontFamily: CLAY.font, fontWeight: 500,
                             }}
                         >
                             Delete
@@ -509,25 +587,31 @@ function CollectionCard({
 }
 
 function NewFolderCard({ onClick }: { onClick?: () => void }) {
+    const [hovered, setHovered] = useState(false);
     return (
         <div
             onClick={onClick}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             style={{
-                aspectRatio: "4/3", borderRadius: 12, cursor: "pointer",
-                border: "1.5px dashed rgba(100,116,139,0.3)", background: "#fafbfe",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
+                aspectRatio: "4/3", borderRadius: 20, cursor: "pointer",
+                border: "none", background: CLAY.surface,
+                boxShadow: hovered ? clayRaised(true) : clayRaised(false),
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
                 textAlign: "center", padding: 16,
+                transition: "box-shadow 180ms ease",
             }}
         >
             <div style={{
-                width: 40, height: 40, borderRadius: 10, background: "#e0e7ff",
+                width: 42, height: 42, borderRadius: "50%", background: CLAY.surfaceChip,
                 display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.16)",
             }}>
-                <PlusIcon color="#0f172a" />
+                <PlusIcon />
             </div>
             <div>
-                <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Create New Folder</p>
-                <p style={{ margin: 0, fontSize: 12, color: "rgba(15,23,42,0.5)" }}>Organize your latest work</p>
+                <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 500, color: CLAY.textPrimary }}>Create New Folder</p>
+                <p style={{ margin: 0, fontSize: 12, color: CLAY.textMuted }}>Organize your latest work</p>
             </div>
         </div>
     );

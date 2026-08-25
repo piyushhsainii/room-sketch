@@ -2,6 +2,7 @@ import {
   FURNITURE_CATALOG,
   FURNITURE_MODELS,
 } from "../mesh/furniture-model-registry";
+import { GLB_DEFAULT_SIZE_MULTIPLIER } from "../mesh/GLTFFurnitureMesh";
 import { FurnitureCategory } from "./constants";
 
 export type FurnitureType =
@@ -76,11 +77,17 @@ export type PlacedFurniture = {
 export function getFurnitureFootprint(
   type: FurnitureType,
   scale: number | undefined,
-): { w: number; d: number } {
+) {
   const def = FURNITURE_MODELS[type];
   const s = scale ?? 1;
-  const w = (def?.defaultTargetWidth ?? def?.nativeSize?.[0] ?? 1) * s;
-  const d = (def?.defaultTargetDepth ?? def?.nativeSize?.[2] ?? 1) * s;
+  const w =
+    (def?.defaultTargetWidth ?? def?.nativeSize?.[0] ?? 1) *
+    s *
+    GLB_DEFAULT_SIZE_MULTIPLIER;
+  const d =
+    (def?.defaultTargetDepth ?? def?.nativeSize?.[2] ?? 1) *
+    s *
+    GLB_DEFAULT_SIZE_MULTIPLIER;
   return { w, d };
 }
 

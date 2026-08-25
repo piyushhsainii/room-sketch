@@ -4,7 +4,6 @@ import ComparisonStrip from "@/components/landing/ComparisonStrip";
 import Faq from "@/components/landing/FAQ";
 import FinalCta from "@/components/landing/FinalCta";
 import Footer from "@/components/landing/Footer";
-import Hero from "@/components/landing/Hero";
 import Hero2 from "@/components/landing/Hero2";
 import HowItWorks from "@/components/landing/HowItWorks";
 import Nav from "@/components/landing/Nav";

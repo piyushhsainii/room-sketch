@@ -4,7 +4,25 @@ import { APP } from "@/constants/content";
 import { PlanId } from "@/lib/pricing";
 import React from "react";
 
-export type ActiveFeature = "3d_viewer" | "collections" | "settings";
+// ---- Claymorphism theme tokens (shared with ProjectCard / CollectionsPanel) ----
+const CLAY = {
+  canvas: "#E5E5E5",
+  surface: "#EAEAEA",
+  surfaceChip: "#F5F5F5",
+  textPrimary: "#1A1A1A",
+  textMuted: "#5A5A5A",
+  textPlaceholder: "#999999",
+  lightShadow: "rgba(255,255,255,0.75)",
+  darkShadow: "rgba(0,0,0,0.14)",
+  font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+};
+
+const clayRaised = (pressed = false) =>
+  pressed
+    ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+    : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
+
+export type ActiveFeature = "3d_viewer" | "collections" | "community" | "settings";
 
 const FEATURE_TABS: { id: ActiveFeature; label: string; icon: React.ReactNode }[] = [
   {
@@ -25,6 +43,16 @@ const FEATURE_TABS: { id: ActiveFeature; label: string; icon: React.ReactNode }[
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
         <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
+    id: "community",
+    label: "Community",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3c2.5 2.7 4 6 4 9s-1.5 6.3-4 9c-2.5-2.7-4-6-4-9s1.5-6.3 4-9z" strokeLinecap="round" />
       </svg>
     ),
   },
@@ -60,32 +88,34 @@ export function Sidebar({
       data-open={open ? "true" : "false"}
       style={{
         width: 220,
-        background: "#ffffff",
-        borderRight: "1px solid rgba(15,15,15,0.08)",
+        background: CLAY.canvas,
+        border: "none",
+        boxShadow: "inset -8px 0 16px -12px rgba(0,0,0,0.12)",
         display: "flex",
         flexDirection: "column",
         height: "100%",
         overflow: "hidden",
         flexShrink: 0,
+        fontFamily: CLAY.font,
       }}
     >
       {/* Logo */}
       <div style={{ padding: "20px 18px 18px" }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(15,15,15,0.92)", letterSpacing: "-0.01em" }}>
+        <span style={{ fontSize: 15, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: "normal", display: "flex", alignItems: "center", gap: 6 }}>
           <img src="/room-sketch-logo-removebg-preview.png" alt="" className="w-12 rounded-full select-none" />
-          <img src="/room-sketch-text.jpg" alt="" className="w-16 rounded-full select-none" />
+          <img src="/room-sketch-text.jpg" alt="" className="w-24 rounded-full select-none" />
         </span>
       </div>
 
       {/* Section label */}
       <div style={{ padding: "6px 18px 8px" }}>
-        <span style={{ fontSize: 9.5, fontWeight: 600, color: "rgba(15,15,15,0.35)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+        <span style={{ fontSize: 9.5, fontWeight: 500, color: CLAY.textPlaceholder, textTransform: "uppercase", letterSpacing: "0.1em" }}>
           Menu
         </span>
       </div>
 
       {/* Nav items */}
-      <nav style={{ padding: "0 10px", display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+      <nav style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
         {FEATURE_TABS.map(tab => (
           <SidebarNavItem
             key={tab.id}
@@ -105,31 +135,33 @@ export function Sidebar({
           <>
             {plan === "free" && (
               <div style={{
-                background: "rgba(15,15,15,0.04)",
-                borderRadius: 10,
-                padding: "10px 12px",
+                background: CLAY.surface,
+                boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                borderRadius: 16,
+                padding: "12px 14px",
                 marginBottom: 12,
               }}>
                 <span style={{
                   display: "inline-block",
                   fontSize: 9.5,
-                  fontWeight: 700,
-                  padding: "2px 8px",
+                  fontWeight: 500,
+                  padding: "3px 10px",
                   borderRadius: 999,
-                  background: "#111111",
-                  color: "#ffffff",
+                  background: CLAY.surfaceChip,
+                  color: CLAY.textPrimary,
                   letterSpacing: "0.04em",
-                  marginBottom: 6,
+                  marginBottom: 8,
+                  boxShadow: "-2px -2px 5px rgba(255,255,255,0.75), 2px 2px 6px rgba(0,0,0,0.12)",
                 }}>
                   FREE PLAN
                 </span>
-                <div style={{ fontSize: 11, fontWeight: 400, lineHeight: 1.4, color: "rgba(15,15,15,0.6)", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 400, lineHeight: 1.4, color: CLAY.textMuted, marginBottom: 6 }}>
                   Unlock HD exports and unlimited projects.
                 </div>
                 <button
                   type="button"
                   onClick={() => { /* wire to upgrade flow */ }}
-                  style={{ fontSize: 11, fontWeight: 600, color: "rgba(15,15,15,0.85)", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}
+                  style={{ fontSize: 11, fontWeight: 500, color: CLAY.textPrimary, background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", fontFamily: CLAY.font }}
                 >
                   Upgrade Now
                 </button>
@@ -154,12 +186,19 @@ function SidebarNavItem({ label, icon, isActive, onClick }: { label: string; ico
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: "flex", alignItems: "center", gap: 9, width: "100%", height: 34,
-        padding: "0 10px", borderRadius: 7, border: "none",
-        background: isActive ? "rgba(15,15,15,0.06)" : hovered ? "rgba(15,15,15,0.03)" : "transparent",
-        color: isActive ? "rgba(15,15,15,0.95)" : "rgba(15,15,15,0.55)",
-        fontSize: 13, fontWeight: isActive ? 600 : 400, cursor: "pointer",
-        transition: "background 140ms ease, color 140ms ease", textAlign: "left",
+        display: "flex", alignItems: "center", gap: 10, width: "100%", height: 36,
+        padding: "0 12px", borderRadius: 12, border: "none",
+        background: isActive ? CLAY.surface : "transparent",
+        color: isActive ? CLAY.textPrimary : CLAY.textMuted,
+        fontSize: 13, fontWeight: isActive ? 500 : 400, cursor: "pointer",
+        fontFamily: CLAY.font,
+        boxShadow: isActive
+          ? clayRaised(true)
+          : hovered
+            ? clayRaised(false)
+            : "none",
+        transition: "box-shadow 180ms ease, background 180ms ease, color 140ms ease",
+        textAlign: "left",
       }}
     >
       <span style={{ display: "inline-flex", width: 15, height: 15, flexShrink: 0 }}>{icon}</span>
@@ -169,14 +208,22 @@ function SidebarNavItem({ label, icon, isActive, onClick }: { label: string; ico
 }
 
 function SidebarSignOutButton({ onClick, label }: { onClick: () => void; label: string }) {
+  const [hovered, setHovered] = React.useState(false);
   return (
     <button
       type="button"
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display: "flex", alignItems: "center", gap: 7, width: "100%", height: 28,
-        border: "none", background: "transparent", color: "rgba(15,15,15,0.5)",
-        fontSize: 12.5, fontWeight: 400, cursor: "pointer", padding: 0,
+        display: "flex", alignItems: "center", gap: 8, width: "100%", height: 32,
+        border: "none", background: hovered ? CLAY.surface : "transparent",
+        borderRadius: 10,
+        boxShadow: hovered ? clayRaised(true) : "none",
+        color: CLAY.textMuted,
+        fontSize: 12.5, fontWeight: 400, cursor: "pointer", padding: "0 8px",
+        fontFamily: CLAY.font,
+        transition: "box-shadow 180ms ease, background 180ms ease",
       }}
     >
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">

@@ -1,35 +1,45 @@
 import { useState } from 'react'
 
-const DOCK = {
-    bg: '#18181B',
-    border: 'rgba(255,255,255,0.08)',
-    text: '#E4E4E7',
-    textMuted: '#A1A1AA',
-    textFaint: '#71717A',
-    activeBg: 'rgba(165,168,255,0.18)',
-    activeText: '#C7C9FF',
-    divider: 'rgba(255,255,255,0.1)',
-    shadow: '0 10px 30px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.25)',
+// ---- Claymorphism theme tokens (shared across the app) ----
+const CLAY = {
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    accentSoft: "rgba(99,102,241,0.14)",
+    accentText: "#4C4FBF",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
 }
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`
+        : `-3px -3px 7px ${CLAY.lightShadow}, 3px 3px 8px ${CLAY.darkShadow}`
 
 function DockButton({ active, disabled, onClick, icon, label }: {
     active?: boolean; disabled?: boolean; onClick: () => void; icon: React.ReactNode; label: string
 }) {
+    const [hovered, setHovered] = useState(false)
     return (
         <button
             onClick={onClick}
             disabled={disabled}
             title={label}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             style={{
-                height: 30, padding: '0 10px', borderRadius: 999, border: 'none',
-                background: active ? DOCK.activeBg : 'transparent',
-                color: active ? DOCK.activeText : disabled ? DOCK.textFaint : DOCK.textMuted,
-                fontSize: 11, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
-                transition: 'background 120ms, color 120ms',
+                height: 32, padding: '0 12px', borderRadius: 999, border: 'none',
+                background: active ? CLAY.accentSoft : (hovered && !disabled) ? CLAY.surfaceChip : 'transparent',
+                color: active ? CLAY.accentText : disabled ? CLAY.textPlaceholder : CLAY.textPrimary,
+                fontSize: 11.5, fontWeight: active ? 500 : 400, fontFamily: CLAY.font,
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+                boxShadow: active ? clayRaised(true) : (hovered && !disabled) ? clayRaised(true) : 'none',
+                transition: 'background 160ms ease, box-shadow 160ms ease, color 160ms ease',
             }}
-            onMouseEnter={e => { if (!active && !disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
-            onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
         >
             {icon}
             {label}
@@ -38,37 +48,44 @@ function DockButton({ active, disabled, onClick, icon, label }: {
 }
 
 function DockDivider() {
-    return <div style={{ width: 1, height: 18, background: DOCK.divider, flexShrink: 0 }} />
+    return <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.08)', flexShrink: 0 }} />
 }
 
 // ── Toggle row used inside the Display hover panel ──────────────────────
 function ToggleRow({ icon, label, checked, onChange }: {
     icon: React.ReactNode; label: string; checked: boolean; onChange: () => void
 }) {
+    const [hovered, setHovered] = useState(false)
     return (
         <div
             onClick={onChange}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                borderRadius: 6, fontSize: 12.5, color: DOCK.text, cursor: 'pointer',
-                transition: 'background 100ms',
+                display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px',
+                borderRadius: 12, fontSize: 12.5, color: CLAY.textPrimary, cursor: 'pointer',
+                fontFamily: CLAY.font,
+                background: hovered ? CLAY.surfaceChip : 'transparent',
+                boxShadow: hovered ? clayRaised(true) : 'none',
+                transition: 'background 160ms ease, box-shadow 160ms ease',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
         >
-            <span style={{ color: DOCK.textMuted, display: 'flex' }}>{icon}</span>
+            <span style={{ color: CLAY.textMuted, display: 'flex' }}>{icon}</span>
             <span style={{ flex: 1 }}>{label}</span>
-            {/* Small pill switch, matches the dark dock aesthetic instead of
-                a native checkbox */}
+            {/* Small pill switch, matching the clay aesthetic instead of a
+                native checkbox */}
             <div style={{
-                width: 30, height: 17, borderRadius: 999, flexShrink: 0,
-                background: checked ? DOCK.activeText : 'rgba(255,255,255,0.15)',
+                width: 32, height: 18, borderRadius: 999, flexShrink: 0,
+                background: checked ? CLAY.accentSoft : CLAY.surface,
+                boxShadow: `inset 2px 2px 5px ${CLAY.darkShadow}, inset -2px -2px 5px ${CLAY.lightShadow}`,
                 position: 'relative', transition: 'background 150ms',
             }}>
                 <div style={{
-                    position: 'absolute', top: 2, left: checked ? 15 : 2,
-                    width: 13, height: 13, borderRadius: '50%', background: checked ? '#18181B' : DOCK.textFaint,
-                    transition: 'left 150ms',
+                    position: 'absolute', top: 2, left: checked ? 16 : 2,
+                    width: 14, height: 14, borderRadius: '50%',
+                    background: checked ? CLAY.accentText : CLAY.textPlaceholder,
+                    boxShadow: '-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.18)',
+                    transition: 'left 150ms, background 150ms',
                 }} />
             </div>
         </div>
@@ -76,7 +93,7 @@ function ToggleRow({ icon, label, checked, onChange }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// FloatingDock — Walk Mode, Interactive toggle, Display menu (hover-opened,
+// FloatingMenu — Walk Mode, Interactive toggle, Display menu (hover-opened,
 // scale-up transition — now hosts Grid / Furniture / Labels / Floor plan
 // annotations), Camera Views, Preview toggle.
 // ─────────────────────────────────────────────────────────────────────────
@@ -107,13 +124,17 @@ export function FloatingMenu({
     cameraViewPickerSlot: React.ReactNode
 }) {
     const [displayOpen, setDisplayOpen] = useState(false)
+    const [gridHovered, setGridHovered] = useState(false)
+    const [annotationsHovered, setAnnotationsHovered] = useState(false)
 
     return (
         <div
             style={{
-                display: 'flex', alignItems: 'center', gap: 2,
-                background: DOCK.bg, border: `1px solid ${DOCK.border}`, borderRadius: 999,
-                padding: '5px 6px', boxShadow: DOCK.shadow,
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: CLAY.surface, border: 'none', borderRadius: 999,
+                padding: '6px 8px',
+                boxShadow: `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
+                fontFamily: CLAY.font,
             }}
         >
             <DockButton
@@ -160,31 +181,40 @@ export function FloatingMenu({
                 />
                 {/* Invisible bridge so the mouse can travel from the button
                     down to the panel without a mouseleave gap closing it */}
-                {displayOpen && <div style={{ position: 'absolute', top: 30, left: 0, right: 0, height: 10 }} />}
+                {displayOpen && <div style={{ position: 'absolute', top: 32, left: 0, right: 0, height: 10 }} />}
                 <div
                     style={{
-                        position: 'absolute', top: 40, right: 0,
-                        minWidth: 210, background: DOCK.bg, border: `1px solid ${DOCK.border}`,
-                        borderRadius: 10, padding: 6, boxShadow: DOCK.shadow,
+                        position: 'absolute', top: 42, right: 0,
+                        minWidth: 220, background: CLAY.surface, border: 'none',
+                        borderRadius: 18, padding: 8,
+                        boxShadow: `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
                         transformOrigin: 'top right',
                         transform: displayOpen ? 'scale(1)' : 'scale(0.92)',
                         opacity: displayOpen ? 1 : 0,
                         pointerEvents: displayOpen ? 'auto' : 'none',
                         transition: 'transform 140ms cubic-bezier(0.16,1,0.3,1), opacity 120ms ease-out',
+                        fontFamily: CLAY.font,
                     }}
                 >
-                    <div style={{
-                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                        borderRadius: 6, fontSize: 12.5, color: DOCK.text,
-                    }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DOCK.textMuted} strokeWidth="2">
+                    <div
+                        onMouseEnter={() => setGridHovered(true)}
+                        onMouseLeave={() => setGridHovered(false)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px',
+                            borderRadius: 12, fontSize: 12.5, color: CLAY.textPrimary, cursor: 'pointer',
+                            background: gridHovered ? CLAY.surfaceChip : 'transparent',
+                            boxShadow: gridHovered ? clayRaised(true) : 'none',
+                            transition: 'background 160ms ease, box-shadow 160ms ease',
+                        }}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={CLAY.textMuted} strokeWidth="2">
                             <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
                             <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
                         </svg>
                         <span style={{ flex: 1 }}>Grid</span>
                     </div>
 
-                    <div style={{ height: 1, background: DOCK.divider, margin: '4px 2px' }} />
+                    <div style={{ height: 1, boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`, margin: '6px 4px' }} />
 
                     <ToggleRow
                         label="Furniture"
@@ -210,20 +240,24 @@ export function FloatingMenu({
                         }
                     />
 
-                    <div style={{ height: 1, background: DOCK.divider, margin: '4px 2px' }} />
+                    <div style={{ height: 1, boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`, margin: '6px 4px' }} />
 
-                    <div style={{
-                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                        borderRadius: 6, fontSize: 12.5, color: DOCK.text, cursor: 'pointer',
-                    }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    <div
+                        onMouseEnter={() => setAnnotationsHovered(true)}
+                        onMouseLeave={() => setAnnotationsHovered(false)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px',
+                            borderRadius: 12, fontSize: 12.5, color: CLAY.textPrimary, cursor: 'pointer',
+                            background: annotationsHovered ? CLAY.surfaceChip : 'transparent',
+                            boxShadow: annotationsHovered ? clayRaised(true) : 'none',
+                            transition: 'background 160ms ease, box-shadow 160ms ease',
+                        }}
                     >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DOCK.textMuted} strokeWidth="2">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={CLAY.textMuted} strokeWidth="2">
                             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
                         </svg>
                         <span style={{ flex: 1 }}>Floor plan annotations</span>
-                        <span style={{ color: DOCK.textFaint }}>›</span>
+                        <span style={{ color: CLAY.textPlaceholder }}>›</span>
                     </div>
                 </div>
             </div>

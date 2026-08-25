@@ -65,20 +65,20 @@ const ROWS: Row[] = [
 function VerdictIcon({ verdict }: { verdict: Verdict }) {
     if (verdict === "yes") {
         return (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <path d="M20 6L9 17l-5-5" />
             </svg>
         );
     }
     if (verdict === "no") {
         return (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <path d="M18 6L6 18M6 6l12 12" />
             </svg>
         );
     }
     return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
             <path d="M5 12h14" />
         </svg>
     );
@@ -116,7 +116,7 @@ export default function ComparisonStrip() {
                     </p>
                 </div>
 
-                <div className="cmp-table-scroll">
+                <div className="cmp-panel">
                     <div className="cmp-table" role="table">
                         <div className="cmp-row cmp-row-head" role="row">
                             <div className="cmp-cell cmp-cell-label" role="columnheader" />
@@ -167,25 +167,25 @@ export default function ComparisonStrip() {
 
             <style jsx>{`
         .cmp {
-          --ink: #12213e;
-          --ink-2: #1b2e52;
-          --paper: #f7f6f1;
-          --line: #c9c3b4;
-          --amber: #f2a81d;
-          --amber-2: #d98e0b;
-          --teal: #3fa8a0;
-          --bad: #c65b4e;
-          background: var(--paper);
+          --canvas: #e5e5e5;
+          --surface: #eaeaea;
+          --ink: #1a1a1a;
+          --muted: #666;
+          --meta: #999;
+          --shadow-light: rgba(255, 255, 255, 0.7);
+          --shadow-dark: rgba(0, 0, 0, 0.12);
+          background: var(--canvas);
           padding: 96px 0;
+          font-family: "Quicksand", "Nunito", sans-serif;
         }
         .cmp-wrap {
-          max-width: 1180px;
+          max-width: 1100px;
           margin: 0 auto;
-          padding: 0 28px;
+          padding: 0 24px;
         }
         .cmp-head {
           max-width: 640px;
-          margin: 0 0 44px;
+          margin: 0 0 40px;
           opacity: 0;
           transform: translateY(14px);
           transition: opacity 0.6s ease, transform 0.6s ease;
@@ -195,31 +195,37 @@ export default function ComparisonStrip() {
           transform: translateY(0);
         }
         .cmp-eyebrow {
-          font-family: "JetBrains Mono", monospace;
-          font-size: 12px;
-          letter-spacing: 0.14em;
+          display: inline-block;
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0.1em;
           text-transform: uppercase;
-          color: var(--amber-2);
+          color: #556;
+          margin-bottom: 14px;
+          padding: 6px 16px;
+          border-radius: 999px;
+          background: linear-gradient(135deg, rgba(163, 224, 193, 0.28), rgba(168, 178, 230, 0.28)), var(--surface);
+          box-shadow: -4px -4px 10px var(--shadow-light), 4px 4px 12px var(--shadow-dark);
         }
         .cmp-head h2 {
-          font-family: "Space Grotesk", sans-serif;
           font-size: clamp(26px, 3vw, 38px);
+          font-weight: 500;
           color: var(--ink);
-          margin: 12px 0 14px;
-          letter-spacing: -0.01em;
+          margin: 4px 0 12px;
+          letter-spacing: -0.02em;
         }
         .cmp-head p {
-          font-size: 16.5px;
-          color: #4b5875;
+          font-size: 15px;
+          color: var(--muted);
           margin: 0;
-          line-height: 1.55;
+          line-height: 1.6;
         }
 
-        .cmp-table-scroll {
+        .cmp-panel {
           overflow-x: auto;
-          border-radius: 12px;
-          border: 1px solid var(--line);
-          background: #fff;
+          border-radius: 30px;
+          background: var(--surface);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
         }
         .cmp-table {
           min-width: 720px;
@@ -228,10 +234,10 @@ export default function ComparisonStrip() {
           display: grid;
           grid-template-columns: 1.4fr 1fr 1fr 1fr;
           align-items: center;
-          border-bottom: 1px solid var(--line);
+          border-bottom: 1px solid rgba(0, 0, 0, 0.06);
           opacity: 0;
           transform: translateY(10px);
-          transition: opacity 0.5s ease, transform 0.5s ease, background 0.15s ease;
+          transition: opacity 0.5s ease, transform 0.5s ease;
         }
         .cmp-visible .cmp-row {
           opacity: 1;
@@ -240,42 +246,36 @@ export default function ComparisonStrip() {
         .cmp-row:last-child {
           border-bottom: none;
         }
-        .cmp-row:not(.cmp-row-head):hover {
-          background: #faf9f5;
-        }
         .cmp-row-head {
-          background: var(--ink);
-          border-bottom: none;
+          background: transparent;
         }
         .cmp-cell {
-          padding: 16px 20px;
-          font-size: 14px;
+          padding: 18px 20px;
+          font-size: 13.5px;
           color: var(--ink);
           display: flex;
           align-items: center;
           gap: 8px;
         }
         .cmp-cell-label {
-          font-weight: 600;
-          font-size: 14.5px;
+          font-weight: 500;
+          font-size: 14px;
           color: var(--ink);
         }
         .cmp-cell-col {
-          font-family: "Space Grotesk", sans-serif;
-          font-weight: 600;
-          font-size: 15px;
-          color: var(--paper);
+          font-weight: 500;
+          font-size: 13.5px;
+          color: var(--meta);
         }
         .cmp-col-primary {
-          background: rgba(242, 168, 29, 0.08);
-          position: relative;
+          color: var(--ink);
         }
         .cmp-row-head .cmp-col-primary {
-          background: rgba(242, 168, 29, 0.16);
-          color: var(--amber);
+          color: #1a1a1a;
+          font-weight: 600;
         }
         .cmp-label-text {
-          color: #4b5875;
+          color: var(--muted);
         }
         .cmp-col-primary .cmp-label-text {
           color: var(--ink);
@@ -284,30 +284,29 @@ export default function ComparisonStrip() {
 
         .cmp-badge {
           flex: none;
-          width: 22px;
-          height: 22px;
-          border-radius: 6px;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          background: #f5f5f5;
+          box-shadow: -3px -3px 6px var(--shadow-light), 3px 3px 8px var(--shadow-dark);
         }
         .cmp-yes {
-          background: rgba(63, 168, 160, 0.14);
-          color: var(--teal);
+          color: #3fa88a;
         }
         .cmp-no {
-          background: rgba(198, 91, 78, 0.12);
-          color: var(--bad);
+          color: #c65b4e;
         }
         .cmp-partial {
-          background: rgba(18, 33, 62, 0.08);
-          color: #7b869e;
+          color: #999;
         }
 
         @media (max-width: 720px) {
           .cmp-cell {
             padding: 14px 14px;
-            font-size: 13px;
+            font-size: 12.5px;
           }
           .cmp-label-text {
             display: none;

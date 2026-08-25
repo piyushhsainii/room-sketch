@@ -1,156 +1,169 @@
+"use client";
+
+interface Item {
+  code: string;
+  title: string;
+  desc: string;
+  tags: string[];
+  image: string;
+}
+
+const ITEMS: Item[] = [
+  {
+    code: "A-101",
+    title: "Floor plan → live 3D",
+    desc: "Node-based drawing with real-metre coordinates — rooms, walls, doors, windows, stairs, per-segment wall types (solid, railing, open). Every edit renders instantly in a synced 3D split view, no re-modeling step.",
+    tags: ["Node editor", "Real units", "Real-time 3D sync"],
+    image: "https://picsum.photos/seed/roomsketch-plan/240/240",
+  },
+  {
+    code: "A-150",
+    title: "Snapshot exports",
+    desc: "Capture any floor or room as a 2D or 3D image from any camera angle — top-down for plans, eye-level for presentation, anything in between.",
+    tags: ["2D + 3D export", "Any angle", "Per floor/room"],
+    image: "https://picsum.photos/seed/roomsketch-snapshot/240/240",
+  },
+  {
+    code: "A-401",
+    title: "Materials",
+    desc: "50+ materials across walls, floors, doors and furniture in one registry — swap a finish per room, per wall face, and see it update instantly.",
+    tags: ["50+ materials", "Per-room control", "Pro"],
+    image: "https://picsum.photos/seed/roomsketch-materials/240/240",
+  },
+  {
+    code: "A-301",
+    title: "Walkthrough",
+    desc: "First-person Walk Mode moves a client through the space at eye level, not from above — see it exactly as they would standing in the room.",
+    tags: ["Walk Mode", "Pro"],
+    image: "https://picsum.photos/seed/roomsketch-walk/240/240",
+  },
+  {
+    code: "A-501",
+    title: "Live shareable link",
+    desc: "Send a link and anyone can explore your active floor's 3D model in the browser — orbit, zoom, walk through, no account or install needed.",
+    tags: ["Interactive 3D", "No sign-up", "Active floor"],
+    image: "https://picsum.photos/seed/roomsketch-share/240/240",
+  },
+  {
+    code: "A-601",
+    title: "Community spotlight",
+    desc: "Standout designs get picked for the community showcase — a chance to get your floor plan seen and featured.",
+    tags: ["Featured designs", "Community showcase"],
+    image: "https://picsum.photos/seed/roomsketch-community/240/240",
+  },
+];
+
 export default function Capabilities() {
   return (
-    <section id="capabilities" className="py-24 px-6 md:px-10 bg-[#FBF6EC] border-b border-line">
+    <section
+      id="capabilities"
+      className="py-24 px-6 md:px-10"
+      style={{ background: "#E5E5E5", fontFamily: "'Quicksand','Nunito',sans-serif" }}
+    >
       <div className="max-w-[1100px] mx-auto">
         <div className="reveal mb-4">
-          <span className="font-mono text-[10px] font-medium text-blue uppercase tracking-[0.1em] block mb-3">
-            The drawing set
+          <span
+            className="inline-block text-[11px] font-medium uppercase tracking-[0.1em] mb-4 px-4 py-[6px] rounded-full"
+            style={{
+              color: "#556",
+              background:
+                "linear-gradient(135deg, rgba(163,224,193,0.28), rgba(168,178,230,0.28)), #EAEAEA",
+              boxShadow:
+                "-4px -4px 10px rgba(255,255,255,0.7), 4px 4px 12px rgba(0,0,0,0.10)",
+            }}
+          >
+            Suggest for you
           </span>
-          <h2 className="font-display text-[1.9rem] md:text-[2.6rem] tracking-[-0.025em] text-ink leading-[1.1] mb-3">
-            Every sheet you need, <em className="italic">in one editor.</em>
+          <h2
+            className="text-[1.9rem] md:text-[2.6rem] tracking-[-0.02em] leading-[1.1] mb-3"
+            style={{ color: "#1A1A1A", fontWeight: 500 }}
+          >
+            Every sheet you need, <em className="italic" style={{ fontWeight: 500 }}>in one editor.</em>
           </h2>
-          <p className="text-[13.5px] font-light text-muted max-w-[440px] leading-[1.7]">
+          <p className="text-[14px] font-normal max-w-[440px] leading-[1.7]" style={{ color: "#666" }}>
             Like a real drawing set, each part of RoomSketch is numbered and cross-referenced —
             plan, model, finishes, walkthrough, revisions.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12 md:auto-rows-[260px]">
-          {/* Floor plan editor — tall */}
-          <Sheet
-            code="A-101"
-            title="Floor plan"
-            desc="Node-based drawing. Rooms, walls, doors, windows, stairs — every coordinate is real metres. Set each wall to solid, railing or open per segment."
-            tags={["Node editor", "Real units", "3 wall types"]}
-            className="md:row-span-2"
-          >
-            <PlanIcon />
-          </Sheet>
-
-          {/* Live 3D */}
-          <Sheet
-            code="A-201"
-            title="Live 3D model"
-            desc="Your plan renders as a full 3D scene in a resizable split view — add a wall, watch it appear on the right, no re-modeling."
-            tags={["Real-time sync", "Resizable split view"]}
-          >
-            <CubeIcon />
-          </Sheet>
-
-          {/* Scene config */}
-          <Sheet
-            code="A-401"
-            title="Materials"
-            desc="60+ materials across walls, floors, doors and furniture, in one registry — swap a finish per room and see it update instantly."
-            tags={["60+ materials", "Per-room control", "Pro"]}
-          >
-            <SwatchIcon />
-          </Sheet>
-
-          {/* Walk mode */}
-          <Sheet
-            code="A-301"
-            title="Walkthrough"
-            desc="First-person Walk Mode moves a client through the space at eye level, not from above — see it exactly as they would standing in the room."
-            tags={["Walk Mode", "Pro"]}
-          >
-            <WalkIcon />
-          </Sheet>
-
-          {/* Duplicate & undo */}
-          <Sheet
-            code="A-501"
-            title="Duplicate & undo"
-            desc="Duplicate or mirror any room or furniture group instead of redrawing it — and every edit is a step you can undo."
-            tags={["Duplicate & mirror", "Undo history"]}
-          >
-            <HistoryIcon />
-          </Sheet>
+        <div
+          className="rounded-[30px] mt-12 overflow-hidden"
+          style={{ background: "#EAEAEA", boxShadow: "0 20px 40px rgba(0,0,0,0.10)" }}
+        >
+          {ITEMS.map((item, i) => (
+            <Row key={item.code} item={item} last={i === ITEMS.length - 1} />
+          ))}
         </div>
       </div>
     </section>
   );
 }
 
-function Sheet({
-  code,
-  title,
-  desc,
-  tags,
-  children,
-  className = "",
-}: {
-  code: string;
-  title: string;
-  desc: string;
-  tags: string[];
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Row({ item, last }: { item: Item; last: boolean }) {
   return (
     <div
-      className={`reveal relative bg-paper border border-line rounded-[8px] p-6 flex flex-col shadow-sheet ${className}`}
+      className="reveal relative flex flex-col md:flex-row items-stretch gap-6 md:gap-8 px-6 md:px-8 py-7"
+      style={!last ? { borderBottom: "1px solid #00000010" } : undefined}
     >
-      <div className="flex items-start justify-between mb-5">
-        <span className="font-sans text-[10px] text-black tracking-tight">{code}</span>
-        <div className="w-9 h-9  bg-blue-soft  flex items-center justify-center text-blue">
-          {children}
-        </div>
+      {/* Image preview card — 50% width, tall enough to actually read */}
+      <div
+        className="w-full md:w-1/2 h-56 md:h-72 rounded-[20px] overflow-hidden shrink-0"
+        style={{
+          background: "#F5F5F5",
+          boxShadow:
+            "-6px -6px 12px rgba(255,255,255,0.75), 6px 6px 16px rgba(0,0,0,0.12)",
+        }}
+      >
+        <img
+          src={item.image}
+          alt={item.title}
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
       </div>
-      <h3 className="font-sans text-[1.25rem] text-ink tracking-[-0.015em] mb-2 leading-tight">{title}</h3>
-      <p className="text-[14px] font-sans font-normal text-black leading-[1.7] tracking-tight mb-4 flex-1">{desc}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {tags.map((t, i) => (
-          <span key={i} className="font-sans text-[9.5px] text-blue bg-blue-soft border border-blue-border rounded-[4px] px-2 py-[3px]">
-            {t}
-          </span>
-        ))}
+
+      <div className="w-full md:w-1/2 flex flex-col justify-center min-w-0">
+        <div className="flex items-center justify-between gap-4 mb-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[18px] md:text-[20px] leading-tight" style={{ color: "#1A1A1A", fontWeight: 500 }}>
+              {item.title}
+            </span>
+            <span className="text-[10px] tracking-wide" style={{ color: "#999" }}>
+              {item.code}
+            </span>
+          </div>
+          <ChevronIcon />
+        </div>
+
+        <p className="text-[14px] font-normal leading-[1.7] mb-4" style={{ color: "#666" }}>
+          {item.desc}
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          {item.tags.map((t, i) => (
+            <span
+              key={i}
+              className="text-[10.5px] rounded-full px-3 py-[5px]"
+              style={{
+                color: "#556",
+                background: "#EAEAEA",
+                boxShadow:
+                  "-3px -3px 6px rgba(255,255,255,0.7), 3px 3px 8px rgba(0,0,0,0.10)",
+              }}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function PlanIcon() {
+function ChevronIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <rect x="2" y="2" width="14" height="14" stroke="currentColor" strokeWidth="1.2" />
-      <line x1="2" y1="9" x2="9" y2="9" stroke="currentColor" strokeWidth="1" />
-      <line x1="9" y1="2" x2="9" y2="9" stroke="currentColor" strokeWidth="1" />
-      <circle cx="2" cy="2" r="1.1" fill="currentColor" />
-      <circle cx="16" cy="9" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
-function CubeIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M9 2l7 3.5v7L9 16l-7-3.5v-7L9 2z" stroke="currentColor" strokeWidth="1.1" fill="none" />
-      <path d="M2 5.5L9 9l7-3.5M9 9v7" stroke="currentColor" strokeWidth="1" />
-    </svg>
-  );
-}
-function SwatchIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <circle cx="6" cy="6" r="3.3" stroke="currentColor" strokeWidth="1.1" />
-      <circle cx="12" cy="6" r="3.3" stroke="currentColor" strokeWidth="1.1" />
-      <circle cx="9" cy="12" r="3.3" stroke="currentColor" strokeWidth="1.1" />
-    </svg>
-  );
-}
-function WalkIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <circle cx="9" cy="3.5" r="1.6" stroke="currentColor" strokeWidth="1.1" />
-      <path d="M9 6v5M9 11l-3 5M9 11l3 5M6 8l3-1 3 1" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
-    </svg>
-  );
-}
-function HistoryIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1.1" />
-      <path d="M9 5v4l3 2" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 mt-1">
+      <path d="M6 3.5L10.5 8L6 12.5" stroke="#888" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

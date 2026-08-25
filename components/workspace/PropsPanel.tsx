@@ -13,9 +13,6 @@ import { FURNITURE_LABELS } from "./lib/furniture-constants"
 import { DEFAULT_RAILING, DEFAULT_SKIRT, DEFAULT_TREAD, FlightRailingConfig, RailingSideConfig } from "./objects/stair-config"
 import { RAILING_STYLE_LABELS, RailingStyle } from "./lib/stairs-constants"
 
-// Every door geometry variant DoorVariant3D actually knows how to render
-// (its switch-case keys) — kept here so the "Type" dropdown can't offer an
-// option that silently falls through to the default single-swing door.
 const DOOR_VARIANT_OPTIONS = [
     'door-swing-single',
     'door-swing-double',
@@ -506,15 +503,6 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                             </>
                         ) : (
                             <>
-                                {/* Bulk-writes seg.thickness across every segment forming this
-                        area's perimeter loop (via segmentsForShape). There is no
-                        separate ClosedShape.thickness field — line-walls-3d.tsx reads
-                        thickness per-segment, so this is a multi-write convenience,
-                        the same pattern already used below for Wall height/type.
-                        Segments in the loop can have diverging thickness if a user
-                        previously edited one individually via the segment panel —
-                        this shows the first segment's value and, on change, snaps
-                        every segment in the loop to the new value. */}
                                 <PropField label="Thickness (m)">
                                     <RangeRow
                                         value={Math.round((segmentsForShape(shape, fp.lineSegments)[0]?.thickness ?? 0.15) * 100)}
@@ -705,8 +693,15 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         const guard = cutoutShape.cutout?.guard
                         const guardOverride = guard && guardEdgeId ? guard.edgeOverrides?.[guardEdgeId] : undefined
                         const effType = guardOverride?.type ?? guard?.type ?? 'wall'
+                        const effMaterial = guardOverride?.material ?? guard?.material
 
-                        const patchThisEdge = (patch: Partial<{ type: 'wall' | 'railing' | 'open'; height: number; railingStyle: RailingStyle }>) => {
+                        const patchThisEdge = (patch: Partial<{
+                            type: 'wall' | 'railing' | 'open'
+                            height: number
+                            railingStyle: RailingStyle
+                            material: WallMaterial | undefined
+                            color: string | undefined
+                        }>) => {
                             if (!guard || !guardEdgeId) return
                             const nextOverride = { ...(guard.edgeOverrides?.[guardEdgeId] ?? { type: guard.type }), ...patch }
                             onChange({
@@ -736,6 +731,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                         onChange={type => patchThisEdge({ type })}
                                     />
                                 </PropField>
+
                                 {effType === 'railing' && (
                                     <PropField label="Rail Style">
                                         <select
@@ -748,6 +744,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                         </select>
                                     </PropField>
                                 )}
+
                                 {effType !== 'open' && (
                                     <PropField label="Height (m)">
                                         <NumInput
@@ -756,6 +753,17 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                                             onChange={v => patchThisEdge({ height: v })}
                                         />
                                     </PropField>
+                                )}
+
+                                {effType === 'wall' && (
+                                    <MaterialTexturePicker
+                                        label="Guard Wall Texture"
+                                        items={wallMaterials}
+                                        currentId={effMaterial}
+                                        onSelect={(id) => patchThisEdge({ material: id as WallMaterial })}
+                                        onClear={() => patchThisEdge({ material: undefined })}
+                                        theme={pickerTheme}
+                                    />
                                 )}
                             </Card>
                         )

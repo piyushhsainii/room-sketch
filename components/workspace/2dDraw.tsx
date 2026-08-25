@@ -1068,7 +1068,7 @@ export function draw2D(
     for (const f of fp.furniture ?? []) {
         if (!showFurniture) continue
         const fp2 = getFurnitureFootprint(f.type, f.scale)
-        const fw = fp2.w * scale
+        const fw = fp2.w * scale   // `scale` here is the canvas zoom, not furniture scale
         const fd = fp2.d * scale
         const fx = toCanvas(f.x, pan.x, zoom)
         const fz = toCanvas(f.z, pan.y, zoom)

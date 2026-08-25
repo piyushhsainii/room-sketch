@@ -1,5 +1,4 @@
 import { Smartphone, Box, Home, Share2 } from "lucide-react";
-import DotGrid from "./DotGrid";
 
 const steps = [
   {
@@ -30,14 +29,32 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section className="relative py-28 px-6 md:px-10 bg-paper border-b border-line overflow-hidden">
+    <section
+      id="how-it-works"
+      className="relative py-28 px-6 md:px-10 overflow-hidden"
+      style={{ background: "#E5E5E5", fontFamily: "'Quicksand','Nunito',sans-serif" }}
+    >
       <div className="relative z-10 max-w-[1200px] mx-auto">
-        <div className=" text-center mb-16">
-          <h2 className=" font-sans text-[3rem] md:text-[4.4rem] leading-[0.9] tracking-tighter text-ink mb-7">
+        <div className="text-center mb-16">
+          <span
+            className="inline-block text-[11px] font-medium uppercase tracking-[0.1em] mb-5 px-4 py-[6px] rounded-full"
+            style={{
+              color: "#556",
+              background:
+                "linear-gradient(135deg, rgba(163,224,193,0.28), rgba(168,178,230,0.28)), #EAEAEA",
+              boxShadow: "-4px -4px 10px rgba(255,255,255,0.7), 4px 4px 12px rgba(0,0,0,0.10)",
+            }}
+          >
+            How it works
+          </span>
+          <h2
+            className="text-[2.6rem] md:text-[3.6rem] leading-[0.95] tracking-[-0.03em] mb-6"
+            style={{ color: "#1A1A1A", fontWeight: 500 }}
+          >
             From blank sheet to <br className="hidden md:block" />
             walkable model
           </h2>
-          <p className="text-[20px] font-normal text-muted text-black/70 tracking-tighter">
+          <p className="text-[16px] md:text-[17px] font-normal tracking-[-0.005em]" style={{ color: "#777" }}>
             Sketch your building and step into the result.
           </p>
         </div>
@@ -48,20 +65,33 @@ export default function HowItWorks() {
             return (
               <div
                 key={i}
-                className="reveal flex flex-col bg-white rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.07)] transition-shadow p-7"
-                style={{ transitionDelay: `${i * 80}ms` }}
+                className="reveal flex flex-col rounded-[24px] p-7 transition-shadow"
+                style={{
+                  background: "#EAEAEA",
+                  boxShadow: "-6px -6px 12px rgba(255,255,255,0.7), 6px 6px 14px rgba(0,0,0,0.12)",
+                  transitionDelay: `${i * 80}ms`,
+                }}
               >
-                <div className="w-11 h-11 rounded-[10px]   flex items-center justify-center mb-6">
-                  <Icon size={30} strokeWidth={1.5} className="text-ink" />
+                <div
+                  className="w-14 h-14 rounded-full flex items-center justify-center mb-6"
+                  style={{
+                    background: "#F5F5F5",
+                    boxShadow: "-5px -5px 10px rgba(255,255,255,0.8), 5px 5px 12px rgba(0,0,0,0.14)",
+                  }}
+                >
+                  <Icon size={24} strokeWidth={1.6} color="#333" />
                 </div>
 
-                <span className=" text-[10px] text-muted tracking-[0.08em] uppercase mb-1.5">
+                <span className="text-[10px] tracking-[0.08em] uppercase mb-1.5" style={{ color: "#999" }}>
                   Step {s.n}
                 </span>
-                <h3 className="font-display font-medium text-[19px] text-ink tracking-tighter mb-2.5 leading-snug">
+                <h3
+                  className="text-[19px] tracking-[-0.01em] mb-2.5 leading-snug"
+                  style={{ color: "#1A1A1A", fontWeight: 500 }}
+                >
                   {s.title}
                 </h3>
-                <p className="text-[14px] font-medium tracking-tighter text-muted leading-[1.5] tracking-[-0.01em] mb-6">
+                <p className="text-[14px] font-normal leading-[1.6] tracking-[-0.005em]" style={{ color: "#666" }}>
                   {s.desc}
                 </p>
               </div>

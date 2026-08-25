@@ -1,3 +1,4 @@
+'use client'
 import { useGLTF } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -8,10 +9,12 @@ import type { FurnitureModelDef } from './furniture-model-registry'
 
 import { getMaterialsFor } from '../texture/universalMaterials'
 import { useTextureMaterialProps } from './furnitureMesh'
+import { useClickVsDrag } from '@/lib/helpers'
 
 const _furnitureMatById = new Map(
     getMaterialsFor('furniture').map(m => [m.id, m])
 )
+export const GLB_DEFAULT_SIZE_MULTIPLIER = 1.3
 
 export function GLTFFurnitureMesh({
     f,
@@ -82,7 +85,9 @@ export function GLTFFurnitureMesh({
     // SCALE
     // -------------------------------------------------------------------------
 
-    const GLB_DEFAULT_SIZE_MULTIPLIER = 1.3
+    // furniture-constants.ts
+
+
 
     const scale = useMemo(() => {
         const baseWidth =
@@ -97,12 +102,11 @@ export function GLTFFurnitureMesh({
 
         const userScale = f.scale ?? 1
 
-        const w = baseWidth * userScale
+        const w = (f.targetWidth ?? def.defaultTargetWidth ?? measuredSize[0] * 3) * userScale
         const d = baseDepth * userScale
 
-        const sx =
-            (w / measuredSize[0]) *
-            GLB_DEFAULT_SIZE_MULTIPLIER
+
+        const sx = (w / measuredSize[0]) * GLB_DEFAULT_SIZE_MULTIPLIER   // 1.3
 
         const sz =
             (d / measuredSize[2]) *
@@ -587,6 +591,7 @@ export function GLTFFurnitureMesh({
     // -------------------------------------------------------------------------
     // DEBUG
     // -------------------------------------------------------------------------
+    const clickHandlers = useClickVsDrag(handleClick)
 
     console.log('[GLTFFurnitureMesh]', {
         type: f.type,
@@ -618,7 +623,7 @@ export function GLTFFurnitureMesh({
             ]}
             scale={scale}
             visible={materialReady}
-            onClick={handleClick}
+            {...clickHandlers}
             onPointerOver={handleOver}
             onPointerOut={handleOut}
         >

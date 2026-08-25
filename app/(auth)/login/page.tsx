@@ -1,7 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+
+// ---- Claymorphism theme tokens (shared across the app) ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    dangerText: "#B3503F",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+};
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
 
 const SLIDESHOW_IMAGES = [
     '/login-asset-1.jpg',
@@ -16,6 +36,7 @@ const SLIDE_INTERVAL_MS = 5000;
 export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [googleHovered, setGoogleHovered] = useState(false);
 
     async function handleGoogleLogin() {
         setError(null);
@@ -38,24 +59,39 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="min-h-screen bg-[#F4F6FC] flex justify-center">
+        <div
+            className="min-h-screen flex justify-center"
+            style={{ background: CLAY.canvas, fontFamily: CLAY.font }}
+        >
             <div className="w-full max-w-[1600px] flex">
                 {/* Left: auth */}
                 <div className="w-full lg:w-[800px] shrink-0 flex flex-col items-center px-6 py-24 overflow-y-auto">
                     <div className="w-full max-w-[430px]">
-                        {/* Logo */}
-                        <div className="flex items-center gap-2.5 mb-16">
-                            <CubeLogo />
-                            <span className="font-display text-[1.15rem] tracking-tight text-ink lowercase">
-                                roomsketch
-                            </span>
-                        </div>
+                        {/* Logo — links home, uses the actual app assets */}
+                        <Link href="/" className="flex items-center gap-2.5 mb-16 select-none">
+                            <img
+                                src="/room-sketch-logo.jpg"
+                                alt="roomsketch"
+                                className="w-9 h-9 rounded-full object-cover"
+                                style={{ boxShadow: clayRaised(false) }}
+                            />
+                            <img
+                                src="/room-sketch-text.jpg"
+                                alt="roomsketch"
+                                className="h-5 w-auto object-contain"
+                            />
+                        </Link>
 
                         {/* Heading */}
-                        <h1 className="font-display text-[2.75rem] tracking-[-0.02em] text-ink leading-tight mb-2">
+                        <h1
+                            style={{
+                                fontSize: 44, fontWeight: 500, letterSpacing: "-0.01em",
+                                color: CLAY.textPrimary, lineHeight: 1.15, margin: "0 0 8px",
+                            }}
+                        >
                             Welcome back
                         </h1>
-                        <p className="text-[15px] text-graphite mb-9">
+                        <p style={{ fontSize: 15, color: CLAY.textMuted, margin: "0 0 36px" }}>
                             Log in to continue creating
                         </p>
 
@@ -64,33 +100,73 @@ export default function LoginPage() {
                             type="button"
                             onClick={handleGoogleLogin}
                             disabled={loading}
-                            className="w-full flex items-center justify-center gap-2.5 border border-line-strong bg-paper rounded-[6px] py-3.5 hover:border-ink transition-colors disabled:opacity-60"
+                            onMouseEnter={() => setGoogleHovered(true)}
+                            onMouseLeave={() => setGoogleHovered(false)}
+                            style={{
+                                width: "100%", display: "flex", alignItems: "center", justifyContent: "center",
+                                gap: 10, border: "none", background: CLAY.surface,
+                                borderRadius: 16, padding: "14px 0",
+                                cursor: loading ? "not-allowed" : "pointer",
+                                opacity: loading ? 0.6 : 1,
+                                boxShadow: googleHovered && !loading ? clayRaised(true) : clayRaised(false),
+                                transition: "box-shadow 180ms ease, opacity 180ms ease",
+                            }}
                         >
                             <GoogleIcon />
-                            <span className="font-mono text-[12px] font-medium tracking-[0.06em] text-ink uppercase">
+                            <span style={{
+                                fontSize: 12.5, fontWeight: 500, letterSpacing: "0.04em",
+                                color: CLAY.textPrimary, textTransform: "uppercase",
+                                fontFamily: CLAY.font,
+                            }}>
                                 {loading ? "Redirecting…" : "Continue with Google"}
                             </span>
                         </button>
 
                         {error && (
-                            <p className="text-[12.5px] text-red-600 mt-4 text-center">{error}</p>
+                            <p style={{ fontSize: 12.5, color: CLAY.dangerText, marginTop: 16, textAlign: "center" }}>
+                                {error}
+                            </p>
                         )}
                     </div>
 
                     {/* Footer links — pinned to the bottom of the column */}
                     <div className="w-full max-w-[430px] mt-auto pt-10">
-                        <div className="h-px bg-line mb-7" />
-                        <div className="flex items-center justify-center gap-6 font-mono text-[11.5px] text-graphite">
-                            <a href="/privacy" className="hover:text-ink transition-colors">Privacy Policy</a>
-                            <a href="/terms" className="hover:text-ink transition-colors">Terms of Service</a>
-                            <a href="/help" className="hover:text-ink transition-colors">Help Center</a>
+                        <div style={{ height: 1, boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`, marginBottom: 28 }} />
+                        <div
+                            style={{
+                                display: "flex", alignItems: "center", justifyContent: "center", gap: 24,
+                                fontSize: 11.5, color: CLAY.textMuted, fontFamily: CLAY.font,
+                            }}
+                        >
+                            <a href="/privacy" style={{ color: CLAY.textMuted, textDecoration: "none" }}
+                                onMouseEnter={e => (e.currentTarget.style.color = CLAY.textPrimary)}
+                                onMouseLeave={e => (e.currentTarget.style.color = CLAY.textMuted)}
+                            >Privacy Policy</a>
+                            <a href="/terms" style={{ color: CLAY.textMuted, textDecoration: "none" }}
+                                onMouseEnter={e => (e.currentTarget.style.color = CLAY.textPrimary)}
+                                onMouseLeave={e => (e.currentTarget.style.color = CLAY.textMuted)}
+                            >Terms of Service</a>
+                            <a href="/help" style={{ color: CLAY.textMuted, textDecoration: "none" }}
+                                onMouseEnter={e => (e.currentTarget.style.color = CLAY.textPrimary)}
+                                onMouseLeave={e => (e.currentTarget.style.color = CLAY.textMuted)}
+                            >Help Center</a>
                         </div>
                     </div>
                 </div>
 
-                {/* Right: image slideshow */}
-                <div className="hidden lg:block relative flex-1 max-w-[800px]">
-                    <ImageSlideshow images={SLIDESHOW_IMAGES} intervalMs={SLIDE_INTERVAL_MS} />
+                {/* Right: image slideshow, set into a recessed clay frame so
+                    it reads as part of the same surface as the left column
+                    rather than a flat edge-to-edge photo. */}
+                <div className="hidden lg:block relative flex-1 max-w-[800px] p-4">
+                    <div
+                        style={{
+                            position: "relative", width: "100%", height: "100%",
+                            borderRadius: 28, overflow: "hidden",
+                            boxShadow: `inset 4px 4px 10px ${CLAY.darkShadow}, inset -4px -4px 10px ${CLAY.lightShadow}`,
+                        }}
+                    >
+                        <ImageSlideshow images={SLIDESHOW_IMAGES} intervalMs={SLIDE_INTERVAL_MS} />
+                    </div>
                 </div>
             </div>
         </div>
@@ -142,20 +218,6 @@ function ImageSlideshow({
                 ))}
             </div>
         </div>
-    );
-}
-
-function CubeLogo() {
-    return (
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path
-                d="M12 2L21 6.5V17.5L12 22L3 17.5V6.5L12 2Z"
-                stroke="#12213E"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-            />
-            <path d="M12 2V22M3 6.5L12 11M21 6.5L12 11" stroke="#12213E" strokeWidth="1.6" strokeLinejoin="round" />
-        </svg>
     );
 }
 

@@ -13,6 +13,21 @@ import * as THREE from "three"
 import Scene3D, { Scene3DHandle } from '@/components/workspace/3DScene'
 import { SceneConfig } from "@/components/workspace/FloorPlanEditor";
 
+// ── Soft-UI (neumorphic) design tokens ──────────────────────────────────
+// Light gray surface, raised elements via a dual light/dark soft shadow,
+// pressed/active state via a subtle inset shadow instead of a hard fill.
+const NEU = {
+    surface: '#E8E9EC',
+    surfaceRaised: '#F1F2F4',
+    textDim: 'rgba(15,23,42,0.42)',
+    textDimmer: 'rgba(15,23,42,0.28)',
+    text: '#1E2434',
+    shadowRaised: '6px 6px 14px rgba(163,168,178,0.55), -6px -6px 14px rgba(255,255,255,0.85)',
+    shadowRaisedSm: '3px 3px 7px rgba(163,168,178,0.5), -3px -3px 7px rgba(255,255,255,0.85)',
+    shadowInset: 'inset 3px 3px 7px rgba(163,168,178,0.55), inset -3px -3px 7px rgba(255,255,255,0.8)',
+    shadowInsetLg: 'inset 4px 4px 10px rgba(163,168,178,0.5), inset -4px -4px 10px rgba(255,255,255,0.85)',
+}
+
 export default function ShareView({ token, initialData }: { token: string; initialData: ShareProject }) {
     const searchParams = useSearchParams()
     const viewId = searchParams.get('view')
@@ -92,32 +107,119 @@ export default function ShareView({ token, initialData }: { token: string; initi
         )
     }
 
+    // ── Soft-UI pill toggle group (used for View, and the viewMode row) ────
+    function NeuToggleGroup<T extends string>({
+        value, onChange, options,
+    }: { value: T; onChange: (v: T) => void; options: { value: T; label: string; title?: string; icon?: React.ReactNode }[] }) {
+        return (
+            <div
+                style={{
+                    display: 'flex', alignItems: 'center', gap: 4, padding: 4,
+                    borderRadius: 999, background: NEU.surface, boxShadow: NEU.shadowInset,
+                }}
+            >
+                {options.map(opt => {
+                    const active = opt.value === value
+                    return (
+                        <button
+                            key={opt.value}
+                            onClick={() => onChange(opt.value)}
+                            title={opt.title}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                height: 34, padding: '0 16px', borderRadius: 999, border: 'none',
+                                background: active ? NEU.surfaceRaised : 'transparent',
+                                boxShadow: active ? NEU.shadowRaisedSm : 'none',
+                                color: active ? NEU.text : NEU.textDim,
+                                fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                                transition: 'background 150ms ease, box-shadow 150ms ease, color 150ms ease',
+                            }}
+                        >
+                            {opt.icon}
+                            {opt.label}
+                        </button>
+                    )
+                })}
+            </div>
+        )
+    }
+
+    // ── Soft-UI standalone pill button (Underlay / Walk Mode) ───────────────
+    function NeuButton({
+        active, onClick, children, title,
+    }: { active: boolean; onClick: () => void; children: React.ReactNode; title?: string }) {
+        return (
+            <button
+                onClick={onClick}
+                title={title}
+                style={{
+                    display: 'flex', alignItems: 'center', gap: 7,
+                    height: 40, padding: '0 18px', borderRadius: 999, border: 'none',
+                    background: NEU.surfaceRaised,
+                    boxShadow: active ? NEU.shadowInsetLg : NEU.shadowRaised,
+                    color: active ? NEU.text : NEU.textDim,
+                    fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                    transition: 'box-shadow 150ms ease, color 150ms ease',
+                }}
+            >
+                {children}
+            </button>
+        )
+    }
+
     return (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', fontFamily: 'system-ui' }}>
-            <div style={{ height: 60, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 16, borderBottom: '1px solid rgba(15,23,42,0.08)', background: '#fff' }}>
-                <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', flexShrink: 0 }}>
-                    <CubeLogo />
-                    <span style={{ fontSize: 15.5, fontWeight: 600, color: '#12213E', letterSpacing: '-0.01em' }}>roomsketch</span>
+            <div
+                style={{
+                    height: 72, display: 'flex', alignItems: 'center', padding: '0 22px', gap: 18,
+                    background: NEU.surface,
+                    boxShadow: '0 2px 10px rgba(163,168,178,0.35)',
+                    position: 'relative', zIndex: 5,
+                }}
+            >
+                <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', flexShrink: 0 }}>
+                    <div
+                        style={{
+                            width: 34, height: 34, borderRadius: 12, display: 'flex',
+                            alignItems: 'center', justifyContent: 'center',
+                            background: NEU.surfaceRaised, boxShadow: NEU.shadowRaisedSm,
+                        }}
+                    >
+                        <CubeLogo />
+                    </div>
+                    <span style={{ fontSize: 15.5, fontWeight: 700, color: '#12213E', letterSpacing: '-0.01em' }}>roomsketch</span>
                 </a>
 
-                <div style={{ width: 1, height: 22, background: 'rgba(15,23,42,0.1)', flexShrink: 0 }} />
+                <div
+                    style={{
+                        width: 1, height: 26, flexShrink: 0,
+                        background: 'linear-gradient(180deg, rgba(163,168,178,0.5), rgba(255,255,255,0.7))',
+                    }}
+                />
 
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: NEU.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {data.project_name}
                 </span>
 
                 {floors.length > 1 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-                        <span style={{ display: 'flex', color: 'rgba(15,23,42,0.4)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                        <span
+                            style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                width: 30, height: 30, borderRadius: 10,
+                                color: NEU.textDim, background: NEU.surfaceRaised, boxShadow: NEU.shadowRaisedSm,
+                            }}
+                        >
                             <LayersIcon />
                         </span>
                         <select
                             value={activeFloorId}
                             onChange={(e) => setActiveFloorId(e.target.value)}
                             style={{
-                                height: 32, padding: '0 10px', borderRadius: 7,
-                                border: '1px solid rgba(15,23,42,0.12)', background: '#fff',
-                                fontSize: 12.5, fontWeight: 600, color: '#0F172A', cursor: 'pointer',
+                                height: 36, padding: '0 12px', borderRadius: 999,
+                                border: 'none', background: NEU.surfaceRaised, boxShadow: NEU.shadowInset,
+                                fontSize: 12.5, fontWeight: 600, color: NEU.text, cursor: 'pointer',
+                                outline: 'none', appearance: 'none',
                             }}
                         >
                             {[...floors]
@@ -132,89 +234,42 @@ export default function ShareView({ token, initialData }: { token: string; initi
 
                 <div style={{ flex: 1 }} />
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 9, background: '#F1F5F9', border: '1px solid rgba(15,23,42,0.06)' }}>
-                    <button
-                        onClick={() => setView('3d')}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            height: 32, padding: '0 14px', borderRadius: 7, border: 'none',
-                            background: View === '3d' ? '#12213E' : 'transparent',
-                            color: View === '3d' ? '#fff' : 'rgba(15,23,42,0.55)',
-                            fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'background 150ms ease, color 150ms ease',
-                        }}
-                    >
-                        3D View
-                    </button>
-                    <button
-                        onClick={() => setView('2d')}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            height: 32, padding: '0 14px', borderRadius: 7, border: 'none',
-                            background: View === '2d' ? '#12213E' : 'transparent',
-                            color: View === '2d' ? '#fff' : 'rgba(15,23,42,0.55)',
-                            fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'background 150ms ease, color 150ms ease',
-                        }}
-                    >
-                        2D Plan
-                    </button>
-                </div>
+                <NeuToggleGroup
+                    value={View}
+                    onChange={setView}
+                    options={[
+                        { value: '3d', label: '3D View' },
+                        { value: '2d', label: '2D Plan' },
+                    ]}
+                />
 
                 {View === '3d' && floors.length > 1 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 9, background: '#F1F5F9', border: '1px solid rgba(15,23,42,0.06)' }}>
-                        {(['single', 'stacked', 'stacked-full'] as const).map(mode => (
-                            <button
-                                key={mode}
-                                onClick={() => setViewMode(mode)}
-                                title={
-                                    mode === 'single' ? 'Only the selected floor' :
-                                        mode === 'stacked' ? 'All floors, others dimmed' :
-                                            'All floors, full opacity'
-                                }
-                                style={{
-                                    height: 32, padding: '0 12px', borderRadius: 7, border: 'none',
-                                    background: viewMode === mode ? '#12213E' : 'transparent',
-                                    color: viewMode === mode ? '#fff' : 'rgba(15,23,42,0.55)',
-                                    fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                                    transition: 'background 150ms ease, color 150ms ease',
-                                }}
-                            >
-                                {mode === 'single' ? 'Single' : mode === 'stacked' ? 'Stacked' : 'Stacked (full)'}
-                            </button>
-                        ))}
-                    </div>
+                    <NeuToggleGroup
+                        value={viewMode}
+                        onChange={setViewMode}
+                        options={[
+                            { value: 'single', label: 'Single', title: 'Only the selected floor' },
+                            { value: 'stacked', label: 'Stacked', title: 'All floors, others dimmed' },
+                            { value: 'stacked-full', label: 'Stacked (full)', title: 'All floors, full opacity' },
+                        ]}
+                    />
                 )}
 
                 {View === '3d' && viewMode === 'single' && (
-                    <button
+                    <NeuButton
+                        active={showUnderlay}
                         onClick={() => setShowUnderlay(u => !u)}
                         title="Show the floor directly below, faded"
-                        style={{
-                            height: 38, padding: '0 14px', borderRadius: 9,
-                            border: showUnderlay ? 'none' : '1px solid rgba(15,23,42,0.12)',
-                            background: showUnderlay ? '#12213E' : '#fff',
-                            color: showUnderlay ? '#fff' : '#0F172A',
-                            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-                            transition: 'background 150ms ease, color 150ms ease',
-                        }}
                     >
                         Underlay
-                    </button>
+                    </NeuButton>
                 )}
 
                 {View === '3d' && (
-                    <button
-                        onClick={() => setWalkMode(w => !w)}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 7,
-                            height: 38, padding: '0 16px', borderRadius: 9, border: walkMode ? 'none' : '1px solid rgba(15,23,42,0.12)',
-                            background: walkMode ? '#12213E' : '#fff',
-                            color: walkMode ? '#fff' : '#0F172A',
-                            fontSize: 12.5, fontWeight: 600, cursor: 'pointer', transition: 'background 150ms ease, color 150ms ease',
-                        }}
-                    >
+                    <NeuButton active={walkMode} onClick={() => setWalkMode(w => !w)}>
                         <WalkIcon />
                         {walkMode ? 'Exit Walk Mode' : 'Walk Mode'}
-                    </button>
+                    </NeuButton>
                 )}
             </div>
 

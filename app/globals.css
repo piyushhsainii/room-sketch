@@ -3,7 +3,7 @@
 @import "tailwindcss";
 
 :root {
-  --font-display: "Switzer", "Inter", sans-serif;
+  --font-clay: "General Sans", system-ui, -apple-system, sans-serif;
   --font-sans: "Inter", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 

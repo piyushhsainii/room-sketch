@@ -133,7 +133,8 @@ function LineWalls3DImpl({
 
                 const isRoomSelected = interactive && selectedId === seg.id
                 const panels: React.ReactNode[] = []
-                const effH = H
+                // const effH = H
+                const effH = seg.height ?? H
                 const segT = seg.thickness ?? 0.15
 
                 for (let i = 0; i < nodes.length - 1; i++) {

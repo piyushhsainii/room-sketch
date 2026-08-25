@@ -2,108 +2,143 @@
 
 import { useEffect, useState } from "react";
 
+// ---- Claymorphism theme tokens (shared across the app) ----
+const CLAY = {
+  canvas: "#E5E5E5",
+  surface: "#EAEAEA",
+  surfaceChip: "#F5F5F5",
+  textPrimary: "#1A1A1A",
+  textMuted: "#5A5A5A",
+  textPlaceholder: "#999999",
+  lightShadow: "rgba(255,255,255,0.75)",
+  darkShadow: "rgba(0,0,0,0.14)",
+  accentText: "#4C4FBF",
+  font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+};
+
 const STATUSES = [
-    "Calculating lighting vectors...",
-    "Loading material shaders...",
-    "Aligning structural coordinates...",
-    "Initializing render engine...",
-    "Syncing drafting layers...",
-    "Validating spatial geometry...",
+  "Calculating lighting vectors...",
+  "Loading material shaders...",
+  "Aligning structural coordinates...",
+  "Initializing render engine...",
+  "Syncing drafting layers...",
+  "Validating spatial geometry...",
 ];
 
 export default function Loading() {
-    const [index, setIndex] = useState(0);
-    const [visible, setVisible] = useState(true);
+  const [index, setIndex] = useState(0);
+  const [visible, setVisible] = useState(true);
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setVisible(false);
-            const timeout = setTimeout(() => {
-                setIndex((prev) => (prev + 1) % STATUSES.length);
-                setVisible(true);
-            }, 150);
-            return () => clearTimeout(timeout);
-        }, 2500);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false);
+      const timeout = setTimeout(() => {
+        setIndex((prev) => (prev + 1) % STATUSES.length);
+        setVisible(true);
+      }, 150);
+      return () => clearTimeout(timeout);
+    }, 2500);
 
-        return () => clearInterval(interval);
-    }, []);
+    return () => clearInterval(interval);
+  }, []);
 
-    return (
-        <div className="relative flex h-screen w-full flex-col justify-between overflow-hidden bg-[#f8f9ff] font-sans text-[#0b1c30] antialiased">
-            {/* Architectural background grid */}
-            <div
-                className="pointer-events-none absolute inset-0 z-0"
-                style={{
-                    backgroundSize: "40px 40px",
-                    backgroundImage:
-                        "linear-gradient(to right, rgba(197,198,205,0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(197,198,205,0.15) 1px, transparent 1px)",
-                }}
-            />
+  return (
+    <div
+      className="relative flex h-screen w-full flex-col justify-between overflow-hidden antialiased"
+      style={{ background: CLAY.canvas, color: CLAY.textPrimary, fontFamily: CLAY.font }}
+    >
+      {/* Architectural background grid */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          backgroundSize: "40px 40px",
+          backgroundImage:
+            "linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)",
+        }}
+      />
 
-            {/* Header / brand */}
-            <header className="relative z-10 mt-16 flex w-full justify-center p-6">
-                <div className="flex items-center gap-3">
-                    <img src="/room-sketch-logo-removebg-preview.png" alt="" className="w-12" />
-                    <span className="font-semibold tracking-tight text-[#00030c]" style={{ fontFamily: "Hanken Grotesk", fontSize: 24 }}>
-                        RoomSketch
-                    </span>
-                </div>
-            </header>
+      {/* Header / brand */}
+      <header className="relative z-10 mt-16 flex w-full justify-center p-6">
+        <div className="flex items-center gap-3">
+          <img
+            src="/room-sketch-logo-removebg-preview.png"
+            alt=""
+            className="w-12"
+            style={{ filter: "drop-shadow(0 1px 1px rgba(255,255,255,0.5))" }}
+          />
+          <span style={{ fontFamily: CLAY.font, fontSize: 24, fontWeight: 500, letterSpacing: "normal", color: CLAY.textPrimary }}>
+            RoomSketch
+          </span>
+        </div>
+      </header>
 
-            {/* Main loading area */}
-            <main className="relative z-10 -mt-20 flex flex-grow flex-col items-center justify-center">
-                {/* 3D wireframe cube */}
-                <div
-                    className="mb-12 flex h-32 w-32 items-center justify-center"
-                    style={{ perspective: "800px" }}
-                >
-                    <div className="wireframe-cube">
-                        <div className="cube-face front">
-                            <div className="fill-layer" />
-                        </div>
-                        <div className="cube-face right">
-                            <div className="fill-layer" />
-                        </div>
-                        <div className="cube-face back">
-                            <div className="fill-layer" />
-                        </div>
-                        <div className="cube-face left">
-                            <div className="fill-layer" />
-                        </div>
-                        <div className="cube-face top" />
-                        <div className="cube-face bottom bg-[#00030c]" />
-                    </div>
-                </div>
+      {/* Main loading area */}
+      <main className="relative z-10 -mt-20 flex flex-grow flex-col items-center justify-center">
+        {/* 3D wireframe cube, sitting in a soft clay well so it reads
+                    as embedded in the surface rather than floating on a flat
+                    background */}
+        <div
+          className="mb-12 flex h-32 w-32 items-center justify-center rounded-full"
+          style={{
+            perspective: "800px",
+            background: CLAY.surface,
+            boxShadow: `inset 4px 4px 10px ${CLAY.darkShadow}, inset -4px -4px 10px ${CLAY.lightShadow}`,
+          }}
+        >
+          <div className="wireframe-cube">
+            <div className="cube-face front">
+              <div className="fill-layer" />
+            </div>
+            <div className="cube-face right">
+              <div className="fill-layer" />
+            </div>
+            <div className="cube-face back">
+              <div className="fill-layer" />
+            </div>
+            <div className="cube-face left">
+              <div className="fill-layer" />
+            </div>
+            <div className="cube-face top" />
+            <div className="cube-face bottom" style={{ background: CLAY.textPrimary }} />
+          </div>
+        </div>
 
-                {/* Main status */}
-                <h1
-                    className="mb-4 px-4 text-center text-[#00030c]"
-                    style={{ fontFamily: "Hanken Grotesk", fontSize: 32, fontWeight: 500, lineHeight: 1.25 }}
-                >
-                    Materializing Workspace
-                </h1>
+        {/* Main status */}
+        <h1
+          className="mb-4 px-4 text-center"
+          style={{ fontFamily: CLAY.font, fontSize: 30, fontWeight: 500, lineHeight: 1.25, color: CLAY.textPrimary, letterSpacing: "normal" }}
+        >
+          Materializing Workspace
+        </h1>
 
-                {/* Technical sub-status */}
-                <div className="status-text flex h-6 items-center justify-center text-[12px] uppercase tracking-widest text-[#45474d]">
-                    <span style={{ opacity: visible ? 1 : 0, transition: "opacity 150ms" }}>
-                        {STATUSES[index]}
-                    </span>
-                </div>
+        {/* Technical sub-status */}
+        <div className="status-text flex h-6 items-center justify-center text-[12px] uppercase tracking-widest" style={{ color: CLAY.textMuted }}>
+          <span style={{ opacity: visible ? 1 : 0, transition: "opacity 150ms" }}>
+            {STATUSES[index]}
+          </span>
+        </div>
 
-                {/* Progress line */}
-                <div className="relative mt-8 h-px w-64 overflow-hidden bg-[#c5c6cd]/30">
-                    <div className="progress-slide absolute left-0 top-0 h-full w-1/3 bg-[#00030c]" />
-                </div>
-            </main>
+        {/* Progress line — recessed clay track with a raised sliding pip */}
+        <div
+          className="relative mt-8 h-2 w-64 overflow-hidden rounded-full"
+          style={{ boxShadow: `inset 2px 2px 5px ${CLAY.darkShadow}, inset -2px -2px 5px ${CLAY.lightShadow}` }}
+        >
+          <div
+            className="progress-slide absolute left-0 top-0 h-full w-1/3 rounded-full"
+            style={{ background: CLAY.accentText }}
+          />
+        </div>
+      </main>
 
-            {/* Footer */}
-            <footer className="relative z-10 flex w-full justify-center p-6 pb-16">
-                <p className="text-[12px] tracking-wider text-[#75777e]">PRECISE BY DESIGN © {new Date().getFullYear()}</p>
-            </footer>
+      {/* Footer */}
+      <footer className="relative z-10 flex w-full justify-center p-6 pb-16">
+        <p style={{ fontSize: 12, letterSpacing: "0.08em", color: CLAY.textPlaceholder, fontFamily: CLAY.font }}>
+          PRECISE BY DESIGN © {new Date().getFullYear()}
+        </p>
+      </footer>
 
-            <style jsx global>{`
-        @import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Geist:wght@400;500;600&display=swap");
-        @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap");
+      <style jsx global>{`
+        @import url("https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap");
 
         .wireframe-cube {
           width: 80px;
@@ -117,8 +152,8 @@ export default function Loading() {
           position: absolute;
           width: 100%;
           height: 100%;
-          border: 1px solid #00030c;
-          background: rgba(248, 249, 255, 0.8);
+          border: 1px solid ${CLAY.textPrimary};
+          background: rgba(234, 234, 234, 0.6);
         }
 
         .front {
@@ -145,7 +180,7 @@ export default function Loading() {
           bottom: 0;
           left: 0;
           width: 100%;
-          background-color: #00030c;
+          background-color: ${CLAY.accentText};
           animation: fillUp 4s infinite ease-in-out alternate;
         }
 
@@ -161,11 +196,11 @@ export default function Loading() {
         @keyframes fillUp {
           0% {
             height: 0%;
-            opacity: 0.1;
+            opacity: 0.12;
           }
           100% {
             height: 100%;
-            opacity: 0.3;
+            opacity: 0.35;
           }
         }
 
@@ -196,6 +231,6 @@ export default function Loading() {
           }
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 }

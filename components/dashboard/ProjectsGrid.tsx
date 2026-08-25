@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { ShareDialog } from "../ui/ExportShareable";
-import StarButton from "../workspace/dashboard/StarButton";
+import { CheckIcon, XIcon } from "lucide-react";
 
 type SortMode = "newest" | "oldest" | "name";
 
@@ -30,53 +30,6 @@ function ShareIcon() {
             <polyline points="16 6 12 2 8 6" />
             <line x1="12" y1="2" x2="12" y2="15" />
         </svg>
-    );
-}
-
-function RenameIcon() {
-    return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-        </svg>
-    );
-}
-
-function ActionButton({
-    title,
-    onClick,
-    children,
-}: {
-    title: string;
-    onClick: (e: React.MouseEvent) => void;
-    children: React.ReactNode;
-}) {
-    const [hovered, setHovered] = useState(false);
-    return (
-        <button
-            title={title}
-            onClick={onClick}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 24,
-                height: 24,
-                borderRadius: 5,
-                border: "none",
-                background: hovered ? "rgba(26,26,26,0.1)" : "rgba(26,26,26,0.05)",
-                // Always a visible dark color — never transparent
-                color: hovered ? "rgba(26,26,26,0.85)" : "rgba(26,26,26,0.5)",
-                cursor: "pointer",
-                transition: "background 120ms ease, color 120ms ease",
-                flexShrink: 0,
-                padding: 0,
-            }}
-        >
-            {children}
-        </button>
     );
 }
 
@@ -158,28 +111,6 @@ function MenuItem({
     );
 }
 
-function PillButton({ label, onClick, primary }: { label: string; onClick?: (e: React.MouseEvent) => void; primary?: boolean }) {
-    return (
-        <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
-            style={{
-                fontSize: 11,
-                fontWeight: 500,
-                padding: "5px 10px",
-                borderRadius: 999,
-                border: primary ? "none" : "1px solid rgba(255,255,255,0.4)",
-                background: primary ? "#22c55e" : "rgba(15,23,42,0.4)",
-                color: "#ffffff",
-                backdropFilter: "blur(4px)",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-            }}
-        >
-            {label}
-        </button>
-    );
-}
 function MoreIcon() {
     return (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
@@ -195,6 +126,25 @@ function formatDate(dateStr?: string) {
     if (!dateStr) return "";
     return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
 }
+
+
+// ---- Claymorphism theme tokens ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    font: "'General Sans', system-ui, -apple-system, sans-serif",
+};
+
+// Dual soft-extrusion shadow used on chips, pills, and the card itself
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
 
 export function ProjectCard({
     project,
@@ -220,7 +170,21 @@ export function ProjectCard({
     const [hovered, setHovered] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const shareButtonRef = useRef<HTMLButtonElement>(null);
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+    // Community publish state
+    const [published, setPublished] = useState(!!project.published);
+    const [publishBusy, setPublishBusy] = useState(false);
+    const [publishHovered, setPublishHovered] = useState(false);
+
+    // Star state (rendered where "$111" sits in the reference)
+    const [starred, setStarred] = useState(!!project.starred);
+    const [starCount, setStarCount] = useState(project.star_count ?? 0);
+    const [starBusy, setStarBusy] = useState(false);
+    const [starHovered, setStarHovered] = useState(false);
+
+    const [shareHovered, setShareHovered] = useState(false);
+    const [moreHovered, setMoreHovered] = useState(false);
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -233,13 +197,71 @@ export function ProjectCard({
         if (!isEditing) setEditValue(project.name || "Untitled");
     }, [project.name, isEditing]);
 
+    // Keep publish state in sync if the parent re-fetches/refreshes project
+    useEffect(() => {
+        setPublished(!!project.published);
+    }, [project.published]);
+
+    useEffect(() => {
+        setStarred(!!project.starred);
+        setStarCount(project.star_count ?? 0);
+    }, [project.starred, project.star_count]);
+
     function commit() {
         const trimmed = editValue.trim();
         if (trimmed && trimmed !== project.name) onRename(trimmed);
-        else setEditValue(project.name || "Untitled");
         setIsEditing(false);
     }
+
+    function cancelEdit() {
+        setEditValue(project.name || "Untitled");
+        setIsEditing(false);
+    }
+
+    async function handleTogglePublish(e: React.MouseEvent) {
+        e.stopPropagation(); // don't trigger onOpen()
+        if (publishBusy) return;
+        const next = !published;
+        setPublishBusy(true);
+        try {
+            const res = await fetch(`/api/projects/${project.id}/publish`, {
+                method: next ? "POST" : "DELETE",
+            });
+            if (!res.ok) throw new Error("Failed to update publish status");
+            setPublished(next);
+        } catch (err) {
+            console.error("[ProjectCard] publish toggle failed:", err);
+        } finally {
+            setPublishBusy(false);
+        }
+    }
+
+    async function handleToggleStar(e: React.MouseEvent) {
+        e.stopPropagation(); // don't trigger onOpen()
+        if (starBusy) return;
+        const next = !starred;
+        const prevCount = starCount;
+        setStarBusy(true);
+        setStarred(next);
+        setStarCount((c: number) => Math.max(0, c + (next ? 1 : -1)));
+        try {
+            const res = await fetch(`/api/projects/${project.id}/star`, {
+                method: next ? "POST" : "DELETE",
+            });
+            if (!res.ok) throw new Error("Failed to update star status");
+        } catch (err) {
+            console.error("[ProjectCard] star toggle failed:", err);
+            setStarred(!next);
+            setStarCount(prevCount);
+        } finally {
+            setStarBusy(false);
+        }
+    }
+
     const thumbnail = project.thumbnail_url || project.render_url || project.floorplan_url;
+    const renderCount = Array.isArray(project.renders) ? project.renders.length : 1;
+    const subtitle = project.subtitle || (project.status ? formatStatusLabel(project.status) : "Layout project");
+    const description = project.description || "A floorplan project ready to explore, refine, and share.";
 
     return (
         <div
@@ -247,22 +269,33 @@ export function ProjectCard({
             onMouseLeave={() => setHovered(false)}
             onClick={() => { if (!isEditing) onOpen(); }}
             style={{
-                border: `1px solid ${hovered ? "rgba(75,23,62,0.20)" : "rgba(15,23,42,0.06)"}`,
-                borderRadius: 18,
+                position: "relative",
+                border: "none",
+                borderRadius: 30,
                 overflow: "hidden",
-                background: "#ffffff",
+                background: CLAY.surface,
                 cursor: isEditing ? "default" : "pointer",
                 boxShadow: hovered
-                    ? "0 20px 40px -12px rgba(15,23,42,0.14), 0 4px 12px -4px rgba(15,23,42,0.06)"
-                    : "0 1px 3px rgba(15,23,42,0.04), 0 1px 2px rgba(15,23,42,0.03)",
-                transform: hovered ? "translateY(-2px)" : "translateY(0)",
-                transition: "box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease",
+                    ? "0 24px 44px rgba(0,0,0,0.14), -6px -6px 14px rgba(255,255,255,0.65), 6px 6px 16px rgba(0,0,0,0.12)"
+                    : "0 20px 40px rgba(0,0,0,0.10), -6px -6px 12px rgba(255,255,255,0.6), 6px 6px 14px rgba(0,0,0,0.10)",
+                transform: hovered ? "translateY(-3px)" : "translateY(0)",
+                transition: "box-shadow 220ms ease, transform 220ms ease",
                 display: "flex",
                 flexDirection: "column",
+                maxWidth: 340,
+                fontFamily: CLAY.font,
+                fontWeight: 400,
+                letterSpacing: "normal",
             }}
         >
+            <style>{`@import url("https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap");`}</style>
+
             {/* Thumbnail */}
-            <div style={{ position: "relative", aspectRatio: "16/10", background: "#f4f5f7", overflow: "hidden", flexShrink: 0 }}>
+            <div style={{
+                position: "relative", aspectRatio: "1/1", background: "#DEDEDE", overflow: "hidden", flexShrink: 0,
+                margin: 14, borderRadius: 22,
+                boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+            }}>
                 {thumbnail ? (
                     <img
                         src={thumbnail}
@@ -282,96 +315,232 @@ export function ProjectCard({
                     </div>
                 )}
 
-                <div style={{
-                    position: "absolute", top: 10, left: 10,
-                    opacity: hovered || project.starred ? 1 : 0,
-                    transform: hovered || project.starred ? "translateY(0)" : "translateY(-4px)",
-                    transition: "opacity 180ms ease, transform 180ms ease",
-                    pointerEvents: hovered || project.starred ? "auto" : "none",
-                }}>
-                    <StarButton
-                        projectId={project.id}
-                        initialStarred={!!project.starred}
-                        initialCount={project.star_count ?? 0}
-                    />
-                </div>
+                {/* Top-left status badge — soft glassy gradient wash pill, like "Suggest for you" */}
+                {project.status && (
+                    <div style={{
+                        position: "absolute", top: 12, left: 12,
+                        padding: "6px 14px", borderRadius: 999,
+                        background: "linear-gradient(120deg, rgba(167,243,208,0.55), rgba(191,219,254,0.55))",
+                        backdropFilter: "blur(8px)",
+                        color: "#3f3f46", fontSize: 12, fontWeight: 500, letterSpacing: "normal",
+                        boxShadow: "inset 0 1px 1px rgba(255,255,255,0.6)",
+                    }}>
+                        {formatStatusLabel(project.status)}
+                    </div>
+                )}
 
-                {/* Top-right action buttons */}
+                {/* Top-right action chips — circular, claymorphic */}
                 <div style={{
-                    position: "absolute", top: 10, right: 10,
-                    display: "flex", gap: 6,
+                    position: "absolute", top: 12, right: 12,
+                    display: "flex", gap: 8,
                     opacity: hovered || menuOpen ? 1 : 0,
                     transform: hovered || menuOpen ? "translateY(0)" : "translateY(-4px)",
                     transition: "opacity 180ms ease, transform 180ms ease",
                     pointerEvents: hovered || menuOpen ? "auto" : "none",
                 }}>
-                    <OverlayIconButton title="Export / Share" onClick={e => { e.stopPropagation(); setShareOpen(true); }}>
+                    <ClayIconChip
+                        title="Export / Share"
+                        onClick={e => { e.stopPropagation(); setShareOpen(true); }}
+                        hovered={shareHovered}
+                        onHoverChange={setShareHovered}
+                        buttonRef={shareButtonRef}
+                    >
                         <ShareIcon />
-                    </OverlayIconButton>
-                    <OverlayIconButton title="More" onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}>
+                    </ClayIconChip>
+                    <ClayIconChip
+                        title="More"
+                        onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
+                        hovered={moreHovered}
+                        onHoverChange={setMoreHovered}
+                    >
                         <MoreIcon />
-                    </OverlayIconButton>
+                    </ClayIconChip>
                 </div>
 
                 {menuOpen && (
                     <CardMenu
                         onRename={() => { setMenuOpen(false); setIsEditing(true); }}
                         onArchive={() => { setMenuOpen(false); onArchive?.(); }}
-                        onDelete={() => { setMenuOpen(false); onDelete?.(); }}
+                        onDelete={() => { setMenuOpen(false); setConfirmingDelete(true); }}
                         onClose={() => setMenuOpen(false)}
                     />
+                )}
+                {confirmingDelete && (
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            position: "absolute", inset: 14, borderRadius: 22,
+                            background: "rgba(20,20,20,0.72)", backdropFilter: "blur(3px)",
+                            display: "flex", flexDirection: "column", alignItems: "center",
+                            justifyContent: "center", gap: 12, padding: 20, zIndex: 21,
+                            textAlign: "center",
+                        }}
+                    >
+                        <span style={{ color: "#fff", fontSize: 13.5, fontWeight: 500, lineHeight: 1.4 }}>
+                            Delete "{project.name || "Untitled"}"? This can't be undone.
+                        </span>
+                        <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                                type="button"
+                                onClick={() => setConfirmingDelete(false)}
+                                style={{ padding: "7px 14px", borderRadius: 999, border: "none", background: "rgba(255,255,255,0.9)", color: "#1A1A1A", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setConfirmingDelete(false); onDelete?.(); }}
+                                style={{ padding: "7px 14px", borderRadius: 999, border: "none", background: "#dc2626", color: "#fff", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {/* Pagination dots */}
+                {renderCount > 1 && (
+                    <div style={{
+                        position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)",
+                        display: "flex", gap: 5,
+                    }}>
+                        {Array.from({ length: Math.min(renderCount, 5) }).map((_, i) => (
+                            <span key={i} style={{
+                                width: i === 0 ? 6 : 5,
+                                height: i === 0 ? 6 : 5,
+                                borderRadius: "50%",
+                                background: i === 0 ? "#ffffff" : "rgba(255,255,255,0.55)",
+                            }} />
+                        ))}
+                    </div>
                 )}
             </div>
 
             {/* Info */}
-            <div style={{ padding: "16px 18px 18px", display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ padding: "8px 22px 22px", display: "flex", flexDirection: "column", gap: 6 }}>
                 {isEditing ? (
-                    <input
-                        ref={inputRef}
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        onClick={e => e.stopPropagation()}
-                        onBlur={commit}
-                        onKeyDown={e => {
-                            if (e.key === "Enter") commit();
-                            if (e.key === "Escape") { setEditValue(project.name || "Untitled"); setIsEditing(false); }
-                        }}
-                        className="font-light tracking-tighter"
-                        style={{
-                            fontSize: 16,
-                            color: "#0f172a",
-                            border: "none",
-                            borderBottom: "1px solid rgba(59,130,246,0.5)",
-                            background: "transparent",
-                            outline: "none",
-                            padding: "0 0 3px",
-                            width: "100%",
-                        }}
-                    />
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input
+                            ref={inputRef}
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => {
+                                if (e.key === "Enter") commit();
+                                if (e.key === "Escape") cancelEdit();
+                            }}
+                            style={{
+                                fontFamily: CLAY.font, fontSize: 18, fontWeight: 500,
+                                color: CLAY.textPrimary, border: "none",
+                                borderBottom: "1px solid rgba(0,0,0,0.15)",
+                                background: "transparent", outline: "none",
+                                padding: "0 0 3px", flex: 1, minWidth: 0,
+                            }}
+                        />
+                        <button
+                            type="button"
+                            title="Save"
+                            onClick={e => { e.stopPropagation(); commit(); }}
+                            style={{ border: "none", background: "none", cursor: "pointer", color: "#16a34a", display: "flex", flexShrink: 0 }}
+                        >
+                            <CheckIcon />
+                        </button>
+                        <button
+                            type="button"
+                            title="Cancel"
+                            onClick={e => { e.stopPropagation(); cancelEdit(); }}
+                            style={{ border: "none", background: "none", cursor: "pointer", color: "#94a3b8", display: "flex", flexShrink: 0 }}
+                        >
+                            <XIcon />
+                        </button>
+                    </div>
                 ) : (
-                    <span
-                        className="font-light tracking-tighter"
-                        style={{
-                            fontSize: 16,
-                            color: "#0f172a",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                        }}
-                    >
+                    <span /* ...unchanged display span... */ >
                         {project.name || "Untitled"}
                     </span>
                 )}
 
-                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#94a3b8" }} className="font-light tracking-tight">
-                    <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: getStatusColor(project.status), flexShrink: 0 }} />
-                    <span>{formatDate((project as any).created_at)}</span>
+                <span style={{ fontSize: 13, color: CLAY.textMuted, fontWeight: 400, lineHeight: 1.4 }}>
+                    {subtitle}
+                </span>
+
+                <p style={{
+                    fontSize: 14, color: CLAY.textMuted, lineHeight: 1.5, margin: "2px 0 4px",
+                    fontWeight: 400, letterSpacing: "normal",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                }}>
+                    {description}
+                </p>
+
+                {/* Bottom row — star where the reference shows price, CTA where it shows "Buy Now" */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+                    <button
+                        onClick={handleToggleStar}
+                        onMouseEnter={e => { e.stopPropagation(); setStarHovered(true); }}
+                        onMouseLeave={e => { e.stopPropagation(); setStarHovered(false); }}
+                        title={starred ? "Unstar" : "Star"}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 8,
+                            border: "none", borderRadius: 999,
+                            background: CLAY.surface,
+                            padding: "8px 14px 8px 10px",
+                            cursor: "pointer", color: CLAY.textPrimary,
+                            fontFamily: CLAY.font,
+                            boxShadow: starHovered
+                                ? `${clayRaised(false)}, 0 0 14px rgba(245,158,11,0.45)`
+                                : clayRaised(true),
+                            transition: "box-shadow 220ms ease",
+                        }}
+                    >
+                        <StarIcon filled={starred} glow={starHovered} />
+                        <span style={{ fontSize: 15, fontWeight: 500, color: CLAY.textPrimary }}>
+                            {starCount}
+                        </span>
+                    </button>
+
+                    <button
+                        onClick={handleTogglePublish}
+                        onMouseEnter={e => { e.stopPropagation(); setPublishHovered(true); }}
+                        onMouseLeave={e => { e.stopPropagation(); setPublishHovered(false); }}
+                        disabled={publishBusy}
+                        title={published ? "Remove from Community" : "Post to Community"}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 7,
+                            border: "none", borderRadius: 999,
+                            background: published
+                                ? (publishHovered
+                                    ? "linear-gradient(145deg, #f28b8b, #e35d5d)"
+                                    : "linear-gradient(145deg, #8fe3c0, #5fcf9e)")
+                                : CLAY.surface,
+                            color: "#1A1A1A",
+                            padding: "10px 16px",
+                            fontSize: 13, fontWeight: 500, letterSpacing: "normal",
+                            fontFamily: CLAY.font,
+                            cursor: publishBusy ? "default" : "pointer",
+                            opacity: publishBusy ? 0.7 : 1,
+                            boxShadow: published
+                                ? (publishHovered
+                                    ? "0 6px 14px -4px rgba(227,93,93,0.45), inset 0 1px 1px rgba(255,255,255,0.4)"
+                                    : "0 6px 14px -4px rgba(95,207,158,0.45), inset 0 1px 1px rgba(255,255,255,0.4)")
+                                : (publishHovered ? clayRaised(true) : clayRaised(false)),
+                            transform: publishHovered ? "translateY(-1px)" : "translateY(0)",
+                            transition: "background 200ms ease, box-shadow 200ms ease, transform 200ms ease, opacity 160ms ease",
+                        }}
+                    >
+                        {publishBusy ? (
+                            <SpinnerIcon />
+                        ) : (
+                            <GlobeIcon color="#333" size={13} />
+                        )}
+                        {published
+                            ? (publishHovered ? "Remove from Community" : "Posted to Community")
+                            : "Post to Community"}
+                        {!published && <ArrowIcon color="#333" />}
+                    </button>
                 </div>
             </div>
-
-            <button ref={shareButtonRef} onClick={() => setShareOpen(true)}>
-                <ShareIcon />
-            </button>
 
             {shareOpen && (
                 <ShareDialog
@@ -384,24 +553,93 @@ export function ProjectCard({
     );
 }
 
-function OverlayIconButton({ title, onClick, children }: { title: string; onClick: (e: React.MouseEvent) => void; children: React.ReactNode }) {
-    const [hovered, setHovered] = useState(false);
+function ClayIconChip({
+    children,
+    title,
+    onClick,
+    hovered,
+    onHoverChange,
+    buttonRef,
+}: {
+    children: React.ReactNode;
+    title: string;
+    onClick: (e: React.MouseEvent) => void;
+    hovered: boolean;
+    onHoverChange: (v: boolean) => void;
+    buttonRef?: React.RefObject<HTMLButtonElement | null>;
+}) {
     return (
         <button
+            ref={buttonRef}
             title={title}
             onClick={onClick}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
+            onMouseEnter={e => { e.stopPropagation(); onHoverChange(true); }}
+            onMouseLeave={e => { e.stopPropagation(); onHoverChange(false); }}
             style={{
+                width: 34, height: 34, borderRadius: "50%",
+                border: "none",
+                background: "#F5F5F5",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                width: 26, height: 26, borderRadius: "50%", border: "none",
-                background: hovered ? "#ffffff" : "rgba(255,255,255,0.92)",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-                color: "rgba(26,26,26,0.75)", cursor: "pointer", flexShrink: 0, padding: 0,
+                cursor: "pointer",
+                boxShadow: hovered
+                    ? "inset 2px 2px 6px rgba(0,0,0,0.14), inset -2px -2px 6px rgba(255,255,255,0.7)"
+                    : "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.16)",
+                transition: "box-shadow 180ms ease",
             }}
         >
             {children}
         </button>
+    );
+}
+function formatStatusLabel(status: string) {
+    return status
+        .replace(/[_-]/g, " ")
+        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+}
+
+function StarIcon({ filled, glow }: { filled: boolean; glow?: boolean }) {
+    const color = filled || glow ? "#F59E0B" : "#333333";
+    return (
+        <svg
+            width="17" height="17" viewBox="0 0 24 24"
+            fill={filled || glow ? "#F59E0B" : "none"}
+            stroke={color}
+            strokeWidth="1.7"
+            style={{
+                filter: glow ? "drop-shadow(0 0 5px rgba(245,158,11,0.75))" : "none",
+                transition: "filter 200ms ease, fill 200ms ease, stroke 200ms ease",
+            }}
+        >
+            <path d="M12 2.5l2.9 6.24 6.6.62-5.1 4.53 1.55 6.61L12 17.9l-5.95 3.6 1.55-6.61-5.1-4.53 6.6-.62L12 2.5z" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
+function ArrowIcon({ color = "#fff" }: { color?: string }) {
+    return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M7 17L17 7M9 7h8v8" />
+        </svg>
+    );
+}
+
+
+function GlobeIcon({ color, size = 14 }: { color: string; size?: number }) {
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3c2.5 2.7 4 6 4 9s-1.5 6.3-4 9c-2.5-2.7-4-6-4-9s1.5-6.3 4-9z" />
+        </svg>
+    );
+}
+
+function SpinnerIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" style={{ animation: "spin 0.8s linear infinite" }}>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <circle cx="12" cy="12" r="9" fill="none" stroke="rgba(100,116,139,0.25)" strokeWidth="3" />
+            <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
     );
 }
 
@@ -576,8 +814,6 @@ export default function ProjectsGrid({
                 </div>
             </div>
 
-            {/* "Recent Activity" section label — sits above the grid, doesn't touch
-                the header/sort/count above or the card/skeleton/empty-state logic below. */}
             {!error && (
                 <h3 style={{
                     margin: "0 0 14px",

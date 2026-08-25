@@ -16,6 +16,13 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
     // pan is an additional pixel offset.
     const [userZoom, setUserZoom] = useState(1)
     const [userPan, setUserPan] = useState({ x: 0, y: 0 })
+    // Refs mirror the state above so the wheel handler (attached natively,
+    // see below) always reads the latest values synchronously — no stale
+    // closures, no relying on nested functional setState updaters.
+    const userZoomRef = useRef(userZoom)
+    const userPanRef = useRef(userPan)
+    useEffect(() => { userZoomRef.current = userZoom }, [userZoom])
+    useEffect(() => { userPanRef.current = userPan }, [userPan])
     const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
 
     // Fit baseline — computed once per fp/resize, NOT per interaction.
@@ -24,11 +31,6 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
     const fitRef = useRef({ zoom: 1, pan: { x: 40, y: 40 } })
 
     // ── Precomputed lookup structures, built once per `fp` change ──────────
-    // Read-only viewer never mutates fp, so these can be plain useMemo
-    // (unlike the live editor's scheduleRedraw, which has to worry about
-    // recomputing mid-drag) — but the SHAPES/GROUPING must match draw2D's
-    // actual consumption exactly, or entities silently vanish with no error.
-
     const nodesById = useMemo(
         () => new Map<string, LineNode>((fp.lineNodes ?? []).map(n => [n.id, n])),
         [fp.lineNodes]
@@ -39,10 +41,6 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
         [fp.rooms]
     )
 
-    // shapesIndex is keyed by the SORTED, COMMA-JOINED nodeIds string —
-    // this matches exactly how draw2D looks it up (`[...nodeIds].sort().join(',')`),
-    // NOT by shape.id. Getting this key format wrong means every shape
-    // lookup silently misses and labels fall back to "Area" with no error.
     const shapesIndex = useMemo(() => {
         const map = new Map<string, NonNullable<FloorPlanState['closedShapes']>[number]>()
         for (const shape of fp.closedShapes ?? []) {
@@ -51,20 +49,11 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
         return map
     }, [fp.closedShapes])
 
-    // closedPolygons: draw2D just needs an array of node-id loops to render.
-    // Using fp.closedShapes' own nodeIds directly (rather than re-deriving
-    // via graph-cycle detection) guarantees every polygon drawn has a real
-    // shapesIndex match — correct for a static published plan, where we're
-    // only ever rendering shapes that already exist, not detecting new ones
-    // from raw line-segment topology.
     const closedPolygons = useMemo(
         () => (fp.closedShapes ?? []).map(s => s.nodeIds),
         [fp.closedShapes]
     )
 
-    // openingsByRoom: room-wall openings only (no segmentNodeIds), grouped
-    // by roomId — mirrors the exact filter the old inline call used
-    // (`o.roomId === room.id && !o.segmentNodeIds`).
     const openingsByRoom = useMemo(() => {
         const map = new Map<string, FloorPlanState['openings']>()
         for (const op of fp.openings ?? []) {
@@ -76,11 +65,6 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
         return map
     }, [fp.openings])
 
-    // openingsBySegment: line-wall openings, grouped by which segment's
-    // node-pair they sit on. An opening's segmentNodeIds is a single node
-    // pair; a segment can have multiple consecutive node pairs along its
-    // polyline, so match against EVERY consecutive pair in each segment,
-    // not just the first two nodes.
     const openingsBySegment = useMemo(() => {
         const map = new Map<string, FloorPlanState['openings']>()
         const lineOpenings = (fp.openings ?? []).filter(op => op.segmentNodeIds)
@@ -114,10 +98,6 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
             y: fit.pan.y + userPan.y,
         }
 
-        // Read-only: selection/hover/drag/marquee state is permanently
-        // null/empty here, regardless of any interaction on this canvas.
-        // Only pan/zoom (camera) is user-driven — nothing in this call can
-        // ever cause draw2D to render a selected/hovered/edited state.
         draw2D(
             ctx,
             fp,
@@ -142,14 +122,64 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
         )
     }, [fp, userZoom, userPan, closedPolygons, openingsByRoom, openingsBySegment, shapesIndex, nodesById, roomsById])
 
+    // ── Zoom toward the cursor, native wheel listener ───────────────────────
+    // IMPORTANT: this is intentionally a native addEventListener with
+    // { passive: false }, NOT React's onWheel. React attaches onWheel as a
+    // passive listener, which means e.preventDefault() silently no-ops —
+    // the browser's native scroll/zoom then fights with the pan/zoom math
+    // below and produces exactly the "drifting off-center" symptom. Fix:
+    // attach natively so preventDefault actually takes effect.
+    useEffect(() => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+
+        const handler = (e: WheelEvent) => {
+            e.preventDefault()
+            e.stopPropagation()
+
+            const rect = canvas.getBoundingClientRect()
+            const cursorX = e.clientX - rect.left
+            const cursorY = e.clientY - rect.top
+
+            const fit = fitRef.current
+            const factor = e.deltaY < 0 ? 1.12 : 0.9
+            const newZoom = Math.max(0.2, Math.min(5, userZoomRef.current * factor))
+
+            const oldEffectiveZoom = fit.zoom * userZoomRef.current
+            const newEffectiveZoom = fit.zoom * newZoom
+            const oldEffectivePan = {
+                x: fit.pan.x + userPanRef.current.x,
+                y: fit.pan.y + userPanRef.current.y,
+            }
+
+            // World point currently under the cursor, at the OLD zoom/pan.
+            const worldX = (cursorX - oldEffectivePan.x) / (PX_PER_M * oldEffectiveZoom)
+            const worldZ = (cursorY - oldEffectivePan.y) / (PX_PER_M * oldEffectiveZoom)
+
+            // Solve pan so that same world point stays under the cursor at
+            // the NEW zoom level.
+            const newEffectivePan = {
+                x: cursorX - worldX * PX_PER_M * newEffectiveZoom,
+                y: cursorY - worldZ * PX_PER_M * newEffectiveZoom,
+            }
+            const newUserPan = {
+                x: newEffectivePan.x - fit.pan.x,
+                y: newEffectivePan.y - fit.pan.y,
+            }
+
+            userZoomRef.current = newZoom
+            userPanRef.current = newUserPan
+            setUserZoom(newZoom)
+            setUserPan(newUserPan)
+        }
+
+        canvas.addEventListener('wheel', handler, { passive: false })
+        return () => canvas.removeEventListener('wheel', handler)
+    }, [])
+
     // Pan/zoom are camera controls, not editing — no entity can be
     // selected, moved, or modified through this canvas. No click handler
     // exists that performs hit-testing against fp's entities.
-    const handleWheel = (e: React.WheelEvent) => {
-        e.preventDefault()
-        const factor = e.deltaY < 0 ? 1.1 : 0.9
-        setUserZoom(z => Math.max(0.2, Math.min(5, z * factor)))
-    }
     const handleMouseDown = (e: React.MouseEvent) => {
         dragRef.current = { sx: e.clientX, sy: e.clientY, px: userPan.x, py: userPan.y }
     }
@@ -194,11 +224,20 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
             const scaleZ = (canvas.height - padding * 2) / spanZ
             const fitZoom = Math.min(scaleX, scaleZ) / PX_PER_M
 
+            // Actual rendered size of the content at fitZoom, in px.
+            const contentWidth = spanX * PX_PER_M * fitZoom
+            const contentHeight = spanZ * PX_PER_M * fitZoom
+
+            // Center whatever space is left over on the non-binding axis,
+            // instead of anchoring everything to the top-left + padding.
+            const offsetX = (canvas.width - contentWidth) / 2
+            const offsetY = (canvas.height - contentHeight) / 2
+
             fitRef.current = {
                 zoom: fitZoom,
                 pan: {
-                    x: padding - minX * PX_PER_M * fitZoom,
-                    y: padding - minZ * PX_PER_M * fitZoom,
+                    x: offsetX - minX * PX_PER_M * fitZoom,
+                    y: offsetY - minZ * PX_PER_M * fitZoom,
                 },
             }
 
@@ -223,9 +262,12 @@ export function PublicFloorPlan2D({ fp }: { fp: FloorPlanState }) {
                 onMouseDown={handleMouseDown}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
-                onWheel={handleWheel}
                 onMouseMove={handleMouseMove}
-                style={{ width: '100%', height: '100%', display: 'block', cursor: dragRef.current ? 'grabbing' : 'grab' }} />
+                style={{
+                    width: '100%', height: '100%', display: 'block',
+                    cursor: dragRef.current ? 'grabbing' : 'grab',
+                    touchAction: 'none', overscrollBehavior: 'contain',
+                }} />
         </div>
     )
 }

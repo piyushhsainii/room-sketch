@@ -21,12 +21,16 @@ export async function GET(req: NextRequest) {
   const cursorId =
     cursorIdRaw !== null && UUID_RE.test(cursorIdRaw) ? cursorIdRaw : null;
 
+  // CHANGED — users only actually has full_name/email (see public.users
+  // schema); the old select() asked for name/username/display_name too,
+  // which don't exist and made Postgres reject the whole query (single
+  // statement, one bad column fails it all — not just that field).
   let query = supabase
     .from("projects")
     .select(
       `
       id, name, thumbnail_url, star_count, share_token,
-      users:user_id ( full_name, name, username, display_name, email )
+      users:user_id ( full_name, email )
     `,
     )
     .eq("published", true)
@@ -46,13 +50,10 @@ export async function GET(req: NextRequest) {
 
   const projects = (data ?? []).map((p: any) => {
     const u = p.users;
+    // CHANGED — dropped name/username/display_name fallbacks, matching
+    // the trimmed select() above.
     const authorName =
-      u?.full_name ||
-      u?.name ||
-      u?.username ||
-      u?.display_name ||
-      (u?.email ? u.email.split("@")[0] : null) ||
-      "Anonymous";
+      u?.full_name || (u?.email ? u.email.split("@")[0] : null) || "Anonymous";
     return {
       id: p.id,
       name: p.name,

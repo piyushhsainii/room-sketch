@@ -43,47 +43,132 @@ const FAQS: FaqItem[] = [
         : []),
 ];
 
+// ---- Claymorphism theme tokens (shared across the app) ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    accentText: "#4C4FBF",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+};
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`
+        : `-4px -4px 9px ${CLAY.lightShadow}, 4px 4px 10px ${CLAY.darkShadow}`;
+
+// NOTE: FAQS is assumed to be defined/imported elsewhere in your project,
+// same as in the original file — left untouched here.
+
 export default function Faq() {
     const [openIndex, setOpenIndex] = useState<number | null>(0);
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
     return (
-        <section id="faq" className="py-24 px-6 md:px-10 bg-paper border-b border-line">
-            <div className="max-w-[760px] mx-auto">
-                <div className="reveal mb-12 text-center">
-                    <h2 className="font-display text-[1.9rem] md:text-[2.6rem] tracking-[-0.025em] text-ink leading-[1.1]">
+        <section
+            id="faq"
+            style={{ padding: "96px 24px", background: CLAY.canvas, fontFamily: CLAY.font }}
+        >
+            <div style={{ maxWidth: 760, margin: "0 auto" }}>
+                <div style={{ marginBottom: 48, textAlign: "center" }}>
+                    <h2
+                        style={{
+                            fontFamily: CLAY.font,
+                            fontSize: "clamp(1.9rem, 2.6rem, 2.6rem)",
+                            fontWeight: 500,
+                            letterSpacing: "-0.01em",
+                            color: CLAY.textPrimary,
+                            lineHeight: 1.1,
+                            margin: 0,
+                        }}
+                    >
                         FAQ
                     </h2>
                 </div>
 
-                <div className="reveal border-t border-line">
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {FAQS.map((item, i) => {
                         const isOpen = openIndex === i;
+                        const isHovered = hoveredIndex === i;
                         return (
-                            <div key={item.q} className="border-b border-line">
+                            <div
+                                key={item.q}
+                                onMouseEnter={() => setHoveredIndex(i)}
+                                onMouseLeave={() => setHoveredIndex(null)}
+                                style={{
+                                    borderRadius: 18,
+                                    background: CLAY.surface,
+                                    boxShadow: isOpen
+                                        ? clayRaised(true)
+                                        : isHovered
+                                            ? clayRaised(false)
+                                            : `-2px -2px 5px ${CLAY.lightShadow}, 2px 2px 6px ${CLAY.darkShadow}`,
+                                    transition: "box-shadow 200ms ease",
+                                    overflow: "hidden",
+                                }}
+                            >
                                 <button
                                     type="button"
                                     onClick={() => setOpenIndex(isOpen ? null : i)}
                                     aria-expanded={isOpen}
-                                    className="w-full flex items-center justify-between gap-6 py-5 text-left"
+                                    style={{
+                                        width: "100%", display: "flex", alignItems: "center",
+                                        justifyContent: "space-between", gap: 20,
+                                        padding: "18px 20px", textAlign: "left",
+                                        border: "none", background: "transparent", cursor: "pointer",
+                                    }}
                                 >
-                                    <span className="text-black text-[1.1rem] font-sans text-ink tracking-tight leading-snug font-medium ">
+                                    <span
+                                        style={{
+                                            fontFamily: CLAY.font,
+                                            fontSize: "1.05rem",
+                                            fontWeight: 500,
+                                            letterSpacing: "normal",
+                                            lineHeight: 1.4,
+                                            color: CLAY.textPrimary,
+                                        }}
+                                    >
                                         {item.q}
                                     </span>
                                     <span
-                                        className="flex-none w-7 h-7 rounded-full border border-line-strong flex items-center justify-center text-blue transition-transform duration-200"
-                                        style={{ transform: isOpen ? "rotate(45deg)" : "rotate(0deg)" }}
+                                        style={{
+                                            flexShrink: 0, width: 30, height: 30, borderRadius: "50%",
+                                            background: CLAY.surfaceChip,
+                                            color: CLAY.accentText,
+                                            display: "flex", alignItems: "center", justifyContent: "center",
+                                            boxShadow: isOpen ? clayRaised(true) : clayRaised(false),
+                                            transition: "transform 200ms ease, box-shadow 200ms ease",
+                                            transform: isOpen ? "rotate(45deg)" : "rotate(0deg)",
+                                        }}
                                     >
                                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                            <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                                            <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                                         </svg>
                                     </span>
                                 </button>
                                 <div
-                                    className="grid font-sans  tracking-tight overflow-hidden transition-[grid-template-rows] duration-300 ease-out"
-                                    style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
+                                    style={{
+                                        display: "grid",
+                                        fontFamily: CLAY.font,
+                                        letterSpacing: "normal",
+                                        overflow: "hidden",
+                                        transition: "grid-template-rows 300ms ease-out",
+                                        gridTemplateRows: isOpen ? "1fr" : "0fr",
+                                    }}
                                 >
-                                    <div className="overflow-hidden">
-                                        <p className="text-[17px] font-normal font-sans tracking-tighter text-black leading-[1.75]  pb-5 pr-12">
+                                    <div style={{ overflow: "hidden" }}>
+                                        <p
+                                            style={{
+                                                fontSize: 15.5, fontWeight: 400, letterSpacing: "normal",
+                                                color: CLAY.textMuted, lineHeight: 1.7,
+                                                margin: 0, padding: "0 20px 18px 20px",
+                                            }}
+                                        >
                                             {item.a}
                                         </p>
                                     </div>

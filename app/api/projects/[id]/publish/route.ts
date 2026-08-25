@@ -1,7 +1,3 @@
-// app/api/projects/[id]/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -86,10 +82,70 @@ export async function PATCH(
   return NextResponse.json({ project: updated });
 }
 
+// app/api/projects/[id]/publish/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data: project, error: fetchErr } = await supabase
+    .from("projects")
+    .select("id, user_id, published")
+    .eq("id", id)
+    .single();
+
+  if (fetchErr || !project)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (project.user_id !== user.id)
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  // Idempotent — publishing an already-published project just returns it
+  // as-is rather than erroring or bumping published_at again.
+  if (project.published) {
+    const { data: current, error: reFetchErr } = await supabase
+      .from("projects")
+      .select()
+      .eq("id", id)
+      .single();
+    if (reFetchErr)
+      return NextResponse.json({ error: reFetchErr.message }, { status: 500 });
+    return NextResponse.json({ project: current });
+  }
+
+  const { data: updated, error: updateErr } = await supabase
+    .from("projects")
+    .update({
+      published: true,
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (updateErr)
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
+  return NextResponse.json({ project: updated });
+}
+
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // Unpublish — same route, same ownership rules, so "publish"/"unpublish"
+  // stay symmetric under one file rather than needing a second endpoint.
   const { id } = await params;
 
   const supabase = await createServerSupabaseClient();
@@ -110,13 +166,19 @@ export async function DELETE(
   if (project.user_id !== user.id)
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { error: deleteErr } = await supabase
+  const { data: updated, error: updateErr } = await supabase
     .from("projects")
-    .delete()
-    .eq("id", id);
+    .update({
+      published: false,
+      published_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
 
-  if (deleteErr)
-    return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+  if (updateErr)
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
-  return NextResponse.json({ deleted: true, id });
+  return NextResponse.json({ project: updated });
 }

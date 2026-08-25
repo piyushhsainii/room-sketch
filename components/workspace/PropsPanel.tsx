@@ -52,6 +52,7 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
         ? { roomId: selectedId.split('::wall::')[0], wall: selectedId.split('::wall::')[1] as 'north' | 'south' | 'east' | 'west' }
         : null
     const wallRoom = wallSel ? fp.rooms.find(r => r.id === wallSel.roomId) : null
+    const [roomWallSide, setRoomWallSide] = useState<'interior' | 'exterior' | 'both'>('interior')
     const [railingFlightTab, setRailingFlightTab] = useState<'0' | '1'>('0')
     const [railingSideTab, setRailingSideTab] = useState<'left' | 'right'>('left')
     const guardEdgeSel = selectedId?.includes('::guard::')
@@ -625,39 +626,144 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                 </Card>
 
                 <Card>
-                    <SectionLabel>Appearance</SectionLabel>
-                    <PropField label="Wall color">
-                        <ColorSwatchInput
-                            value={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallColor ?? '#FFFFFF'}
-                            onChange={v => patchRoomScene({ wallColor: v })}
+                    <SectionLabel>Floor Cutout</SectionLabel>
+                    <PropField label="Enabled">
+                        <Button
+                            variant="secondary"
+                            onClick={() => patchRoom({
+                                cutout: {
+                                    enabled: !(room.cutout?.enabled ?? false),
+                                    openingOffset: room.cutout?.openingOffset ?? 0.15,
+                                    guard: room.cutout?.guard,
+                                }
+                            })}
+                        >
+                            {(room.cutout?.enabled ?? false) ? '☑ On (hole in floor)' : '☐ Off'}
+                        </Button>
+                    </PropField>
+                    {(room.cutout?.enabled ?? false) && (
+                        <PropField label="Opening margin (m)">
+                            <NumInput value={room.cutout?.openingOffset ?? 0.15} min={0} max={1} step={0.05}
+                                onChange={v => patchRoom({ cutout: { ...(room.cutout ?? { enabled: true }), openingOffset: v } })} />
+                        </PropField>
+                    )}
+                </Card>
+
+                <Card>
+                    <SectionLabel>Walls</SectionLabel>
+                    {(room.cutout?.enabled ?? false) ? (
+                        <>
+                            <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: 4 }}>
+                                This room is a floor cutout — these settings control its guard perimeter, not a wall.
+                            </div>
+                            <PropField label="Guard type">
+                                <SegmentedControl
+                                    options={[
+                                        { value: 'wall', label: 'Wall' },
+                                        { value: 'railing', label: 'Railing' },
+                                    ] as const}
+                                    value={room.cutout?.guard?.type ?? 'wall'}
+                                    onChange={type => patchRoom({
+                                        cutout: {
+                                            ...room.cutout!,
+                                            guard: { ...(room.cutout?.guard ?? { enabled: true, type: 'wall' }), enabled: true, type }
+                                        }
+                                    })}
+                                />
+                            </PropField>
+                            <PropField label="Height (m)">
+                                <NumInput
+                                    value={room.cutout?.guard?.height ?? (room.cutout?.guard?.type === 'railing' ? 0.9 : fp.roomHeight)}
+                                    min={0.3} max={6} step={0.1}
+                                    onChange={v => patchRoom({
+                                        cutout: {
+                                            ...room.cutout!,
+                                            guard: { ...(room.cutout?.guard ?? { enabled: true, type: 'wall' }), height: v }
+                                        }
+                                    })}
+                                />
+                                <a
+                                    style={{ fontSize: 11, cursor: 'pointer', color: COLOR.accent }}
+                                    onClick={() => patchRoom({
+                                        cutout: {
+                                            ...room.cutout!,
+                                            guard: { ...(room.cutout?.guard ?? { enabled: true, type: 'wall' }), height: undefined }
+                                        }
+                                    })}
+                                >
+                                    Reset to room height ({fp.roomHeight.toFixed(2)}m)
+                                </a>
+                            </PropField>
+                        </>
+                    ) : (
+                        <>
+                            <PropField label="Thickness (m)">
+                                <RangeRow
+                                    value={Math.round((room.wallThickness ?? 0.15) * 100)}
+                                    onChange={v => patchRoom({ wallThickness: v / 100 })}
+                                    format={v => `${(v / 100).toFixed(2)}m`}
+                                    min={2} max={200} step={1}
+                                />
+                            </PropField>
+                            <PropField label="Wall type">
+                                <SegmentedControl
+                                    options={[
+                                        { value: 'solid', label: 'Solid' },
+                                        { value: 'railing', label: 'Railing' },
+                                        { value: 'open', label: 'Open' },
+                                    ] as const}
+                                    value={room.wallType ?? 'solid'}
+                                    onChange={wallType => patchRoom({ wallType })}
+                                />
+                            </PropField>
+                        </>
+                    )}
+                </Card>
+
+                <Card>
+                    <SectionLabel>Wall Texture</SectionLabel>
+                    <PropField label="Side">
+                        <SegmentedControl
+                            options={[
+                                { value: 'interior', label: 'Interior' },
+                                { value: 'exterior', label: 'Exterior' },
+                                { value: 'both', label: 'Both' },
+                            ] as const}
+                            value={roomWallSide}
+                            onChange={(side) => setRoomWallSide(side)}
                         />
                     </PropField>
-                    <Divider />
-                    {
-                        seg &&
-                        <MaterialTexturePicker
-                            label="Wall Texture"
-                            items={wallMaterials}
-                            currentId={
-                                segWallSide === 'exterior'
-                                    ? segSceneConfig?.exteriorWallMaterial
-                                    : segSceneConfig?.wallMaterial
-                            }
-                            onSelect={(id) => {
-                                const patch: Partial<RoomSceneConfig> = {}
-                                if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = id as WallMaterial
-                                if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = id as WallMaterial
-                                patchRoomSceneById(seg.id, patch)
-                            }}
-                            onClear={() => {
-                                const patch: Partial<RoomSceneConfig> = {}
-                                if (segWallSide === 'interior' || segWallSide === 'both') patch.wallMaterial = undefined
-                                if (segWallSide === 'exterior' || segWallSide === 'both') patch.exteriorWallMaterial = undefined
-                                patchRoomSceneById(seg.id, patch)
-                            }}
-                            theme={pickerTheme}
-                        />
-                    }
+                    <div style={{ fontSize: 11, color: COLOR.textFaint, marginBottom: -4 }}>
+                        {roomWallSide === 'exterior'
+                            ? 'Applies to the outside face of this wall.'
+                            : roomWallSide === 'both'
+                                ? 'Applies to both faces of this wall.'
+                                : 'Applies to the inside face of this wall.'}
+                    </div>
+                    <MaterialTexturePicker
+                        label={
+                            roomWallSide === 'both'
+                                ? 'Wall Texture'
+                                : roomWallSide === 'exterior'
+                                    ? 'Exterior Wall Texture'
+                                    : 'Interior Wall Texture'
+                        }
+                        items={wallMaterials}
+                        currentId={roomWallSide === 'exterior' ? room.exteriorWallMaterial : room.wallMaterial}
+                        onSelect={(id) => {
+                            const patch: Partial<EditorRoom> = {}
+                            if (roomWallSide === 'interior' || roomWallSide === 'both') patch.wallMaterial = id as WallMaterial
+                            if (roomWallSide === 'exterior' || roomWallSide === 'both') patch.exteriorWallMaterial = id as WallMaterial
+                            patchRoom(patch)
+                        }}
+                        onClear={() => {
+                            const patch: Partial<EditorRoom> = {}
+                            if (roomWallSide === 'interior' || roomWallSide === 'both') patch.wallMaterial = undefined
+                            if (roomWallSide === 'exterior' || roomWallSide === 'both') patch.exteriorWallMaterial = undefined
+                            patchRoom(patch)
+                        }}
+                        theme={pickerTheme}
+                    />
                     <Divider />
                     <MaterialTexturePicker
                         label="Floor Texture"
@@ -667,6 +773,16 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
                         onClear={() => patchRoomScene({ floorMaterial: undefined })}
                         theme={pickerTheme}
                     />
+                </Card>
+
+                <Card>
+                    <SectionLabel>Appearance</SectionLabel>
+                    <PropField label="Wall color">
+                        <ColorSwatchInput
+                            value={sceneConfig.rooms.find(r => r.roomId === room.id)?.wallColor ?? '#FFFFFF'}
+                            onChange={v => patchRoomScene({ wallColor: v })}
+                        />
+                    </PropField>
                 </Card>
             </>}
 

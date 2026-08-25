@@ -1,8 +1,9 @@
 // app/api/projects/route.ts
-import { NextRequest, NextResponse } from "next/server";
 import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
+import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+// POST — unchanged from the migrated version
 
 export async function GET() {
   const supabase = await createServerSupabaseClient();
@@ -49,8 +50,6 @@ export async function GET() {
 
   return NextResponse.json({ projects: projectsWithStars });
 }
-
-// POST — unchanged from the migrated version
 export async function POST(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {

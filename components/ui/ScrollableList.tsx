@@ -5,41 +5,45 @@ export function ScrollableList({ children, maxHeight }: { children: React.ReactN
     const trackRef = useRef<HTMLDivElement>(null)
     const [thumb, setThumb] = useState({ height: 0, top: 0, visible: false })
     const dragRef = useRef<{ startY: number; startScrollTop: number } | null>(null)
+    const rafRef = useRef<number | null>(null)
 
     const updateThumb = useCallback(() => {
-        const el = contentRef.current
-        if (!el) return
-        const { scrollHeight, clientHeight, scrollTop } = el
+        if (rafRef.current != null) return
+        rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null
+            const el = contentRef.current
+            if (!el) return
+            const { scrollHeight, clientHeight, scrollTop } = el
 
-        if (scrollHeight <= clientHeight) {
-            setThumb(prev => (prev.visible ? { height: 0, top: 0, visible: false } : prev))
-            return
-        }
+            if (scrollHeight <= clientHeight) {
+                setThumb(prev => (prev.visible ? { height: 0, top: 0, visible: false } : prev))
+                return
+            }
 
-        const thumbHeight = Math.max(24, (clientHeight / scrollHeight) * clientHeight)
-        const thumbTop = (scrollTop / (scrollHeight - clientHeight)) * (clientHeight - thumbHeight)
+            const thumbHeight = Math.round(Math.max(24, (clientHeight / scrollHeight) * clientHeight))
+            const thumbTop = Math.round((scrollTop / (scrollHeight - clientHeight)) * (clientHeight - thumbHeight))
 
-        setThumb(prev => {
-            const changed =
-                Math.abs(prev.height - thumbHeight) > 0.5 ||
-                Math.abs(prev.top - thumbTop) > 0.5 ||
-                !prev.visible
-            return changed ? { height: thumbHeight, top: thumbTop, visible: true } : prev
+            setThumb(prev => {
+                const changed =
+                    Math.abs(prev.height - thumbHeight) > 0.5 ||
+                    Math.abs(prev.top - thumbTop) > 0.5 ||
+                    !prev.visible
+                return changed ? { height: thumbHeight, top: thumbTop, visible: true } : prev
+            })
         })
     }, [])
 
-    // Re-measure on mount, on content change, AND on parent resize — a
-    // string/percentage maxHeight means clientHeight can change after the
-    // initial render (e.g. the Dock sheet expanding), and the old effect
-    // only re-ran on `children` changes, so the thumb could get stuck wrong.
     useEffect(() => {
         updateThumb()
         const el = contentRef.current
         if (!el || typeof ResizeObserver === 'undefined') return
         const ro = new ResizeObserver(() => updateThumb())
         ro.observe(el)
-        return () => ro.disconnect()
-    }, [updateThumb, children])
+        return () => {
+            ro.disconnect()
+            if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+        }
+    }, [updateThumb])
 
     const onThumbMouseDown = (e: React.MouseEvent) => {
         e.preventDefault()

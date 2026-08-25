@@ -23,7 +23,7 @@ export default function BenchStrip() {
           >
             <span
               className="text-[1.7rem] md:text-[2rem] tracking-[-0.03em] leading-none mb-2"
-              style={{ color: "#1A1A1A", fontWeight: 600 }}
+              style={{ color: "#1A1A1A", fontWeight: 400 }}
             >
               {it.num}
             </span>

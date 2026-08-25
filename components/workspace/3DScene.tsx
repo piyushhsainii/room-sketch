@@ -241,21 +241,6 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         <>
             <color attach="background" args={['#FFFFFF']} />
             <mesh
-                // position={[0, groundPlaneY + 0.01, 0]}
-                // rotation={[-Math.PI / 2, 0, 0]}
-                // onClick={(e) => { e.stopPropagation(); onSelect?.(null) }}
-                // visible={false}
-                // onPointerDown={(e) => { downPos.current = { x: e.clientX, y: e.clientY } }}
-                // onPointerUp={(e) => {
-                //     const d = downPos.current
-                //     downPos.current = null
-                //     if (!d) return
-                //     const moved = Math.hypot(e.clientX - d.x, e.clientY - d.y)
-                //     if (moved < 5) { // px threshold, same spirit as the 2D drag threshold
-                //         e.stopPropagation()
-                //         onSelect?.(null)
-                //     }
-                // }}
                 position={[0, groundPlaneY + 0.01, 0]}
                 rotation={[-Math.PI / 2, 0, 0]}
                 {...groundClickHandlers}

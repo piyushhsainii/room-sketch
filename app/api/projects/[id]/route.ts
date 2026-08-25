@@ -38,40 +38,121 @@ export async function GET(
 
   return NextResponse.json({ project: data });
 }
-
+// app/api/projects/[id]/route.ts
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
+
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
-    error: authError,
   } = await supabase.auth.getUser();
-  if (authError || !user)
+  if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id } = await context.params;
+  let body: { name?: string; archived?: boolean };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-  if (!id || id === "undefined") {
+  const { name, archived } = body;
+
+  if (name === undefined && archived === undefined) {
     return NextResponse.json(
-      { error: "Project ID is required" },
+      { error: "Nothing to update — provide 'name' and/or 'archived'" },
       { status: 400 },
     );
   }
 
-  const body = await req.json().catch(() => ({}));
-  const { name } = body as { name?: string };
-  if (!name?.trim())
-    return NextResponse.json({ error: "Name required" }, { status: 400 });
+  if (name !== undefined) {
+    if (typeof name !== "string" || !name.trim()) {
+      return NextResponse.json(
+        { error: "'name' must be a non-empty string" },
+        { status: 400 },
+      );
+    }
+    if (name.length > 200) {
+      return NextResponse.json(
+        { error: "'name' is too long (max 200 chars)" },
+        { status: 400 },
+      );
+    }
+  }
 
-  const { error } = await supabase
+  if (archived !== undefined && typeof archived !== "boolean") {
+    return NextResponse.json(
+      { error: "'archived' must be a boolean" },
+      { status: 400 },
+    );
+  }
+
+  const { data: project, error: fetchErr } = await supabase
     .from("projects")
-    .update({ name: name.trim() })
+    .select("id, user_id")
     .eq("id", id)
-    .eq("user_id", user.id);
+    .single();
 
-  if (error)
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  if (fetchErr || !project)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (project.user_id !== user.id)
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (name !== undefined) patch.name = name.trim();
+  if (archived !== undefined) {
+    patch.archived = archived;
+    patch.archived_at = archived ? new Date().toISOString() : null;
+  }
+
+  const { data: updated, error: updateErr } = await supabase
+    .from("projects")
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (updateErr)
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
+  return NextResponse.json({ project: updated });
+}
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data: project, error: fetchErr } = await supabase
+    .from("projects")
+    .select("id, user_id")
+    .eq("id", id)
+    .single();
+
+  if (fetchErr || !project)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (project.user_id !== user.id)
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const { error: deleteErr } = await supabase
+    .from("projects")
+    .delete()
+    .eq("id", id);
+
+  if (deleteErr)
+    return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+
+  return NextResponse.json({ deleted: true, id });
 }

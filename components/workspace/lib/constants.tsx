@@ -1,4 +1,3 @@
-import { LucideIcon } from "lucide-react"
 import { SceneConfig } from "../FloorPlanEditor"
 import { PlacedLight } from "../lights-constant"
 import { MaterialCategory } from "../texture/materials-registry"
@@ -411,6 +410,21 @@ export type EditorRoom = {
     width: number
     depth: number
     label: string
+    // NEW — mirrors ClosedShape's wall fields, room-level (whole room, not per-segment)
+    wallThickness?: number          // defaults to 0.15 when unset, matches Room3D's current hardcoded T
+    wallType?: 'solid' | 'railing' | 'open'   // defaults to 'solid'
+    wallMaterial?: WallMaterial          // interior face
+    exteriorWallMaterial?: WallMaterial  // exterior face
+    cutout?: {
+        enabled: boolean
+        openingOffset?: number
+        guard?: {
+            enabled: boolean
+            type: 'wall' | 'railing'
+            height?: number
+            railingStyle?: RailingStyle
+        }
+    }
 }
 
 export type LineNode = {

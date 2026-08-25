@@ -9,7 +9,8 @@ const YEARLY_DISCOUNT = 0.2; // 20% off when billed yearly
 // Server/build-time controlled only. Set NEXT_PUBLIC_PRICING_COMING_SOON=true
 // in your env to show the "coming soon" panel instead of live pricing.
 // Not exposed as a client-side toggle on purpose — flip the env var and redeploy.
-const PRICING_COMING_SOON = process.env.NEXT_PUBLIC_PRICING_COMING_SOON === "true";
+// const PRICING_COMING_SOON = process.env.NEXT_PUBLIC_PRICING_COMING_SOON === "true";
+const PRICING_COMING_SOON = 'true';
 
 function priceFor(basePrice: number, cycle: BillingCycle) {
   if (basePrice === 0) return 0;
@@ -145,7 +146,7 @@ function ComingSoonPanel() {
         We&apos;re finalizing plans for RoomSketch. Leave your email and we&apos;ll let you know
         the moment pricing goes live — early access included.
       </p>
-      <form
+      {/* <form
         className="flex items-center gap-2 w-full max-w-[380px] p-1.5 rounded-full"
         style={{
           background: "#E5E5E5",
@@ -171,7 +172,7 @@ function ComingSoonPanel() {
         >
           Notify me
         </button>
-      </form>
+      </form> */}
     </div>
   );
 }

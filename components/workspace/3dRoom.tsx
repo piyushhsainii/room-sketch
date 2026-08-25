@@ -10,6 +10,53 @@ import * as THREE from 'three'
 import { useMemo, useRef } from 'react'
 import { makeClickVsDragHandlers } from "@/lib/helpers";
 
+function wallFaceAttach(wallName: 'north' | 'south' | 'east' | 'west'): { interior: number; exterior: number; ends: number[] } {
+    switch (wallName) {
+        case 'north': return { interior: 4, exterior: 5, ends: [0, 1, 2, 3] } // interior faces +z (toward center)
+        case 'south': return { interior: 5, exterior: 4, ends: [0, 1, 2, 3] } // interior faces -z (toward center)
+        case 'east': return { interior: 1, exterior: 0, ends: [2, 3, 4, 5] }  // interior faces -x (toward center)
+        case 'west': return { interior: 0, exterior: 1, ends: [2, 3, 4, 5] }  // interior faces +x (toward center)
+    }
+}
+
+
+function WallFaceMaterials({
+    wallName, interiorMat, exteriorMat, interiorColor, exteriorColor,
+    isSelected, roughness, textured, runLength, runHeight, runDepth, opacity, transparent,
+}: {
+    wallName: 'north' | 'south' | 'east' | 'west'
+    interiorMat: WallMaterial
+    exteriorMat: WallMaterial
+    interiorColor: string
+    exteriorColor: string
+    isSelected: boolean
+    roughness: number
+    textured: boolean
+    runLength: number
+    runHeight: number
+    runDepth: number
+    opacity: number
+    transparent: boolean
+}) {
+    const { interior, exterior, ends } = wallFaceAttach(wallName)
+    const selColor = '#A5A6F5'
+    return (
+        <>
+            <WallMat attach={`material-${interior}`} mat={interiorMat} color={isSelected ? selColor : interiorColor}
+                roughness={roughness} textured={textured} width={runLength} height={runHeight} depth={runDepth}
+                opacity={opacity} transparent={transparent} />
+            <WallMat attach={`material-${exterior}`} mat={exteriorMat} color={isSelected ? selColor : exteriorColor}
+                roughness={roughness} textured={textured} width={runLength} height={runHeight} depth={runDepth}
+                opacity={opacity} transparent={transparent} />
+            {ends.map(i => (
+                <WallMat key={i} attach={`material-${i}`} mat={interiorMat} color={isSelected ? selColor : interiorColor}
+                    roughness={roughness} textured={textured} width={runLength} height={runHeight} depth={runDepth}
+                    opacity={opacity} transparent={transparent} />
+            ))}
+        </>
+    )
+}
+
 function Room3D({
     room,
     openings = [],
@@ -54,7 +101,14 @@ function Room3D({
 }) {
     const cx = room.x + room.width / 2
     const cz = room.z + room.depth / 2
-    const W = room.width, D = room.depth, H = roomHeight, T = 0.15
+    const W = room.width, D = room.depth, H = roomHeight
+    // CHANGED — was a hardcoded const T = 0.15; now reads room.wallThickness,
+    // defaulting to the old hardcoded value so existing saved rooms render
+    // identically until a user explicitly changes it.
+    const T = room.wallThickness ?? 0.15
+    // NEW — whole-room wall type, mirrors LineSegment.wallType but applies
+    // to all 4 walls at once since rooms have no per-segment identity.
+    const wallType = room.wallType ?? 'solid'
     const floorDownPos = useRef<{ x: number; y: number } | null>(null)
     const walls = [
         { name: 'north' as const, axis: 'x' as const },
@@ -162,14 +216,56 @@ function Room3D({
                 <FloorMat mat={floorMat} opacity={opacity} transparent={transparent} />
             </mesh>
 
-            {walls.map(wall => {
-                const wallOpenings = openings.filter(o => o.wall === wall.name && !o.segmentNodeIds)
-                const wallLen = wall.axis === 'x' ? W : D
+            {/* NEW — wallType === 'open': skip all wall/opening geometry for this
+                room entirely. Openings (doors/windows/etc.) on an open-wall room
+                are meaningless since there's no wall to cut them into, so they're
+                skipped too. Wall Decor is separately gated below for the same
+                reason (nothing to mount to). */}
+            {wallType !== 'open' && walls.map(wall => {
+
                 const wPos = wallWorldPos(wall.name)
+                const wallLen = wall.axis === 'x' ? W : D
+
+                // NEW — wallType === 'railing': one railing run across the wall's
+                // full length instead of the box+openings machinery. Openings are
+                // ignored for a whole-wall railing, same reasoning as 'open' above.
+                if (wallType === 'railing') {
+                    const angle = wall.axis === 'x' ? 0 : Math.PI / 2
+                    const wallOverride = roomWallOverrides?.[wall.name]
+                    const resolvedWallColor = wallOverride?.color ?? wallColor
+                    const wallId = `${room.id}::wall::${wall.name}`
+                    const isWallSelected = interactive && selectedId === wallId
+                    const wallClickHandlers = interactive ? {
+                        ...makeClickVsDragHandlers((e: any) => { e.stopPropagation(); onSelect?.(wallId) }),
+                        onPointerOver: (e: any) => { e.stopPropagation(); document.body.style.cursor = 'pointer' },
+                        onPointerOut: () => { document.body.style.cursor = 'auto' },
+                    } : {}
+                    return (
+                        <group key={wall.name} position={wPos} rotation={[0, angle, 0]} {...wallClickHandlers}>
+                            <Railing3D
+                                from={[-wallLen / 2, 0, 0]}
+                                to={[wallLen / 2, 0, 0]}
+                                wallRoughness={wallRoughness}
+                                color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
+                                height={0.9}
+                                style="baluster"
+                            />
+                        </group>
+                    )
+                }
+
+                // wallType === 'solid' from here down
+                const wallOpenings = openings.filter(o => o.wall === wall.name && !o.segmentNodeIds)
                 const wallId = `${room.id}::wall::${wall.name}`
                 const isWallSelected = interactive && selectedId === wallId
                 const wallOverride = roomWallOverrides?.[wall.name]
-                const resolvedWallMaterial = wallOverride?.material ?? wallMaterial
+                // CHANGED — resolvedWallMaterial now also checks room.wallMaterial
+                // (new per-room interior default) before falling back to the old
+                // wallMaterial prop; resolvedExteriorMaterial is new, falling back
+                // to the interior value when unset (matches PropsPanel's "Both"
+                // semantics: unset exterior = same as interior).
+                const resolvedWallMaterial = wallOverride?.material ?? room.wallMaterial ?? wallMaterial
+                const resolvedExteriorMaterial = room.exteriorWallMaterial ?? resolvedWallMaterial
                 const resolvedWallColor = wallOverride?.color ?? wallColor
                 const wallClickHandlers = interactive ? {
                     ...makeClickVsDragHandlers((e: any) => { e.stopPropagation(); onSelect?.(wallId) }),
@@ -180,10 +276,21 @@ function Room3D({
                     return (
                         <mesh key={wall.name} position={wPos} castShadow receiveShadow {...wallClickHandlers}>
                             <boxGeometry args={wallSize(wall.axis)} />
-                            <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
-                                roughness={wallRoughness} textured={wallTextured}
-                                width={wallRunLength(wall.axis)} height={wallSize(wall.axis)[1]} depth={wallSize(wall.axis)[2]}
-                                opacity={opacity} transparent={transparent} />
+                            <WallFaceMaterials
+                                wallName={wall.name}
+                                interiorMat={resolvedWallMaterial}
+                                exteriorMat={resolvedExteriorMaterial}
+                                interiorColor={resolvedWallColor}
+                                exteriorColor={resolvedWallColor}
+                                isSelected={isWallSelected}
+                                roughness={wallRoughness}
+                                textured={wallTextured}
+                                runLength={wallRunLength(wall.axis)}
+                                runHeight={wallSize(wall.axis)[1]}
+                                runDepth={wallSize(wall.axis)[2]}
+                                opacity={opacity}
+                                transparent={transparent}
+                            />
                         </mesh>
                     )
                 }
@@ -206,10 +313,21 @@ function Room3D({
                         panels.push(
                             <mesh key={`l${i}`} position={pos} castShadow receiveShadow {...wallClickHandlers}>
                                 <boxGeometry args={size} />
-                                <WallMat mat={resolvedWallMaterial} color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
-                                    roughness={wallRoughness} textured={wallTextured}
-                                    width={segLen} height={size[1]} depth={size[2]}
-                                    opacity={opacity} transparent={transparent} />
+                                <WallFaceMaterials
+                                    wallName={wall.name}
+                                    interiorMat={resolvedWallMaterial}
+                                    exteriorMat={resolvedExteriorMaterial}
+                                    interiorColor={resolvedWallColor}
+                                    exteriorColor={resolvedWallColor}
+                                    isSelected={isWallSelected}
+                                    roughness={wallRoughness}
+                                    textured={wallTextured}
+                                    runLength={segLen}
+                                    runHeight={size[1]}
+                                    runDepth={size[2]}
+                                    opacity={opacity}
+                                    transparent={transparent}
+                                />
                             </mesh>
                         )
                     }
@@ -233,6 +351,11 @@ function Room3D({
                                 : [wPos[0], effOpeningTop, room.z + opMid]
 
                             if (isArchway) {
+                                // NOTE — ArchHeader3D still takes a single mat/color
+                                // (not split interior/exterior). Not changed here:
+                                // haven't seen this component's internals, so not
+                                // guessing at its prop shape — flag if it needs the
+                                // same split treatment.
                                 panels.push(
                                     <group key={`h${i}`} position={basePos}>
                                         <ArchHeader3D
@@ -254,13 +377,18 @@ function Room3D({
                                 panels.push(
                                     <mesh key={`h${i}`} position={[basePos[0], effOpeningTop + effHeaderH / 2, basePos[2]]} castShadow receiveShadow {...wallClickHandlers}>
                                         <boxGeometry args={hSize} />
-                                        <WallMat
-                                            mat={resolvedWallMaterial}
-                                            color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
-                                            roughness={wallRoughness} textured={wallTextured}
-                                            width={op.width}
-                                            height={hSize[1]}
-                                            depth={hSize[2]}
+                                        <WallFaceMaterials
+                                            wallName={wall.name}
+                                            interiorMat={resolvedWallMaterial}
+                                            exteriorMat={resolvedExteriorMaterial}
+                                            interiorColor={resolvedWallColor}
+                                            exteriorColor={resolvedWallColor}
+                                            isSelected={isWallSelected}
+                                            roughness={wallRoughness}
+                                            textured={wallTextured}
+                                            runLength={op.width}
+                                            runHeight={hSize[1]}
+                                            runDepth={hSize[2]}
                                             opacity={opacity}
                                             transparent={transparent}
                                         />
@@ -276,15 +404,21 @@ function Room3D({
                             panels.push(
                                 <mesh key={`s${i}`} position={sPos} castShadow receiveShadow {...wallClickHandlers}>
                                     <boxGeometry args={sSize} />
-                                    <WallMat
-                                        mat={resolvedWallMaterial}
-                                        color={isWallSelected ? '#A5A6F5' : resolvedWallColor}
-                                        roughness={wallRoughness} textured={wallTextured}
-                                        width={sSize[0]}
-                                        height={sSize[1]}
-                                        depth={sSize[2]}
+                                    <WallFaceMaterials
+                                        wallName={wall.name}
+                                        interiorMat={resolvedWallMaterial}
+                                        exteriorMat={resolvedExteriorMaterial}
+                                        interiorColor={resolvedWallColor}
+                                        exteriorColor={resolvedWallColor}
+                                        isSelected={isWallSelected}
+                                        roughness={wallRoughness}
+                                        textured={wallTextured}
+                                        runLength={sSize[0]}
+                                        runHeight={sSize[1]}
+                                        runDepth={sSize[2]}
                                         opacity={opacity}
-                                        transparent={transparent} />
+                                        transparent={transparent}
+                                    />
                                 </mesh>
                             )
                         }
@@ -374,8 +508,9 @@ function Room3D({
                 return <group key={wall.name}>{panels}</group>
             })}
 
-            {/* Wall Decor */}
-            {(wallDecor ?? []).filter(d => d.roomId === room.id && !d.segmentNodeIds).map(d => {
+            {/* Wall Decor — gated to wallType === 'solid' only; nothing to mount
+                a decor item to on an open or railing wall. */}
+            {wallType === 'solid' && (wallDecor ?? []).filter(d => d.roomId === room.id && !d.segmentNodeIds).map(d => {
                 if (!d.wall) return null
                 const isH = d.wall === 'north' || d.wall === 'south'
                 const inward = d.facingInward ?? true

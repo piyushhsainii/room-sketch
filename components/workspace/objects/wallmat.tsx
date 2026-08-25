@@ -179,6 +179,57 @@ export function RealTextureWallMat({
     )
 }
 
+function wallFaceAttach(wallName: 'north' | 'south' | 'east' | 'west'): { interior: number; exterior: number; ends: number[] } {
+    switch (wallName) {
+        case 'north': return { interior: 4, exterior: 5, ends: [0, 1, 2, 3] } // interior faces +z (toward center)
+        case 'south': return { interior: 5, exterior: 4, ends: [0, 1, 2, 3] } // interior faces -z (toward center)
+        case 'east': return { interior: 1, exterior: 0, ends: [2, 3, 4, 5] }  // interior faces -x (toward center)
+        case 'west': return { interior: 0, exterior: 1, ends: [2, 3, 4, 5] }  // interior faces +x (toward center)
+    }
+}
+
+// NEW — renders the 6-slot material array for one wall box. `ends` (top/
+// bottom + the thin short-end caps) always get the interior material,
+// same convention as line-walls-3d.tsx §4g ("mostly hidden anyway,
+// doesn't matter visually"). runLength/runHeight/runDepth are that box's
+// own dimensions, needed for correct texture repeat on each face.
+function WallFaceMaterials({
+    wallName, interiorMat, exteriorMat, interiorColor, exteriorColor,
+    isSelected, roughness, textured, runLength, runHeight, runDepth, opacity, transparent,
+}: {
+    wallName: 'north' | 'south' | 'east' | 'west'
+    interiorMat: WallMaterial
+    exteriorMat: WallMaterial
+    interiorColor: string
+    exteriorColor: string
+    isSelected: boolean
+    roughness: number
+    textured: boolean
+    runLength: number
+    runHeight: number
+    runDepth: number
+    opacity: number
+    transparent: boolean
+}) {
+    const { interior, exterior, ends } = wallFaceAttach(wallName)
+    const selColor = '#A5A6F5'
+    return (
+        <>
+            <WallMat attach={`material-${interior}`} mat={interiorMat} color={isSelected ? selColor : interiorColor}
+                roughness={roughness} textured={textured} width={runLength} height={runHeight} depth={runDepth}
+                opacity={opacity} transparent={transparent} />
+            <WallMat attach={`material-${exterior}`} mat={exteriorMat} color={isSelected ? selColor : exteriorColor}
+                roughness={roughness} textured={textured} width={runLength} height={runHeight} depth={runDepth}
+                opacity={opacity} transparent={transparent} />
+            {ends.map(i => (
+                <WallMat key={i} attach={`material-${i}`} mat={interiorMat} color={isSelected ? selColor : interiorColor}
+                    roughness={roughness} textured={textured} width={runLength} height={runHeight} depth={runDepth}
+                    opacity={opacity} transparent={transparent} />
+            ))}
+        </>
+    )
+}
+
 export function WallMat({
     color,
     roughness,
@@ -237,9 +288,6 @@ export function WallMat({
         def.textureUrl,
     ])
 
-    /*
-     * REAL TEXTURE MATERIAL
-     */
     if (def.textureUrl) {
         return (
             <Suspense fallback={<LoadingMaterial opacity={opacity} transparent={finalTransparent} attach={attach} />}>
@@ -250,9 +298,6 @@ export function WallMat({
         )
     }
 
-    /*
-     * PVC PANEL
-     */
     if (mat === 'pvc-panel-groove') {
         const numGrooves = Math.floor(width / 0.15)
         const grooveW = 0.015

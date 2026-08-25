@@ -14,42 +14,42 @@ const ITEMS: Item[] = [
     title: "Floor plan → live 3D",
     desc: "Node-based drawing with real-metre coordinates — rooms, walls, doors, windows, stairs, per-segment wall types (solid, railing, open). Every edit renders instantly in a synced 3D split view, no re-modeling step.",
     tags: ["Node editor", "Real units", "Real-time 3D sync"],
-    image: "https://picsum.photos/seed/roomsketch-plan/240/240",
+    image: "/preview-assets/floor2d-live-model.png",
   },
   {
     code: "A-150",
     title: "Snapshot exports",
     desc: "Capture any floor or room as a 2D or 3D image from any camera angle — top-down for plans, eye-level for presentation, anything in between.",
     tags: ["2D + 3D export", "Any angle", "Per floor/room"],
-    image: "https://picsum.photos/seed/roomsketch-snapshot/240/240",
+    image: "/preview-assets/floor2d-live-model2.png",
   },
   {
     code: "A-401",
     title: "Materials",
     desc: "50+ materials across walls, floors, doors and furniture in one registry — swap a finish per room, per wall face, and see it update instantly.",
     tags: ["50+ materials", "Per-room control", "Pro"],
-    image: "https://picsum.photos/seed/roomsketch-materials/240/240",
+    image: "/preview-assets/floor2d-live-model3.png",
   },
   {
     code: "A-301",
     title: "Walkthrough",
     desc: "First-person Walk Mode moves a client through the space at eye level, not from above — see it exactly as they would standing in the room.",
     tags: ["Walk Mode", "Pro"],
-    image: "https://picsum.photos/seed/roomsketch-walk/240/240",
+    image: "/preview-assets/floor2d-live-model4.png",
   },
   {
     code: "A-501",
     title: "Live shareable link",
     desc: "Send a link and anyone can explore your active floor's 3D model in the browser — orbit, zoom, walk through, no account or install needed.",
     tags: ["Interactive 3D", "No sign-up", "Active floor"],
-    image: "https://picsum.photos/seed/roomsketch-share/240/240",
+    image: "/preview-assets/floor2d-live-model5.png",
   },
   {
     code: "A-601",
     title: "Community spotlight",
     desc: "Standout designs get picked for the community showcase — a chance to get your floor plan seen and featured.",
     tags: ["Featured designs", "Community showcase"],
-    image: "https://picsum.photos/seed/roomsketch-community/240/240",
+    image: "/preview-assets/floor2d-live-model6.png",
   },
 ];
 
@@ -62,18 +62,6 @@ export default function Capabilities() {
     >
       <div className="max-w-[1100px] mx-auto">
         <div className="reveal mb-4">
-          <span
-            className="inline-block text-[11px] font-medium uppercase tracking-[0.1em] mb-4 px-4 py-[6px] rounded-full"
-            style={{
-              color: "#556",
-              background:
-                "linear-gradient(135deg, rgba(163,224,193,0.28), rgba(168,178,230,0.28)), #EAEAEA",
-              boxShadow:
-                "-4px -4px 10px rgba(255,255,255,0.7), 4px 4px 12px rgba(0,0,0,0.10)",
-            }}
-          >
-            Suggest for you
-          </span>
           <h2
             className="text-[1.9rem] md:text-[2.6rem] tracking-[-0.02em] leading-[1.1] mb-3"
             style={{ color: "#1A1A1A", fontWeight: 500 }}

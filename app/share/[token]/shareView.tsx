@@ -178,16 +178,16 @@ export default function ShareView({ token, initialData }: { token: string; initi
                 }}
             >
                 <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', flexShrink: 0 }}>
-                    <div
+                    <img
+                        src={'/room-sketch-logo-removebg-preview.png'}
                         style={{
                             width: 34, height: 34, borderRadius: 12, display: 'flex',
                             alignItems: 'center', justifyContent: 'center',
                             background: NEU.surfaceRaised, boxShadow: NEU.shadowRaisedSm,
                         }}
-                    >
-                        <CubeLogo />
-                    </div>
-                    <span style={{ fontSize: 15.5, fontWeight: 700, color: '#12213E', letterSpacing: '-0.01em' }}>roomsketch</span>
+                    />
+
+                    <span >roomsketch</span>
                 </a>
 
                 <div
@@ -197,7 +197,7 @@ export default function ShareView({ token, initialData }: { token: string; initi
                     }}
                 />
 
-                <span style={{ fontWeight: 700, fontSize: 14, color: NEU.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 14, color: NEU.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {data.project_name}
                 </span>
 

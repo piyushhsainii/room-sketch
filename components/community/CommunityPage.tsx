@@ -32,6 +32,7 @@ interface CommunityProject {
     star_count: number
     share_token: string
     author_name: string
+    author_avatar_url: string | null
 }
 
 interface Cursor {
@@ -206,20 +207,6 @@ function HeaderCTA() {
     )
 }
 
-function EmptyState() {
-    return (
-        <div style={{
-            borderRadius: 20, padding: "64px 24px", textAlign: "center",
-            background: CLAY.surface,
-            boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
-        }}>
-            <p style={{ fontFamily: CLAY.font, fontSize: 14, color: CLAY.textMuted, letterSpacing: "normal", margin: 0 }}>
-                No public projects yet — be the first to publish one.
-            </p>
-        </div>
-    )
-}
-
 function CommunityCTA() {
     const [primaryHovered, setPrimaryHovered] = useState(false)
     const [secondaryHovered, setSecondaryHovered] = useState(false)
@@ -232,7 +219,7 @@ function CommunityCTA() {
             <h2 style={{ fontFamily: CLAY.font, fontSize: 20, fontWeight: 500, color: "#F5F5F5", letterSpacing: "normal", margin: 0 }}>
                 Design your own floor plan in minutes
             </h2>
-            <p style={{ fontFamily: CLAY.font, fontSize: 13, color: "#B5B5B5", margin: "8px 0 24px" }}>
+            <p style={{ fontFamily: CLAY.font, fontSize: 13, color: "#B5B5B5", letterSpacing: "normal", margin: "8px 0 24px" }}>
                 Draw, furnish, and render in 3D — free to start.
             </p>
             <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
@@ -273,6 +260,20 @@ function CommunityCTA() {
     )
 }
 
+function EmptyState() {
+    return (
+        <div style={{
+            borderRadius: 20, padding: "64px 24px", textAlign: "center",
+            background: CLAY.surface,
+            boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+        }}>
+            <p style={{ fontFamily: CLAY.font, fontSize: 14, color: CLAY.textMuted, letterSpacing: "normal", margin: 0 }}>
+                No public projects yet — be the first to publish one.
+            </p>
+        </div>
+    )
+}
+
 function CommunityCard({ project }: { project: CommunityProject }) {
     const [hovered, setHovered] = useState(false)
     return (
@@ -298,7 +299,7 @@ function CommunityCard({ project }: { project: CommunityProject }) {
                 aspectRatio: "16 / 10", background: "#DEDEDE", position: "relative",
                 margin: 10, borderRadius: 14, overflow: "hidden",
                 boxShadow: `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`,
-                width: "calc(100% - 20px)", height: "calc(100% - 20px)",
+                width: "calc(100% - 20px)",
             }}>
                 {project.thumbnail_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -306,7 +307,7 @@ function CommunityCard({ project }: { project: CommunityProject }) {
                         src={project.thumbnail_url}
                         alt={project.name}
                         loading="lazy"
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }}
                     />
                 ) : (
                     <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", color: CLAY.textPlaceholder, fontSize: 11, fontFamily: CLAY.font }}>
@@ -343,8 +344,31 @@ function CommunityCard({ project }: { project: CommunityProject }) {
                     {project.name}
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                    <span style={{ fontFamily: CLAY.font, fontSize: 12, color: CLAY.textMuted, letterSpacing: "normal" }}>{project.author_name}</span>
-                    <span style={{ fontFamily: CLAY.font, fontSize: 12, color: CLAY.textMuted, letterSpacing: "normal", display: "flex", alignItems: "center", gap: 3 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        {project.author_avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={project.author_avatar_url}
+                                alt=""
+                                style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                            />
+                        ) : (
+                            <div style={{
+                                width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                                background: CLAY.surfaceChip, display: "grid", placeItems: "center",
+                                fontSize: 9, color: CLAY.textMuted, fontFamily: CLAY.font,
+                            }}>
+                                {project.author_name?.[0]?.toUpperCase() || "?"}
+                            </div>
+                        )}
+                        <span style={{
+                            fontFamily: CLAY.font, fontSize: 12, color: CLAY.textMuted, letterSpacing: "normal",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                            {project.author_name}
+                        </span>
+                    </span>
+                    <span style={{ fontFamily: CLAY.font, fontSize: 12, color: CLAY.textMuted, letterSpacing: "normal", display: "flex", alignItems: "center", gap: 3, flexShrink: 0, marginLeft: 8 }}>
                         ★ {project.star_count}
                     </span>
                 </div>

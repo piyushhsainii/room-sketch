@@ -194,6 +194,11 @@ const DOT_DECOR = '#C9A876'
 const DOT_LIGHT = '#EAB308'
 const DOT_OUTDOOR = '#94A3B8'
 const DOT_DIMENSION = '#818CF8'
+// top of file, near other constants
+const FLOOR_FILL_DEFAULT = 'rgba(30,27,24,0.6)'
+const FLOOR_FILL_HOVER = 'rgba(99,102,241,0.07)'
+const FLOOR_FILL_SELECTED = 'rgba(99,102,241,0.12)'
+
 
 export function draw2D(
     ctx: CanvasRenderingContext2D,
@@ -252,7 +257,7 @@ export function draw2D(
         const isHov = hoveredId === room.id
 
         ctx.save()
-        ctx.fillStyle = isSel ? 'rgba(99,102,241,0.12)' : isHov ? 'rgba(99,102,241,0.07)' : 'rgba(30,27,24,0.6)'
+        ctx.fillStyle = isSel ? FLOOR_FILL_SELECTED : isHov ? FLOOR_FILL_HOVER : FLOOR_FILL_DEFAULT
         ctx.fillRect(rx, rz, rw, rd)
         ctx.restore()
 
@@ -1029,7 +1034,10 @@ export function draw2D(
         ctx.setLineDash([])
         const cx_ = nodes.reduce((s, n) => s + n.x, 0) / nodes.length
         const cz_ = nodes.reduce((s, n) => s + n.z, 0) / nodes.length
-        drawPlainLabel(ctx, cx(cx_), cy(cz_), shapeMatch?.label || 'Area', { fontSize: Math.max(9, 11 * zoom), weight: 700, color: isSel ? '#4F46E5' : '#1a1a1a' })
+        const minX = Math.min(...nodes.map(n => n.x)), maxX = Math.max(...nodes.map(n => n.x))
+        const minZ = Math.min(...nodes.map(n => n.z)), maxZ = Math.max(...nodes.map(n => n.z))
+        drawPlainLabel(ctx, cx(cx_), cy(cz_) - 9, shapeMatch?.label || 'Area', { fontSize: Math.max(9, 11 * zoom), weight: 700, color: isSel ? '#4F46E5' : '#1a1a1a' })
+        drawPlainLabel(ctx, cx(cx_), cy(cz_) + 10, `${(maxX - minX).toFixed(1)}m × ${(maxZ - minZ).toFixed(1)}m`, { fontSize: Math.max(9, 10.5 * zoom), weight: 500, color: isSel ? 'rgba(79,70,229,0.75)' : 'rgba(30,30,30,0.65)' })
         ctx.restore()
     }
     // ── Line nodes ─────────────────────────────────────────────────────────────

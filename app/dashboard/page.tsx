@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import type { PlanId } from "@/lib/pricing";
 import DashboardClient from "@/components/dashboard/DashboardClient";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { PlanId } from "@/lib/plan";
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();

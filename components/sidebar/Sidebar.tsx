@@ -1,7 +1,7 @@
 "use client";
 
 import { APP } from "@/constants/content";
-import { PlanId } from "@/lib/pricing";
+import { PlanId } from "@/lib/plan";
 import React from "react";
 
 // ---- Claymorphism theme tokens (shared with ProjectCard / CollectionsPanel) ----
@@ -160,7 +160,7 @@ export function Sidebar({
                 </div>
                 <button
                   type="button"
-                  onClick={() => { /* wire to upgrade flow */ }}
+                  onClick={() => { window.location.href = '/pricing' }}
                   style={{ fontSize: 11, fontWeight: 500, color: CLAY.textPrimary, background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline", fontFamily: CLAY.font }}
                 >
                   Upgrade Now

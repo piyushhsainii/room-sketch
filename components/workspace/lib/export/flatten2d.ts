@@ -85,16 +85,7 @@ export type FlatPlan2D = {
   }[];
 };
 
-// ── Step 1: memoization keyed on fp reference ──────────────────────────
-// FloorPlanState is treated as immutable/replaced-on-change elsewhere in
-// this codebase (see the React state pattern in FloorPlanEditor), so a
-// reference-equality cache is sufficient and avoids a deep-compare cost.
-let _lastFp: FloorPlanState | null = null;
-let _lastFlat: FlatPlan2D | null = null;
-
 export function deriveFlatPlan2D(fp: FloorPlanState): FlatPlan2D {
-  if (fp === _lastFp && _lastFlat) return _lastFlat;
-
   const closedPolygons = deriveClosedPolygons(fp.lineNodes, fp.lineSegments);
   const nodeMap = new Map(fp.lineNodes.map((n) => [n.id, n]));
 
@@ -329,7 +320,5 @@ export function deriveFlatPlan2D(fp: FloorPlanState): FlatPlan2D {
     roomRects,
   };
 
-  _lastFp = fp;
-  _lastFlat = result;
   return result;
 }

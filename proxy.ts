@@ -1,3 +1,4 @@
+// PATH: proxy.ts (project root, or src/proxy.ts if using a src/ layout)
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
@@ -24,11 +25,11 @@ function isPrivatePath(pathname: string) {
 
 const isProd = process.env.NODE_ENV === "production";
 
-// NOTE: this MUST be named `middleware` (or be a default export) for
-// Next.js to actually pick this file up and run it. It was previously
-// named `proxy`, which Next.js silently ignores — no error, no warning,
-// the file just never executes. That's why session refresh + route
-// gating below had no effect regardless of what the logic did.
+// Next.js 16 convention: this file must be named `proxy.ts` (not
+// `middleware.ts`) at the project root/src, with the exported function
+// named `proxy` (or default export) — `middleware.ts`/`export function
+// middleware` still works but is deprecated and logs a warning. This file
+// is already correctly named/exported for 16; nothing to rename here.
 export async function proxy(request: NextRequest) {
   // Session refresh always runs, in every environment — this is
   // infrastructure (keeping the Supabase access token valid for

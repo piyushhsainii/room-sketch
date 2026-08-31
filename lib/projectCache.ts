@@ -1,4 +1,4 @@
-import { PlanId } from "./pricing";
+import { PlanId } from "./plan";
 
 type MeResponse = {
   authed: boolean;

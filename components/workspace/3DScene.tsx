@@ -12,6 +12,14 @@ import { Floor } from "./lib/floor-data"
 import { FloorGeometry } from "./FloorGeometry"
 import { resolveShadowEligibleLightIdsAcrossFloors } from "./lib/lights/resolveLightPosition"
 
+// Neutral clay-gray backdrop instead of stark white — keeps the model from
+// dissolving into an infinite white void and matches the app's canvas color
+// elsewhere. Stage platform is a slightly lighter tone so it still reads as
+// a distinct surface against this background.
+const SCENE_BG = '#E5E5E5'
+const STAGE_COLOR = '#EEEEEC'
+const FOG_COLOR = '#E2E2E0'
+
 export type Scene3DHandle = {
     flyTo: (view: CameraView) => void
     getCurrentView: () => { position: [number, number, number]; target: [number, number, number] } | null
@@ -159,17 +167,34 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
             maxElev = Math.max(maxElev, relElev + f.state.roomHeight)
         }
 
-        // Fallback: no geometry anywhere yet (blank new floor) — center on origin at a
-        // reasonable default distance instead of leaving the camera at its stale/default spot.
         const cx = hasContent ? (minX + maxX) / 2 : 0
         const cz = hasContent ? (minZ + maxZ) / 2 : 0
         const midY = (minElev + maxElev) / 2
         const span = hasContent ? Math.max(maxX - minX, maxZ - minZ, maxElev - minElev, 5) : 10
 
-        controls.object.position.set(cx, midY + span * 1.6, cz + 0.01)
-        controls.target.set(cx, midY, cz)
-        controls.update()
-        invalidate()
+        const targetPos = new THREE.Vector3(cx, midY + span * 1.6, cz + 0.01)
+        const targetLookAt = new THREE.Vector3(cx, midY, cz)
+        const startPos = controls.object.position.clone()
+        const startLookAt = controls.target.clone()
+
+        const start = performance.now()
+        const duration = 600
+        let raf = 0
+
+        function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3) }
+
+        function tick(now: number) {
+            const t = Math.min(1, (now - start) / duration)
+            const k = easeOutCubic(t)
+            controls.object.position.lerpVectors(startPos, targetPos, k)
+            controls.target.lerpVectors(startLookAt, targetLookAt, k)
+            controls.update()
+            invalidate()
+            if (t < 1) raf = requestAnimationFrame(tick)
+        }
+
+        raf = requestAnimationFrame(tick)
+        return () => cancelAnimationFrame(raf)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeFloorId, viewMode])
 
@@ -220,6 +245,12 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         : 0
     const groundPlaneY = lowestGroupY - 0.02
 
+    // Stage platform sizing — reuses the same content-bounds calc already
+    // driving the shadow camera (sunCx/sunCz/sunSpan) so the platform always
+    // comfortably contains whatever's on the active floor(s), with margin so
+    // the building doesn't look like it's balanced right at the edge.
+    const stageRadius = Math.max(sunSpan * 0.85, 6)
+
     const shadowEligibleIds = useMemo(
         () => resolveShadowEligibleLightIdsAcrossFloors(floorsToRender.map(f => f.floor.state)),
         [floorsToRender]
@@ -239,7 +270,22 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     }, [viewMode, floors, showUnderlay, activeFloorId, invalidate])
     return (
         <>
-            <color attach="background" args={['#FFFFFF']} />
+            <color attach="background" args={[SCENE_BG]} />
+
+            {/* Visible staging platform — a circular disc the model sits on,
+                sized to the active floor(s)' content bounds with margin.
+                receiveShadow picks up the directional light's cast shadow
+                (already enabled below), giving the grounded, staged look
+                instead of the model floating in an infinite void. */}
+            <mesh
+                position={[sunCx, groundPlaneY, sunCz]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                receiveShadow
+            >
+                <circleGeometry args={[stageRadius, 64]} />
+                <meshStandardMaterial color={STAGE_COLOR} roughness={0.95} />
+            </mesh>
+
             <mesh
                 position={[0, groundPlaneY + 0.01, 0]}
                 rotation={[-Math.PI / 2, 0, 0]}
@@ -249,7 +295,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 <planeGeometry args={[500, 500]} />
                 <meshStandardMaterial color="#F5F5F3" roughness={0.9} />
             </mesh>
-            <fog attach="fog" args={['#F2F2F0', 30, 90]} />
+            <fog attach="fog" args={[FOG_COLOR, 30, 90]} />
 
             <Environment preset={envPreset} background={false} />
 
@@ -279,11 +325,11 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                     mieDirectionalG={0.8}
                 />
             ) : (
-                <color attach="background" args={['#FFFFFF']} />
+                <color attach="background" args={[SCENE_BG]} />
             )}
 
             <directionalLight position={[-5, 8, -5]} intensity={sunEnabled ? 0.15 : 0.8} color="#C8D4E8" />
-            {cfg.fogEnabled && !sunEnabled && <fog attach="fog" args={['#F2F2F0', 20, 60]} />}
+            {cfg.fogEnabled && !sunEnabled && <fog attach="fog" args={[FOG_COLOR, 20, 60]} />}
 
             {interactiveMode && (
                 <mesh

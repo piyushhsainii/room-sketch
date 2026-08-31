@@ -13,10 +13,17 @@ export function computeDerivedFloorData(fp: FloorPlanState) {
       list.push(o);
       openingsByRoom.set(o.roomId, list);
     }
-    if ((o as any).segmentId) {
-      const list = openingsBySegment.get((o as any).segmentId) ?? [];
-      list.push(o);
-      openingsBySegment.set((o as any).segmentId, list);
+    if (o.segmentNodeIds && o.segmentNodeIds.length === 2) {
+      const seg = fp.lineSegments.find(
+        (s) =>
+          s.nodeIds.includes(o.segmentNodeIds![0]) &&
+          s.nodeIds.includes(o.segmentNodeIds![1]),
+      );
+      if (seg) {
+        const list = openingsBySegment.get(seg.id) ?? [];
+        list.push(o);
+        openingsBySegment.set(seg.id, list);
+      }
     }
   }
 

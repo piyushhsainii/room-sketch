@@ -1,30 +1,36 @@
 "use client";
 
-import { PLAN_ORDER, PlanId, PRICING_PLANS } from "@/lib/pricing";
+import { PLAN_ORDER, PlanId, PRICING_PLANS } from "@/lib/plan";
 import { useEffect, useState } from "react";
+
+// ---- Claymorphism theme tokens (shared across the app) ----
+const CLAY = {
+    canvas: "#E5E5E5",
+    surface: "#EAEAEA",
+    surfaceChip: "#F5F5F5",
+    textPrimary: "#1A1A1A",
+    textMuted: "#5A5A5A",
+    textPlaceholder: "#999999",
+    lightShadow: "rgba(255,255,255,0.75)",
+    darkShadow: "rgba(0,0,0,0.14)",
+    accentText: "#4C4FBF",
+    accentSoft: "rgba(99,102,241,0.14)",
+    successText: "#3F9C63",
+    dangerText: "#B3503F",
+    dangerSoft: "rgba(179,80,63,0.14)",
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+};
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
+        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
 
 function EditIcon() {
     return (
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 20h9" />
             <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-        </svg>
-    );
-}
-
-function SunIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-        </svg>
-    );
-}
-
-function MoonIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
         </svg>
     );
 }
@@ -39,31 +45,9 @@ function ArrowUpIcon() {
 
 function CheckIcon() {
     return (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={CLAY.successText} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 6L9 17l-5-5" />
         </svg>
-    );
-}
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-    return (
-        <button
-            type="button"
-            role="switch"
-            aria-checked={checked}
-            onClick={() => onChange(!checked)}
-            style={{
-                width: 42, height: 24, borderRadius: 999, border: "none", cursor: "pointer",
-                background: checked ? "#16a34a" : "rgba(15,23,42,0.15)",
-                position: "relative", transition: "background 160ms ease", flexShrink: 0, padding: 0,
-            }}
-        >
-            <span style={{
-                position: "absolute", top: 3, left: checked ? 21 : 3,
-                width: 18, height: 18, borderRadius: "50%", background: "#fff",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.25)", transition: "left 160ms ease",
-            }} />
-        </button>
     );
 }
 
@@ -75,7 +59,12 @@ function SegmentedControl<T extends string>({
     onChange: (v: T) => void;
 }) {
     return (
-        <div style={{ display: "inline-flex", border: "1px solid rgba(15,23,42,0.12)", borderRadius: 8, padding: 3, background: "#fff", gap: 2 }}>
+        <div style={{
+            display: "inline-flex", border: "none", borderRadius: 999, padding: 4,
+            background: CLAY.surface,
+            boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+            gap: 2,
+        }}>
             {options.map((opt) => {
                 const active = opt.value === value;
                 return (
@@ -85,10 +74,13 @@ function SegmentedControl<T extends string>({
                         onClick={() => onChange(opt.value)}
                         style={{
                             display: "flex", alignItems: "center", gap: 6,
-                            padding: "7px 14px", borderRadius: 6, border: active ? "1px solid rgba(15,23,42,0.9)" : "1px solid transparent",
-                            background: active ? "#e0e7ff" : "transparent",
-                            color: active ? "#1e1b4b" : "rgba(15,23,42,0.55)",
-                            fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                            padding: "8px 14px", borderRadius: 999, border: "none",
+                            background: active ? CLAY.surfaceChip : "transparent",
+                            color: active ? CLAY.accentText : CLAY.textMuted,
+                            fontSize: 12.5, fontWeight: active ? 500 : 400, fontFamily: CLAY.font,
+                            cursor: "pointer", whiteSpace: "nowrap",
+                            boxShadow: active ? "-2px -2px 5px rgba(255,255,255,0.7), 2px 2px 6px rgba(0,0,0,0.14)" : "none",
+                            transition: "background 160ms ease, box-shadow 160ms ease, color 160ms ease",
                         }}
                     >
                         {opt.icon}
@@ -102,9 +94,44 @@ function SegmentedControl<T extends string>({
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
     return (
-        <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "rgba(15,23,42,0.45)", marginBottom: 6 }}>
+        <label style={{ display: "block", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: CLAY.textPlaceholder, marginBottom: 8, fontFamily: CLAY.font }}>
             {children}
         </label>
+    );
+}
+
+function ClayButton({
+    children, onClick, disabled, variant = "secondary", fullWidth,
+}: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    disabled?: boolean;
+    variant?: "primary" | "secondary" | "danger";
+    fullWidth?: boolean;
+}) {
+    const [hovered, setHovered] = useState(false);
+    const color = variant === "danger" ? CLAY.dangerText : variant === "primary" ? CLAY.textPrimary : CLAY.textMuted;
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                width: fullWidth ? "100%" : undefined,
+                height: 40, padding: "0 20px", borderRadius: 999, border: "none",
+                background: variant === "danger" ? CLAY.dangerSoft : CLAY.surface,
+                color, fontSize: 13, fontWeight: 500, fontFamily: CLAY.font,
+                cursor: disabled ? "default" : "pointer",
+                opacity: disabled ? 0.55 : 1,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                boxShadow: (hovered && !disabled) ? clayRaised(true) : clayRaised(false),
+                transition: "box-shadow 180ms ease, opacity 180ms ease",
+            }}
+        >
+            {children}
+        </button>
     );
 }
 
@@ -125,17 +152,17 @@ export default function SettingsPanel({
     storageUsedGb?: number;
     renewalDate?: string | number | Date;
     onNavigate?: (feature: "3d_viewer" | "collections" | "settings") => void;
-    onSave?: (values: { fullName: string; email: string; unit: "metric" | "imperial"; appearance: "light" | "dark"; highPrecision: boolean }) => Promise<void> | void;
+    onSave?: (values: { fullName: string; email: string; unit: "metric" | "imperial" }) => Promise<void> | void;
 }) {
     const derivedName = fullNameProp || (userEmail ? userEmail.split("@")[0] : "");
 
     const [fullName, setFullName] = useState(derivedName);
     const [email, setEmail] = useState(userEmail || "");
     const [unit, setUnit] = useState<"metric" | "imperial">("metric");
-    const [appearance, setAppearance] = useState<"light" | "dark">("light");
-    const [highPrecision, setHighPrecision] = useState(plan !== "free");
     const [saving, setSaving] = useState(false);
     const [upgradeOpen, setUpgradeOpen] = useState(false);
+    const [avatarEditHovered, setAvatarEditHovered] = useState(false);
+    const [manageHovered, setManageHovered] = useState(false);
 
     // Keep local fields in sync if the parent's data arrives after mount
     // (e.g. /api/me resolves after the panel has already rendered).
@@ -153,12 +180,12 @@ export default function SettingsPanel({
         setSaving(true);
         try {
             if (onSave) {
-                await onSave({ fullName, email, unit, appearance, highPrecision });
+                await onSave({ fullName, email, unit });
             } else {
                 await fetch("/api/settings", {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ fullName, email, unit, appearance, highPrecision }),
+                    body: JSON.stringify({ fullName, email, unit }),
                 });
             }
         } catch (err) {
@@ -169,28 +196,32 @@ export default function SettingsPanel({
     }
 
     return (
-        <div style={{ padding: "28px 36px 60px", maxWidth: 720, marginInline: "auto" }}>
+        <div style={{ padding: "28px 36px 60px", maxWidth: 720, marginInline: "auto", background: CLAY.canvas, fontFamily: CLAY.font }}>
             {/* Header */}
-            <h1 style={{ margin: "0 0 6px", fontSize: 28, fontWeight: 300, letterSpacing: "-0.03em", color: "#0f172a" }}>
+            <h1 style={{ margin: "0 0 6px", fontSize: 28, fontWeight: 400, letterSpacing: "-0.01em", color: CLAY.textPrimary }}>
                 Account Settings
             </h1>
-            <p style={{ margin: "0 0 28px", fontSize: 13.5, color: "rgba(15,23,42,0.5)" }}>
+            <p style={{ margin: "0 0 28px", fontSize: 13.5, color: CLAY.textMuted }}>
                 Manage your profile, application preferences, and subscription details.
             </p>
 
             {/* Profile card */}
-            <section style={{ border: "1px solid rgba(15,23,42,0.08)", borderRadius: 14, background: "#fff", padding: 24, marginBottom: 24 }}>
+            <section style={{
+                border: "none", borderRadius: 24, background: CLAY.surface, padding: 24, marginBottom: 24,
+                boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+            }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
                     <div style={{ position: "relative", flexShrink: 0 }}>
                         <div style={{
                             width: 64, height: 64, borderRadius: "50%", overflow: "hidden",
-                            background: "#e2e8f0", border: "1px solid rgba(15,23,42,0.08)",
+                            background: CLAY.surfaceChip,
+                            boxShadow: "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.14)",
                             display: "flex", alignItems: "center", justifyContent: "center",
                         }}>
                             {avatarUrl ? (
                                 <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             ) : (
-                                <span style={{ fontSize: 20, fontWeight: 700, color: "rgba(15,23,42,0.4)" }}>
+                                <span style={{ fontSize: 20, fontWeight: 500, color: CLAY.textPlaceholder }}>
                                     {fullName ? fullName.charAt(0).toUpperCase() : "?"}
                                 </span>
                             )}
@@ -198,10 +229,14 @@ export default function SettingsPanel({
                         <button
                             type="button"
                             aria-label="Change avatar"
+                            onMouseEnter={() => setAvatarEditHovered(true)}
+                            onMouseLeave={() => setAvatarEditHovered(false)}
                             style={{
-                                position: "absolute", bottom: -2, right: -2, width: 22, height: 22, borderRadius: "50%",
-                                background: "#0f172a", border: "2px solid #fff", display: "flex",
+                                position: "absolute", bottom: -2, right: -2, width: 24, height: 24, borderRadius: "50%",
+                                background: CLAY.accentText, border: `2px solid ${CLAY.surface}`, display: "flex",
                                 alignItems: "center", justifyContent: "center", cursor: "pointer",
+                                boxShadow: avatarEditHovered ? clayRaised(true) : "-2px -2px 4px rgba(255,255,255,0.5), 2px 2px 5px rgba(0,0,0,0.2)",
+                                transition: "box-shadow 180ms ease",
                             }}
                         >
                             <EditIcon />
@@ -215,8 +250,10 @@ export default function SettingsPanel({
                                 value={fullName}
                                 onChange={(e) => setFullName(e.target.value)}
                                 style={{
-                                    width: "100%", height: 38, borderRadius: 8, border: "1px solid rgba(15,23,42,0.15)",
-                                    padding: "0 12px", fontSize: 13.5, color: "#0f172a", outline: "none",
+                                    width: "100%", height: 40, borderRadius: 12, border: "none",
+                                    padding: "0 14px", fontSize: 13.5, color: CLAY.textPrimary, outline: "none",
+                                    fontFamily: CLAY.font, background: CLAY.surface,
+                                    boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
                                 }}
                             />
                         </div>
@@ -226,8 +263,10 @@ export default function SettingsPanel({
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 style={{
-                                    width: "100%", height: 38, borderRadius: 8, border: "1px solid rgba(15,23,42,0.15)",
-                                    padding: "0 12px", fontSize: 13.5, color: "#2563eb", outline: "none",
+                                    width: "100%", height: 40, borderRadius: 12, border: "none",
+                                    padding: "0 14px", fontSize: 13.5, color: CLAY.accentText, outline: "none",
+                                    fontFamily: CLAY.font, background: CLAY.surface,
+                                    boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
                                 }}
                             />
                         </div>
@@ -236,12 +275,15 @@ export default function SettingsPanel({
             </section>
 
             {/* Preferences card */}
-            <section style={{ border: "1px solid rgba(15,23,42,0.08)", borderRadius: 14, background: "#fff", overflow: "hidden", marginBottom: 24 }}>
-                <div style={{ background: "#e8ecfb", padding: "14px 24px" }}>
-                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0f172a" }}>Preferences</h3>
+            <section style={{
+                border: "none", borderRadius: 24, background: CLAY.surface, overflow: "hidden", marginBottom: 24,
+                boxShadow: clayRaised(false),
+            }}>
+                <div style={{ padding: "16px 24px" }}>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 500, color: CLAY.textPrimary }}>Preferences</h3>
                 </div>
 
-                <div style={{ padding: "6px 24px 4px" }}>
+                <div style={{ padding: "6px 24px 8px" }}>
                     <PreferenceRow
                         title="Unit of Measure"
                         description="Default scaling for architectural drafting and 3D modeling."
@@ -255,47 +297,32 @@ export default function SettingsPanel({
                                 ]}
                             />
                         }
-                    />
-                    <PreferenceRow
-                        title="Appearance"
-                        description="Choose how RoomSketch looks on your device."
-                        control={
-                            <SegmentedControl
-                                value={appearance}
-                                onChange={setAppearance}
-                                options={[
-                                    { value: "light", label: "Light", icon: <SunIcon /> },
-                                    { value: "dark", label: "Dark", icon: <MoonIcon /> },
-                                ]}
-                            />
-                        }
-                    />
-                    <PreferenceRow
-                        title="High-Precision Rendering"
-                        description={plan === "free" ? "Available on Basic and Pro plans." : "Enables 4K export and sub-millimeter snapping."}
-                        control={<Toggle checked={highPrecision && plan !== "free"} onChange={(v) => plan !== "free" && setHighPrecision(v)} />}
                         last
                     />
                 </div>
             </section>
 
             {/* Account & Subscription card */}
-            <section style={{ border: "1px solid rgba(15,23,42,0.08)", borderRadius: 14, background: "#fff", overflow: "hidden", marginBottom: 24 }}>
-                <div style={{ background: "#e8ecfb", padding: "14px 24px" }}>
-                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0f172a" }}>Account &amp; Subscription</h3>
+            <section style={{
+                border: "none", borderRadius: 24, background: CLAY.surface, overflow: "hidden", marginBottom: 24,
+                boxShadow: clayRaised(false),
+            }}>
+                <div style={{ padding: "16px 24px" }}>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 500, color: CLAY.textPrimary }}>Account &amp; Subscription</h3>
                 </div>
 
-                <div style={{ padding: "20px 24px 24px", display: "flex", gap: 40, flexWrap: "wrap" }}>
+                <div style={{ padding: "12px 24px 24px", display: "flex", gap: 40, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                         <FieldLabel>Current tier</FieldLabel>
                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                             <span style={{
-                                background: "#0f172a", color: "#fff", fontSize: 11, fontWeight: 700,
-                                padding: "3px 9px", borderRadius: 5, letterSpacing: "0.03em",
+                                background: CLAY.surfaceChip, color: CLAY.textPrimary, fontSize: 11, fontWeight: 500,
+                                padding: "4px 11px", borderRadius: 999, letterSpacing: "0.03em",
+                                boxShadow: "-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.14)",
                             }}>
                                 {currentPlan.label.toUpperCase()}
                             </span>
-                            <span style={{ fontSize: 13, color: "#2563eb", fontWeight: 500 }}>
+                            <span style={{ fontSize: 13, color: CLAY.accentText, fontWeight: 400 }}>
                                 {currentPlan.priceMonthly === 0
                                     ? "Free plan"
                                     : `Billed monthly ($${currentPlan.priceMonthly.toFixed(2)}/mo)`}
@@ -305,7 +332,7 @@ export default function SettingsPanel({
                         {currentPlan.priceMonthly > 0 && (
                             <>
                                 <FieldLabel>Renewal date</FieldLabel>
-                                <p style={{ margin: "0 0 14px", fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>
+                                <p style={{ margin: "0 0 14px", fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary }}>
                                     {renewalLabel}
                                 </p>
                             </>
@@ -314,7 +341,13 @@ export default function SettingsPanel({
                         <button
                             type="button"
                             onClick={() => setUpgradeOpen((o) => !o)}
-                            style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                            onMouseEnter={() => setManageHovered(true)}
+                            onMouseLeave={() => setManageHovered(false)}
+                            style={{
+                                fontSize: 13, fontWeight: 500, color: manageHovered ? CLAY.accentText : CLAY.textPrimary,
+                                display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none",
+                                padding: 0, cursor: "pointer", fontFamily: CLAY.font, transition: "color 160ms ease",
+                            }}
                         >
                             {currentPlan.priceMonthly > 0 ? "Manage Subscription" : "View Plans"}
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -326,37 +359,33 @@ export default function SettingsPanel({
                     <div style={{ flex: 1, minWidth: 200 }}>
                         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
                             <FieldLabel>Cloud storage</FieldLabel>
-                            <span style={{ fontSize: 11.5, color: "rgba(15,23,42,0.45)" }}>
+                            <span style={{ fontSize: 11.5, color: CLAY.textPlaceholder }}>
                                 {storageUsedGb.toFixed(1)} GB of {storageTotalGb} GB
                             </span>
                         </div>
-                        <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{storagePct}% used</p>
-                        <div style={{ height: 8, borderRadius: 999, background: "rgba(15,23,42,0.08)", overflow: "hidden", marginBottom: 18 }}>
-                            <div style={{ width: `${storagePct}%`, height: "100%", background: storagePct > 90 ? "#dc2626" : "#16a34a", borderRadius: 999 }} />
+                        <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 500, color: CLAY.textPrimary }}>{storagePct}% used</p>
+                        <div style={{
+                            height: 10, borderRadius: 999, overflow: "hidden", marginBottom: 18,
+                            background: CLAY.surface,
+                            boxShadow: `inset 2px 2px 5px ${CLAY.darkShadow}, inset -2px -2px 5px ${CLAY.lightShadow}`,
+                        }}>
+                            <div style={{ width: `${storagePct}%`, height: "100%", background: storagePct > 90 ? CLAY.dangerText : CLAY.successText, borderRadius: 999 }} />
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() => setUpgradeOpen(true)}
-                            style={{
-                                width: "100%", height: 38, borderRadius: 8, border: "none", background: "#0f172a",
-                                color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                                display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                            }}
-                        >
+                        <ClayButton onClick={() => setUpgradeOpen(true)} fullWidth>
                             <ArrowUpIcon />
                             Upgrade Storage
-                        </button>
+                        </ClayButton>
                     </div>
                 </div>
 
                 {/* Plan comparison */}
                 {upgradeOpen && (
-                    <div style={{ borderTop: "1px solid rgba(15,23,42,0.08)", padding: "20px 24px 24px" }}>
-                        <p style={{ margin: "0 0 14px", fontSize: 12.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "rgba(15,23,42,0.45)" }}>
+                    <div style={{ boxShadow: `inset 0 1px 0 rgba(255,255,255,0.6), 0 -1px 0 rgba(0,0,0,0.05)`, padding: "20px 24px 24px" }}>
+                        <p style={{ margin: "0 0 14px", fontSize: 12.5, fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase", color: CLAY.textPlaceholder }}>
                             Choose a plan
                         </p>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(160px, 100%), 1fr))", gap: 14 }}>
                             {PLAN_ORDER.map((id) => {
                                 const p = PRICING_PLANS[id];
                                 const isCurrent = id === plan;
@@ -364,41 +393,34 @@ export default function SettingsPanel({
                                     <div
                                         key={id}
                                         style={{
-                                            border: isCurrent ? "1.5px solid #0f172a" : "1px solid rgba(15,23,42,0.1)",
-                                            borderRadius: 12, padding: 16, background: isCurrent ? "#f8fafc" : "#fff",
+                                            border: "none", borderRadius: 18, padding: 16,
+                                            background: isCurrent ? CLAY.accentSoft : CLAY.surface,
+                                            boxShadow: isCurrent
+                                                ? `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`
+                                                : `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
                                         }}
                                     >
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                                            <span style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{p.label}</span>
+                                            <span style={{ fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary }}>{p.label}</span>
                                             {isCurrent && (
-                                                <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", letterSpacing: "0.03em" }}>CURRENT</span>
+                                                <span style={{ fontSize: 10, fontWeight: 500, color: CLAY.successText, letterSpacing: "0.03em" }}>CURRENT</span>
                                             )}
                                         </div>
-                                        <p style={{ margin: "0 0 12px", fontSize: 18, fontWeight: 800, color: "#0f172a" }}>
+                                        <p style={{ margin: "0 0 12px", fontSize: 18, fontWeight: 500, color: CLAY.textPrimary }}>
                                             {p.priceMonthly === 0 ? "$0" : `$${p.priceMonthly}`}
-                                            <span style={{ fontSize: 11.5, fontWeight: 500, color: "rgba(15,23,42,0.45)" }}>/mo</span>
+                                            <span style={{ fontSize: 11.5, fontWeight: 400, color: CLAY.textPlaceholder }}>/mo</span>
                                         </p>
                                         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
                                             {p.features.map((f) => (
                                                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                                     <CheckIcon />
-                                                    <span style={{ fontSize: 12, color: "rgba(15,23,42,0.65)" }}>{f}</span>
+                                                    <span style={{ fontSize: 12, color: CLAY.textMuted }}>{f}</span>
                                                 </div>
                                             ))}
                                         </div>
-                                        <button
-                                            type="button"
-                                            disabled={isCurrent}
-                                            style={{
-                                                width: "100%", height: 32, borderRadius: 7, fontSize: 12, fontWeight: 600,
-                                                border: isCurrent ? "1px solid rgba(15,23,42,0.12)" : "none",
-                                                background: isCurrent ? "transparent" : "#0f172a",
-                                                color: isCurrent ? "rgba(15,23,42,0.4)" : "#fff",
-                                                cursor: isCurrent ? "default" : "pointer",
-                                            }}
-                                        >
+                                        <ClayButton disabled={isCurrent} fullWidth variant={isCurrent ? "secondary" : "primary"}>
                                             {isCurrent ? "Current plan" : "Switch"}
-                                        </button>
+                                        </ClayButton>
                                     </div>
                                 );
                             })}
@@ -408,39 +430,23 @@ export default function SettingsPanel({
             </section>
 
             {/* Footer actions */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
                 <button
                     type="button"
                     style={{
                         display: "flex", alignItems: "center", gap: 6, background: "none", border: "none",
-                        color: "#dc2626", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0,
+                        color: CLAY.dangerText, fontSize: 13, fontWeight: 500, cursor: "pointer", padding: 0,
+                        fontFamily: CLAY.font,
                     }}
                 >
                     Deactivate Account
                 </button>
 
                 <div style={{ display: "flex", gap: 10 }}>
-                    <button
-                        type="button"
-                        style={{
-                            height: 38, padding: "0 18px", borderRadius: 8, border: "1px solid rgba(15,23,42,0.15)",
-                            background: "#fff", color: "rgba(15,23,42,0.7)", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                        }}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={saving}
-                        style={{
-                            height: 38, padding: "0 18px", borderRadius: 8, border: "none",
-                            background: "#0f172a", color: "#fff", fontSize: 13, fontWeight: 600,
-                            cursor: saving ? "default" : "pointer", opacity: saving ? 0.6 : 1,
-                        }}
-                    >
+                    <ClayButton>Cancel</ClayButton>
+                    <ClayButton onClick={handleSave} disabled={saving} variant="primary">
                         {saving ? "Saving…" : "Save Changes"}
-                    </button>
+                    </ClayButton>
                 </div>
             </div>
         </div>
@@ -458,11 +464,12 @@ function PreferenceRow({
     return (
         <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20,
-            padding: "16px 0", borderBottom: last ? "none" : "1px solid rgba(15,23,42,0.06)",
+            padding: "18px 0",
+            boxShadow: last ? "none" : `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`,
         }}>
             <div style={{ maxWidth: 380 }}>
-                <p style={{ margin: "0 0 3px", fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{title}</p>
-                <p style={{ margin: 0, fontSize: 12.5, color: "rgba(15,23,42,0.5)" }}>{description}</p>
+                <p style={{ margin: "0 0 3px", fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary }}>{title}</p>
+                <p style={{ margin: 0, fontSize: 12.5, color: CLAY.textMuted }}>{description}</p>
             </div>
             <div style={{ flexShrink: 0 }}>{control}</div>
         </div>

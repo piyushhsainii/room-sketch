@@ -32,7 +32,6 @@ import { DragKindEntry, DragOrigin, pastThreshold, runActiveDrag } from '@/lib/d
 import { FloatingMenu } from '../ui/FloatingMenu'
 import { CameraViewPickerV2 } from '../ui/CameraViewPicker'
 import { deriveFlatPlan2D } from './lib/export/flatten2d'
-import { createClient } from '@/lib/supabase/client'
 import { SunScenePanel } from '../ui/SunCompassPanel'
 import { PlacedStairs, StairsType } from './lib/stairs-constants'
 import { checkPlacementValidity, findNearestWallPoint } from './lib/lights-drag-utils'
@@ -822,10 +821,11 @@ export default function FloorPlanEditor({
         })
     }, [tool, selectedId, selectedIds, zoom, pan, overlappingIds, sceneConfig.showFurniture, sceneConfig.showLabels])
 
-    useEffect(() => { scheduleRedraw() }, [scheduleRedraw, fp, pencilPoints, preview, hoveredId])
+    useEffect(() => {
+        scheduleRedraw()
+    }, [scheduleRedraw, fp, pencilPoints, preview, hoveredId])
+
     useEffect(() => () => cancelAnimationFrame(rafIdRef.current), [])
-
-
 
     useEffect(() => {
         const canvas = canvasRef.current
@@ -1115,7 +1115,8 @@ export default function FloorPlanEditor({
     }, [])
 
     const hitClosedShape = useCallback((wx: number, wz: number) => {
-        const polygons = deriveClosedPolygons(fpRef.current.lineNodes, fpRef.current.lineSegments)
+        // const polygons = deriveClosedPolygons(fpRef.current.lineNodes, fpRef.current.lineSegments)
+        const polygons = flat2DRef.current.closedPolygons
 
         let best: { nodeIds: string[]; area: number } | null = null
 
@@ -3531,10 +3532,20 @@ export default function FloorPlanEditor({
         ]
     )
 
+
+    useEffect(() => {
+        scheduleRedraw()
+    }, [fp, flat2D, openingsIndex, shapesIndex, ghostFloorsDerived, scheduleRedraw])
+    // useEffect(() => {
+    //     ghostFloorsDerivedRef.current = ghostFloorsDerived
+    //     scheduleRedraw()
+    // }, [ghostFloorsDerived, scheduleRedraw])
+    useEffect(() => {
+        scheduleRedraw()
+    }, [fp, flat2D, openingsIndex, shapesIndex, ghostFloorsDerived, scheduleRedraw])
     useEffect(() => {
         ghostFloorsDerivedRef.current = ghostFloorsDerived
-        scheduleRedraw()
-    }, [ghostFloorsDerived, scheduleRedraw])
+    }, [ghostFloorsDerived])
 
     return (
         <>

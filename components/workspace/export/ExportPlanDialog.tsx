@@ -44,18 +44,30 @@ const FORMATS: { value: ExportFormat; label: string; sub: string }[] = [
 const PNG_DPI_MULTIPLIER = 3
 const RENDER_TIMEOUT_MS = 4000
 
+// ---- Claymorphism theme tokens (shared across the app) ----
 const UI = {
-    beige: '#D9C7A3',
-    beigeDark: '#C4AF83',
-    beigeText: '#3A2F1E',
-    ink: '#1C1917',
-    inkMuted: '#6B6660',
-    inkFaint: '#A39C93',
-    border: 'rgba(28,25,23,0.10)',
-    borderStrong: 'rgba(28,25,23,0.16)',
-    panel: '#FAF8F4',
-    font: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", sans-serif',
+    surface: '#EAEAEA',
+    surfaceChip: '#F5F5F5',
+    canvas: '#E5E5E5',
+    ink: '#1A1A1A',
+    inkMuted: '#5A5A5A',
+    inkFaint: '#999999',
+    lightShadow: 'rgba(255,255,255,0.75)',
+    darkShadow: 'rgba(0,0,0,0.14)',
+    accentText: '#4C4FBF',
+    accentSoft: 'rgba(99,102,241,0.14)',
+    successText: '#3F9C63',
+    dangerText: '#B3503F',
+    panel: '#EAEAEA',
+    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
 }
+
+const clayRaised = (pressed = false) =>
+    pressed
+        ? `inset 3px 3px 7px ${UI.darkShadow}, inset -3px -3px 7px ${UI.lightShadow}`
+        : `-4px -4px 9px ${UI.lightShadow}, 4px 4px 10px ${UI.darkShadow}`
+
+const clayInset = () => `inset 2px 2px 6px ${UI.darkShadow}, inset -2px -2px 6px ${UI.lightShadow}`
 
 const viewKey = (floorId: string, viewId: string) => `${floorId}:${viewId}`
 const safeName = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
@@ -80,7 +92,7 @@ const brandSnapshot = (blob: Blob): Promise<Blob> => {
             const markSize = barH * 0.42
             const markX = 14
             const markY = img.height - barH / 2 - markSize / 2
-            ctx.fillStyle = UI.beige
+            ctx.fillStyle = UI.surface
             const r = markSize * 0.18
             ctx.beginPath()
             if ((ctx as any).roundRect) {
@@ -487,20 +499,20 @@ export function ExportPlanDialog({
     }
 
     return (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,17,13,0.45)', display: 'grid', placeItems: 'center', zIndex: 100, fontFamily: UI.font }} onClick={onClose}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'grid', placeItems: 'center', zIndex: 100, fontFamily: UI.font }} onClick={onClose}>
             <div
                 onClick={e => e.stopPropagation()}
                 style={{
-                    background: '#FFFFFF', borderRadius: 16, padding: 0, width: 880, maxWidth: '95vw',
-                    maxHeight: '90vh', boxShadow: '0 24px 64px rgba(28,25,23,0.28)',
+                    background: UI.surface, borderRadius: 26, padding: 0, width: 880, maxWidth: '95vw',
+                    maxHeight: '90vh', boxShadow: `0 28px 64px rgba(0,0,0,0.28), -8px -8px 16px ${UI.lightShadow}, 8px 8px 18px ${UI.darkShadow}`,
                     display: 'flex', flexDirection: 'column', overflow: 'hidden',
                 }}
             >
                 <div style={{ padding: '24px 28px 0' }}>
-                    <h3 style={{ margin: '0 0 18px', fontSize: 18, fontWeight: 650, letterSpacing: '-0.02em', color: UI.ink }}>
+                    <h3 style={{ margin: '0 0 18px', fontSize: 18, fontWeight: 500, letterSpacing: 'normal', color: UI.ink }}>
                         Export Plan
                     </h3>
-                    <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${UI.border}` }}>
+                    <div style={{ display: 'flex', gap: 4, boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)` }}>
                         <TabButton label="2D Plans" active={tab === '2d'} onClick={() => setTab('2d')} />
                         <TabButton label="3D Snapshots" active={tab === '3d'} onClick={() => setTab('3d')} />
                     </div>
@@ -535,12 +547,14 @@ export function ExportPlanDialog({
                                     {FORMATS.map(f => (
                                         <button key={f.value} onClick={() => setFormat(f.value)}
                                             style={{
-                                                flex: 1, padding: '10px 8px', borderRadius: 10, cursor: 'pointer',
-                                                border: `1.5px solid ${format === f.value ? UI.ink : UI.border}`,
-                                                background: format === f.value ? UI.panel : 'transparent', textAlign: 'left',
-                                                transition: 'border-color 120ms ease, background 120ms ease',
+                                                flex: 1, padding: '10px 8px', borderRadius: 14, cursor: 'pointer',
+                                                border: 'none',
+                                                background: format === f.value ? UI.surfaceChip : 'transparent',
+                                                boxShadow: format === f.value ? clayInset() : 'none',
+                                                textAlign: 'left',
+                                                transition: 'box-shadow 160ms ease, background 160ms ease',
                                             }}>
-                                            <div style={{ fontSize: 12.5, fontWeight: 600, letterSpacing: '-0.01em', color: UI.ink }}>{f.label}</div>
+                                            <div style={{ fontSize: 12.5, fontWeight: 500, letterSpacing: 'normal', color: format === f.value ? UI.accentText : UI.ink }}>{f.label}</div>
                                             <div style={{ fontSize: 10.5, color: UI.inkFaint, marginTop: 2 }}>{f.sub}</div>
                                         </button>
                                     ))}
@@ -585,8 +599,8 @@ export function ExportPlanDialog({
                                         <div style={{ fontSize: 12, color: UI.inkFaint, padding: 12 }}>Select at least one floor above.</div>
                                     )}
                                     {floorsWithViews.map(({ floor, views }) => (
-                                        <div key={floor.id} style={{ borderBottom: `1px solid ${UI.border}` }}>
-                                            <div style={{ fontSize: 10.5, fontWeight: 650, letterSpacing: '0.01em', textTransform: 'uppercase', color: UI.inkFaint, padding: '10px 12px 6px', background: UI.panel }}>
+                                        <div key={floor.id} style={{ boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)` }}>
+                                            <div style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: '0.01em', textTransform: 'uppercase', color: UI.inkFaint, padding: '10px 12px 6px', background: UI.canvas }}>
                                                 {floor.label}
                                             </div>
                                             {views.map(v => {
@@ -595,18 +609,19 @@ export function ExportPlanDialog({
                                                 const isCapturingThis = busy && busyKey === key
                                                 return (
                                                     <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px' }}>
-                                                        <input type="checkbox" checked={isViewIncluded(floor.id, v.id)} onChange={() => toggleView(floor.id, v.id)} style={{ accentColor: UI.beigeDark, flexShrink: 0, width: 15, height: 15 }} />
-                                                        <span style={{ flex: 1, fontSize: 12.5, color: UI.ink, cursor: snap ? 'pointer' : 'default', letterSpacing: '-0.005em' }} onClick={() => snap && setPreviewSnap(snap)}>
+                                                        <input type="checkbox" checked={isViewIncluded(floor.id, v.id)} onChange={() => toggleView(floor.id, v.id)} style={{ accentColor: UI.accentText, flexShrink: 0, width: 15, height: 15 }} />
+                                                        <span style={{ flex: 1, fontSize: 12.5, color: UI.ink, cursor: snap ? 'pointer' : 'default', letterSpacing: 'normal' }} onClick={() => snap && setPreviewSnap(snap)}>
                                                             {v.label}
                                                         </span>
                                                         {!v.isPreset && <span style={{ fontSize: 9.5, color: UI.inkFaint }}>saved</span>}
-                                                        {snap && <span title="Captured" style={{ fontSize: 12, color: '#4B7B5A' }}>●</span>}
+                                                        {snap && <span title="Captured" style={{ fontSize: 12, color: UI.successText }}>●</span>}
                                                         <button
                                                             onClick={() => captureOne(floor, v)}
                                                             disabled={busy}
                                                             style={{
-                                                                fontSize: 10.5, padding: '4px 10px', borderRadius: 7, fontWeight: 600, letterSpacing: '-0.005em',
-                                                                border: `1px solid ${UI.borderStrong}`, background: snap ? '#FFF' : UI.panel,
+                                                                fontSize: 10.5, padding: '5px 11px', borderRadius: 999, fontWeight: 500, letterSpacing: 'normal',
+                                                                border: 'none', background: UI.surfaceChip,
+                                                                boxShadow: '-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.14)',
                                                                 color: UI.ink, cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0,
                                                             }}>
                                                             {isCapturingThis ? '…' : snap ? 'Recapture' : 'Capture'}
@@ -623,26 +638,21 @@ export function ExportPlanDialog({
 
                                 {error && <ErrorText>{error}</ErrorText>}
 
-                                <button onClick={captureAllIncluded} disabled={busy}
-                                    style={{
-                                        width: '100%', height: 38, borderRadius: 10, border: `1px solid ${UI.borderStrong}`,
-                                        background: 'transparent', color: UI.ink, fontSize: 12.5, fontWeight: 600, letterSpacing: '-0.01em',
-                                        cursor: busy ? 'not-allowed' : 'pointer', marginBottom: 8,
-                                    }}>
+                                <SecondaryButton onClick={captureAllIncluded} disabled={busy}>
                                     {busy && busyKey === 'captureAll'
                                         ? (captureProgress ? `Capturing… (${captureProgress.done}/${captureProgress.total})` : busyLabel)
                                         : 'Capture All Checked Views'}
-                                </button>
+                                </SecondaryButton>
                                 <CTAButton onClick={downloadAllAsZip} disabled={busy}>
                                     {busy && busyKey === 'zip' ? (busyLabel || 'Packaging…') : 'Download All as ZIP (3D + 2D)'}
                                 </CTAButton>
                             </>
                         )}
 
-                        <button onClick={onOpenShare} style={{ width: '100%', height: 38, borderRadius: 10, border: `1px solid ${UI.borderStrong}`, background: 'transparent', color: UI.inkMuted, fontSize: 12.5, fontWeight: 500, letterSpacing: '-0.01em', cursor: 'pointer', marginTop: 8, marginBottom: 8 }}>
+                        <SecondaryButton onClick={onOpenShare} muted style={{ marginTop: 8 }}>
                             Get shareable link instead
-                        </button>
-                        <button onClick={onClose} style={{ width: '100%', height: 32, borderRadius: 10, border: 'none', background: 'transparent', color: UI.inkFaint, fontSize: 12, letterSpacing: '-0.005em', cursor: 'pointer' }}>
+                        </SecondaryButton>
+                        <button onClick={onClose} style={{ width: '100%', height: 32, borderRadius: 999, border: 'none', background: 'transparent', color: UI.inkFaint, fontSize: 12, letterSpacing: 'normal', cursor: 'pointer', fontFamily: UI.font }}>
                             Cancel
                         </button>
                     </div>
@@ -651,25 +661,26 @@ export function ExportPlanDialog({
                         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                             <Label style={{ marginBottom: 8 }}>Preview</Label>
                             <div style={{
-                                flex: 1, border: `1px solid ${UI.border}`, borderRadius: 12, overflow: 'hidden',
-                                display: 'flex', flexDirection: 'column', minHeight: 320, background: '#141110',
+                                flex: 1, border: 'none', borderRadius: 20, overflow: 'hidden',
+                                display: 'flex', flexDirection: 'column', minHeight: 320, background: '#1E1E1E',
+                                boxShadow: clayInset(),
                             }}>
                                 {previewSnap ? (
                                     <>
                                         <img src={previewSnap.url} alt={`${previewSnap.floorLabel} — ${previewSnap.viewLabel}`}
                                             style={{ flex: 1, width: '100%', objectFit: 'contain', display: 'block' }} />
-                                        <div style={{ padding: '10px 14px', background: '#FFFFFF', borderTop: `1px solid ${UI.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontSize: 12.5, fontWeight: 600, color: UI.ink, letterSpacing: '-0.01em' }}>
+                                        <div style={{ padding: '10px 14px', background: UI.surface, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.6), 0 -1px 0 rgba(0,0,0,0.05)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: 12.5, fontWeight: 500, color: UI.ink, letterSpacing: 'normal' }}>
                                                 {previewSnap.floorLabel} — {previewSnap.viewLabel}
                                             </span>
                                             <button onClick={() => downloadOneSnapshot(previewSnap)}
-                                                style={{ fontSize: 11.5, color: UI.beigeDark, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 650, letterSpacing: '-0.005em' }}>
+                                                style={{ fontSize: 11.5, color: UI.accentText, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, letterSpacing: 'normal', fontFamily: UI.font }}>
                                                 Download
                                             </button>
                                         </div>
                                     </>
                                 ) : (
-                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8A847C', fontSize: 12.5, textAlign: 'center', padding: 24, letterSpacing: '-0.005em' }}>
+                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 12.5, textAlign: 'center', padding: 24, letterSpacing: 'normal' }}>
                                         {busy ? (busyLabel || 'Capturing…') : 'Capture a view to preview it here.'}
                                     </div>
                                 )}
@@ -677,13 +688,13 @@ export function ExportPlanDialog({
 
                             {captureProgress && (
                                 <div style={{ marginTop: 10 }}>
-                                    <div style={{ height: 4, background: UI.border, borderRadius: 2, overflow: 'hidden' }}>
+                                    <div style={{ height: 6, borderRadius: 999, overflow: 'hidden', boxShadow: clayInset() }}>
                                         <div style={{
-                                            height: '100%', background: UI.beigeDark, transition: 'width 150ms ease',
+                                            height: '100%', background: UI.accentText, transition: 'width 150ms ease', borderRadius: 999,
                                             width: `${(captureProgress.done / Math.max(captureProgress.total, 1)) * 100}%`,
                                         }} />
                                     </div>
-                                    <div style={{ fontSize: 11, color: UI.inkFaint, marginTop: 5, textAlign: 'right', letterSpacing: '-0.005em' }}>
+                                    <div style={{ fontSize: 11, color: UI.inkFaint, marginTop: 5, textAlign: 'right', letterSpacing: 'normal' }}>
                                         {captureProgress.done}/{captureProgress.total} captured
                                     </div>
                                 </div>
@@ -699,9 +710,10 @@ export function ExportPlanDialog({
                                                 onClick={() => setPreviewSnap(snap)}
                                                 title={`${snap.floorLabel} — ${snap.viewLabel}`}
                                                 style={{
-                                                    width: 58, height: 58, borderRadius: 8, overflow: 'hidden', padding: 0,
-                                                    border: previewSnap === snap ? `2px solid ${UI.beigeDark}` : `1px solid ${UI.border}`,
-                                                    cursor: 'pointer', background: '#141110',
+                                                    width: 58, height: 58, borderRadius: 14, overflow: 'hidden', padding: 0,
+                                                    border: 'none',
+                                                    boxShadow: previewSnap === snap ? `0 0 0 2px ${UI.accentText}, ${clayRaised(false)}` : clayRaised(false),
+                                                    cursor: 'pointer', background: '#1E1E1E',
                                                 }}>
                                                 <img src={snap.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                                             </button>
@@ -723,9 +735,9 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
             onClick={onClick}
             style={{
                 padding: '10px 4px', marginRight: 24, background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 13.5, fontWeight: 600, letterSpacing: '-0.01em', color: active ? UI.ink : UI.inkFaint,
-                borderBottom: active ? `2px solid ${UI.beigeDark}` : '2px solid transparent',
-                marginBottom: -1, transition: 'color 120ms ease',
+                fontSize: 13.5, fontWeight: 500, letterSpacing: 'normal', color: active ? UI.ink : UI.inkFaint,
+                boxShadow: active ? `inset 0 -2px 0 ${UI.accentText}` : 'none',
+                marginBottom: -1, transition: 'color 160ms ease', fontFamily: UI.font,
             }}
         >
             {label}
@@ -738,24 +750,27 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 function Label({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-    return <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.01em', textTransform: 'uppercase', color: UI.inkFaint, display: 'block', flex: 1, ...style }}>{children}</label>
+    return <label style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.01em', textTransform: 'uppercase', color: UI.inkFaint, display: 'block', flex: 1, fontFamily: UI.font, ...style }}>{children}</label>
 }
 
 function LinkButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
     return (
-        <button onClick={onClick} style={{ fontSize: 11, fontWeight: 600, letterSpacing: '-0.005em', color: UI.beigeDark, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>
+        <button onClick={onClick} style={{ fontSize: 11, fontWeight: 500, letterSpacing: 'normal', color: UI.accentText, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', fontFamily: UI.font }}>
             {children}
         </button>
     )
 }
 
 function Tag({ children }: { children: React.ReactNode }) {
-    return <span style={{ fontSize: 10, color: UI.inkFaint, letterSpacing: '-0.005em' }}>{children}</span>
+    return <span style={{ fontSize: 10, color: UI.inkFaint, letterSpacing: 'normal' }}>{children}</span>
 }
 
 function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
     return (
-        <div style={{ border: `1px solid ${UI.border}`, borderRadius: 12, padding: 4, overflowY: 'auto', background: '#FFFFFF', ...style }}>
+        <div style={{
+            border: 'none', borderRadius: 16, padding: 4, overflowY: 'auto', background: UI.surface,
+            boxShadow: clayInset(), ...style,
+        }}>
             {children}
         </div>
     )
@@ -763,8 +778,8 @@ function Panel({ children, style }: { children: React.ReactNode; style?: React.C
 
 function CheckRow({ children, checked, onChange }: { children: React.ReactNode; checked: boolean; onChange: () => void }) {
     return (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: UI.ink, letterSpacing: '-0.005em' }}>
-            <input type="checkbox" checked={checked} onChange={onChange} style={{ accentColor: UI.beigeDark, width: 15, height: 15 }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', fontSize: 13, color: UI.ink, letterSpacing: 'normal', fontFamily: UI.font }}>
+            <input type="checkbox" checked={checked} onChange={onChange} style={{ accentColor: UI.accentText, width: 15, height: 15 }} />
             {children}
         </label>
     )
@@ -773,8 +788,9 @@ function CheckRow({ children, checked, onChange }: { children: React.ReactNode; 
 function Select({ children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement>) {
     return (
         <select {...rest} style={{
-            width: '100%', height: 36, borderRadius: 9, border: `1px solid ${UI.borderStrong}`, fontSize: 12.5,
-            color: UI.ink, padding: '0 10px', letterSpacing: '-0.005em', ...(rest.style ?? {}),
+            width: '100%', height: 38, borderRadius: 12, border: 'none', fontSize: 12.5,
+            color: UI.ink, padding: '0 12px', letterSpacing: 'normal', background: UI.surface,
+            boxShadow: clayInset(), fontFamily: UI.font, ...(rest.style ?? {}),
         }}>
             {children}
         </select>
@@ -782,22 +798,46 @@ function Select({ children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElem
 }
 
 function ErrorText({ children }: { children: React.ReactNode }) {
-    return <div style={{ fontSize: 11.5, color: '#B3462C', marginBottom: 12, letterSpacing: '-0.005em' }}>{children}</div>
+    return <div style={{ fontSize: 11.5, color: UI.dangerText, marginBottom: 12, letterSpacing: 'normal' }}>{children}</div>
 }
 
 function CTAButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+    const [hovered, setHovered] = useState(false)
     return (
         <button onClick={onClick} disabled={disabled}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             style={{
-                width: '100%', height: 42, borderRadius: 11, border: 'none',
-                background: disabled ? '#E5D9BE' : UI.beige, color: UI.beigeText,
-                fontSize: 13, fontWeight: 650, letterSpacing: '-0.01em',
+                width: '100%', height: 44, borderRadius: 999, border: 'none',
+                background: disabled ? UI.surfaceChip : 'linear-gradient(145deg, #E6D5AC, #D8C7A1)',
+                color: '#3A2E1F',
+                fontSize: 13, fontWeight: 500, letterSpacing: 'normal', fontFamily: UI.font,
                 cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 8,
-                transition: 'background 140ms ease, transform 100ms ease',
+                boxShadow: disabled ? 'none' : (hovered ? 'inset 2px 2px 5px rgba(0,0,0,0.18), inset -2px -2px 5px rgba(255,255,255,0.4)' : '0 3px 8px -2px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.4)'),
+                transition: 'box-shadow 160ms ease',
             }}
-            onMouseDown={e => { if (!disabled) e.currentTarget.style.transform = 'scale(0.98)' }}
-            onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}
         >
+            {children}
+        </button>
+    )
+}
+
+function SecondaryButton({ children, onClick, disabled, muted, style }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; muted?: boolean; style?: React.CSSProperties }) {
+    const [hovered, setHovered] = useState(false)
+    return (
+        <button onClick={onClick} disabled={disabled}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+                width: '100%', height: 38, borderRadius: 999, border: 'none',
+                background: UI.surface, color: muted ? UI.inkMuted : UI.ink,
+                fontSize: 12.5, fontWeight: 500, letterSpacing: 'normal', fontFamily: UI.font,
+                cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 8,
+                opacity: disabled ? 0.6 : 1,
+                boxShadow: hovered && !disabled ? clayRaised(true) : clayRaised(false),
+                transition: 'box-shadow 160ms ease',
+                ...style,
+            }}>
             {children}
         </button>
     )
@@ -805,10 +845,20 @@ function CTAButton({ children, onClick, disabled }: { children: React.ReactNode;
 
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
     return (
-        <div onClick={onChange} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 9, cursor: 'pointer' }}>
-            <span style={{ flex: 1, fontSize: 12.5, color: UI.ink, letterSpacing: '-0.005em' }}>{label}</span>
-            <div style={{ width: 32, height: 18, borderRadius: 999, flexShrink: 0, background: checked ? UI.beigeDark : 'rgba(28,25,23,0.12)', position: 'relative', transition: 'background 150ms' }}>
-                <div style={{ position: 'absolute', top: 2, left: checked ? 16 : 2, width: 14, height: 14, borderRadius: '50%', background: '#FFF', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', transition: 'left 150ms' }} />
+        <div onClick={onChange} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 12, cursor: 'pointer' }}>
+            <span style={{ flex: 1, fontSize: 12.5, color: UI.ink, letterSpacing: 'normal', fontFamily: UI.font }}>{label}</span>
+            <div style={{
+                width: 34, height: 20, borderRadius: 999, flexShrink: 0,
+                background: checked ? UI.accentSoft : UI.surface,
+                boxShadow: clayInset(),
+                position: 'relative', transition: 'background 150ms',
+            }}>
+                <div style={{
+                    position: 'absolute', top: 2, left: checked ? 16 : 2, width: 16, height: 16, borderRadius: '50%',
+                    background: checked ? UI.accentText : UI.surfaceChip,
+                    boxShadow: '-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.18)',
+                    transition: 'left 150ms, background 150ms',
+                }} />
             </div>
         </div>
     )

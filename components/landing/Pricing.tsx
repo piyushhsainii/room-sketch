@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { PLAN_ORDER, PLANS, CUSTOM_PLAN, type Plan } from "@/lib/plan";
+import { createClient } from "@/lib/supabase/client"; // adjust to your actual browser client path
 
 type BillingCycle = "monthly" | "yearly";
 
@@ -9,8 +11,7 @@ const YEARLY_DISCOUNT = 0.2; // 20% off when billed yearly
 // Server/build-time controlled only. Set NEXT_PUBLIC_PRICING_COMING_SOON=true
 // in your env to show the "coming soon" panel instead of live pricing.
 // Not exposed as a client-side toggle on purpose — flip the env var and redeploy.
-// const PRICING_COMING_SOON = process.env.NEXT_PUBLIC_PRICING_COMING_SOON === "true";
-const PRICING_COMING_SOON = 'true';
+const PRICING_COMING_SOON = process.env.NEXT_PUBLIC_PRICING_COMING_SOON === "true";
 
 function priceFor(basePrice: number, cycle: BillingCycle) {
   if (basePrice === 0) return 0;
@@ -18,9 +19,85 @@ function priceFor(basePrice: number, cycle: BillingCycle) {
   return Math.round(monthlyEquivalent);
 }
 
+// Dodo products are one-price/one-interval each (their checkout session
+// API takes a single product_id, no separate price_id) — so monthly and
+// yearly need their OWN product per plan, not one product with two prices.
+const PLAN_PRODUCT_IDS: Partial<Record<string, Partial<Record<BillingCycle, string>>>> = {
+  pro: {
+    monthly: process.env.NEXT_PUBLIC_DODO_PAYMENTS_PRO_MONTHLY_PRODUCT_ID,
+    yearly: process.env.NEXT_PUBLIC_DODO_PAYMENTS_PRO_YEARLY_PRODUCT_ID,
+  },
+};
+
+// Reads the logged-in user's email via the Supabase SDK so checkout can be
+// pre-filled — also makes the webhook's email-based subscription matching
+// far more reliable than an anonymous checkout would.
+function useSupabaseUser() {
+  const [email, setEmail] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      setEmail(data.user?.email ?? null);
+      setLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { email, loaded };
+}
+
+async function startCheckout(planId: string, cycle: BillingCycle, email: string | null): Promise<{ ok: true } | { ok: false; message: string }> {
+  const productId = PLAN_PRODUCT_IDS[planId]?.[cycle];
+  if (!productId) {
+    return { ok: false, message: "This plan isn't available for checkout right now." };
+  }
+  try {
+    const res = await fetch("/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_cart: [{ product_id: productId, quantity: 1 }],
+        ...(email ? { customer: { email } } : {}),
+      }),
+    });
+    if (!res.ok) throw new Error(`Checkout failed (${res.status})`);
+    const { checkout_url } = await res.json();
+    if (!checkout_url) throw new Error("No checkout URL returned");
+    window.location.href = checkout_url;
+    return { ok: true };
+  } catch (err) {
+    console.error("Checkout error:", err);
+    return { ok: false, message: "Something went wrong starting checkout. Please try again." };
+  }
+}
+
 export default function Pricing() {
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
   const comingSoon = PRICING_COMING_SOON;
+  const { email, loaded: userLoaded } = useSupabaseUser();
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [errorPlan, setErrorPlan] = useState<{ planId: string; message: string } | null>(null);
+
+  async function handlePlanClick(planId: string) {
+    if (planId === "free") {
+      if (!userLoaded) return; // wait to know auth state before deciding where to send them
+      window.location.href = email ? "/dashboard" : "/login"; // adjust /dashboard if your route differs
+      return;
+    }
+    if (!userLoaded) return; // ignore clicks until we know if there's a session
+    setErrorPlan(null);
+    setLoadingPlan(planId);
+    const result = await startCheckout(planId, cycle, email);
+    setLoadingPlan(null);
+    if (!result.ok) setErrorPlan({ planId, message: result.message });
+    // on success, startCheckout already redirects — no further state needed
+  }
 
   return (
     <section
@@ -60,56 +137,27 @@ export default function Pricing() {
               className="rounded-[30px] p-2 md:p-3 grid md:grid-cols-3 gap-2"
               style={{ background: "#EAEAEA", boxShadow: "0 20px 40px rgba(0,0,0,0.10)" }}
             >
-              <PriceCard
-                plan="Free"
-                basePrice={0}
-                cycle={cycle}
-                tag="Free forever"
-                tagline="See your first floor plan in 3D"
-                btn="Start for free"
-                feats={[
-                  ["1 project included", true],
-                  ["Floor plan editor", true],
-                  ["Live 3D preview", true],
-                  ["Walk mode", false],
-                  ["Scene finishes", false],
-                  ["Undo history", true],
-                ]}
-              />
-              <PriceCard
-                plan="Pro"
-                basePrice={19}
-                cycle={cycle}
-                tag="Most popular"
-                tagline="For architects & designers"
-                btn="Start Pro"
-                featured
-                feats={[
-                  ["Unlimited projects", true],
-                  ["Everything in Free", true],
-                  ["Walk mode", true],
-                  ["Full scene finishes", true],
-                  ["Undo history", true],
-                  ["Client share link", true],
-                  ["Priority support", true],
-                ]}
-              />
-              <PriceCard
-                plan="Studio"
-                basePrice={59}
-                cycle={cycle}
-                tag="For teams"
-                tagline="Agencies & real estate teams"
-                btn="Start Studio"
-                feats={[
-                  ["Everything in Pro", true],
-                  ["Team workspace", true],
-                  ["Shared project library", true],
-                  ["Multiple seats", true],
-                  ["Dedicated support", true],
-                  ["Volume pricing", true],
-                ]}
-              />
+              {PLAN_ORDER.map((planId) => {
+                const plan = PLANS[planId];
+                return (
+                  <PriceCard
+                    key={plan.id}
+                    planId={plan.id}
+                    plan={plan.label}
+                    basePrice={plan.priceMonthly}
+                    cycle={cycle}
+                    tag={plan.tag}
+                    tagline={plan.tagline}
+                    btn={plan.ctaLabel}
+                    feats={plan.displayFeatures}
+                    featured={plan.id === "pro"}
+                    onSelect={() => handlePlanClick(plan.id)}
+                    loading={loadingPlan === plan.id}
+                    error={errorPlan?.planId === plan.id ? errorPlan.message : null}
+                  />
+                );
+              })}
+              <CustomPriceCard />
             </div>
           </>
         )}
@@ -146,33 +194,6 @@ function ComingSoonPanel() {
         We&apos;re finalizing plans for RoomSketch. Leave your email and we&apos;ll let you know
         the moment pricing goes live — early access included.
       </p>
-      {/* <form
-        className="flex items-center gap-2 w-full max-w-[380px] p-1.5 rounded-full"
-        style={{
-          background: "#E5E5E5",
-          boxShadow: "inset -3px -3px 7px rgba(255,255,255,0.6), inset 3px 3px 8px rgba(0,0,0,0.10)",
-        }}
-        onSubmit={(e) => e.preventDefault()}
-      >
-        <input
-          type="email"
-          placeholder="ask anything…"
-          className="flex-1 bg-transparent border-none outline-none px-4 py-2 text-[14px]"
-          style={{ color: "#1A1A1A" }}
-        />
-        <button
-          type="submit"
-          className="px-5 py-2 rounded-full text-[13px] shrink-0"
-          style={{
-            background: "#F5F5F5",
-            color: "#1A1A1A",
-            fontWeight: 500,
-            boxShadow: "-4px -4px 8px rgba(255,255,255,0.75), 4px 4px 10px rgba(0,0,0,0.12)",
-          }}
-        >
-          Notify me
-        </button>
-      </form> */}
     </div>
   );
 }
@@ -237,6 +258,7 @@ function BillingToggle({
 /* ---------------- Price card ---------------- */
 
 function PriceCard({
+  planId,
   plan,
   basePrice,
   cycle,
@@ -245,7 +267,11 @@ function PriceCard({
   btn,
   feats,
   featured = false,
+  onSelect,
+  loading = false,
+  error = null,
 }: {
+  planId: string;
   plan: string;
   basePrice: number;
   cycle: BillingCycle;
@@ -254,6 +280,9 @@ function PriceCard({
   btn: string;
   feats: [string, boolean][];
   featured?: boolean;
+  onSelect: () => void;
+  loading?: boolean;
+  error?: string | null;
 }) {
   const displayPrice = priceFor(basePrice, cycle);
   const isFree = basePrice === 0;
@@ -308,16 +337,39 @@ function PriceCard({
       </div>
 
       <button
-        className="w-full py-[12px] rounded-[16px] text-[13.5px] mb-6 transition-shadow"
+        onClick={onSelect}
+        disabled={loading}
+        className="w-full py-[12px] rounded-[16px] text-[13.5px] flex items-center justify-center gap-2 transition-shadow"
         style={{
           fontWeight: 500,
           color: featured ? "#1A1A1A" : "#333",
           background: "#F5F5F5",
           boxShadow: "-5px -5px 10px rgba(255,255,255,0.8), 5px 5px 12px rgba(0,0,0,0.14)",
+          opacity: loading ? 0.7 : 1,
+          cursor: loading ? "default" : "pointer",
         }}
       >
-        {btn}
+        {loading && (
+          <span
+            aria-hidden
+            className="inline-block w-3.5 h-3.5 rounded-full animate-spin"
+            style={{
+              border: "2px solid rgba(0,0,0,0.15)",
+              borderTopColor: "#556",
+            }}
+          />
+        )}
+        {loading ? "Redirecting…" : btn}
       </button>
+      {error && (
+        <div
+          className="text-[11px] mt-2"
+          style={{ color: "#C0392B" }}
+        >
+          {error}
+        </div>
+      )}
+      <div className="mb-6" />
 
       <ul>
         {feats.map(([label, on], i) => (
@@ -327,6 +379,84 @@ function PriceCard({
             style={{
               color: on ? "#444" : "#AAA",
               borderBottom: i === feats.length - 1 ? "none" : "1px solid rgba(0,0,0,0.06)",
+            }}
+          >
+            <span
+              className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[9px]"
+              style={{
+                color: on ? "#3D9A5C" : "#BBB",
+                background: "#F5F5F5",
+                boxShadow: "-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.10)",
+              }}
+            >
+              {on ? "✓" : "–"}
+            </span>
+            {label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/* ---------------- Custom plan card (contact sales, not a real Plan) ---------------- */
+
+function CustomPriceCard() {
+  return (
+    <div
+      className="reveal rounded-[24px] p-7"
+      style={{
+        background: "#EAEAEA",
+        boxShadow: "-5px -5px 12px rgba(255,255,255,0.7), 5px 5px 14px rgba(0,0,0,0.10)",
+      }}
+    >
+      <div className="text-[11px] font-medium uppercase tracking-[0.1em] mb-3" style={{ color: "#8892A6" }}>
+        {CUSTOM_PLAN.label}
+      </div>
+
+      <div className="flex items-baseline gap-2 mb-1">
+        <div className="text-[2.6rem] tracking-[-0.02em] leading-none" style={{ color: "#1A1A1A", fontWeight: 500 }}>
+          Custom
+        </div>
+      </div>
+      <div className="mb-4 h-[15px]" />
+
+      <span
+        className="inline-block mb-5 text-[10px] px-3 py-[5px] rounded-full"
+        style={{
+          color: "#556",
+          background: "#EAEAEA",
+          boxShadow: "-3px -3px 6px rgba(255,255,255,0.7), 3px 3px 8px rgba(0,0,0,0.10)",
+        }}
+      >
+        {CUSTOM_PLAN.tag}
+      </span>
+      <div className="text-[12.5px] font-normal mb-5" style={{ color: "#777" }}>
+        {CUSTOM_PLAN.tagline}
+      </div>
+
+      {/* Wire this to a mailto:/contact form submit — "submit email, we
+          respond within 24h" per the product decision, not a Dodo checkout. */}
+      <button
+        className="w-full py-[12px] rounded-[16px] text-[13.5px] mb-6 transition-shadow"
+        style={{
+          fontWeight: 500,
+          color: "#333",
+          background: "#F5F5F5",
+          boxShadow: "-5px -5px 10px rgba(255,255,255,0.8), 5px 5px 12px rgba(0,0,0,0.14)",
+        }}
+      >
+        {CUSTOM_PLAN.ctaLabel}
+      </button>
+
+      <ul>
+        {CUSTOM_PLAN.displayFeatures.map(([label, on], i) => (
+          <li
+            key={i}
+            className="flex items-center gap-2.5 text-[12.5px] font-normal py-[9px]"
+            style={{
+              color: on ? "#444" : "#AAA",
+              borderBottom: i === CUSTOM_PLAN.displayFeatures.length - 1 ? "none" : "1px solid rgba(0,0,0,0.06)",
             }}
           >
             <span

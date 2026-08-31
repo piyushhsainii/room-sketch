@@ -9,9 +9,6 @@ export async function GET(req: NextRequest) {
   const cursorStarsRaw = searchParams.get("cursor_stars");
   const cursorIdRaw = searchParams.get("cursor_id");
 
-  // Validate cursor params before they touch a raw filter string.
-  // star_count -> integer, id -> uuid. Anything else is silently
-  // treated as "no cursor" rather than passed through.
   const cursorStars =
     cursorStarsRaw !== null && /^-?\d+$/.test(cursorStarsRaw)
       ? cursorStarsRaw
@@ -21,10 +18,6 @@ export async function GET(req: NextRequest) {
   const cursorId =
     cursorIdRaw !== null && UUID_RE.test(cursorIdRaw) ? cursorIdRaw : null;
 
-  // CHANGED — users only actually has full_name/email (see public.users
-  // schema); the old select() asked for name/username/display_name too,
-  // which don't exist and made Postgres reject the whole query (single
-  // statement, one bad column fails it all — not just that field).
   let query = supabase
     .from("projects")
     .select(
@@ -50,8 +43,6 @@ export async function GET(req: NextRequest) {
 
   const projects = (data ?? []).map((p: any) => {
     const u = p.users;
-    // CHANGED — dropped name/username/display_name fallbacks, matching
-    // the trimmed select() above.
     const authorName =
       u?.full_name || (u?.email ? u.email.split("@")[0] : null) || "Anonymous";
     return {

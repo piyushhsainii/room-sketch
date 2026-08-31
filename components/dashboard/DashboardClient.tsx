@@ -13,7 +13,7 @@ import DashboardHeader from "./DashboardHeader";
 import RecentActivity from "./NewRecentActivity";
 import SettingsPanel from "./SettingsPanel";
 import CollectionsPanel from "./CollectionsPanel";
-import type { PlanId } from "@/lib/pricing";
+import { PlanId } from "@/lib/plan";
 
 // ---- Claymorphism theme tokens (shared across dashboard components) ----
 const CLAY = {

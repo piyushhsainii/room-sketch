@@ -72,7 +72,7 @@ async function main() {
       batch.map((to) => ({
         from: EMAIL_FROM,
         to,
-        subject: testEmail ? `[TEST] ${SUBJECT}` : SUBJECT,
+        subject: testEmail ? ` ${SUBJECT}` : SUBJECT,
         html,
       })),
     );

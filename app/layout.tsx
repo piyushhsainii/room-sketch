@@ -4,7 +4,7 @@ import "./globals.css"
 import { APP } from "@/constants/content";
 import { Analytics } from "@vercel/analytics/next";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://roomsketch.com";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://roomsketch.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   creator: APP.name,
   publisher: APP.name,
   alternates: {
-    canonical: "/room-sketch-hero.png",
+    canonical: "/room-sketch-hero2.png",
   },
   robots: {
     index: true,
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "/room-sketch-hero.png",
+        url: "/room-sketch-hero2.png",
         width: 1200,
         height: 630,
         alt: `${APP.name} — sketch a floor plan, walk it in 3D`,
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: APP.name,
     description: APP.description,
-    images: ["/room-sketch-hero.png"],
+    images: ["/room-sketch-hero2.png"],
   },
   icons: {
     icon: "/favicon.ico",

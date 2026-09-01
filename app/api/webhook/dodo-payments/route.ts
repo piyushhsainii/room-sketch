@@ -1,7 +1,14 @@
 // PATH: app/api/webhook/dodo-payments/route.ts
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { Webhooks } from "@dodopayments/nextjs";
+import { sendEmail } from "@/lib/resend";
+import { proWelcomeEmail } from "@/lib/emails/proWelcome";
 
+// Maps a Dodo product_id -> your internal plan_id ('free' | 'pro').
+// Monthly and yearly are SEPARATE Dodo products (see Pricing.tsx for why),
+// both resolve to the same internal plan_id — billing_cycle is derived
+// separately below from payment_frequency_interval, not from which
+// product matched here.
 function resolvePlanId(productId: string | undefined): "pro" | null {
   if (!productId) return null;
   if (
@@ -12,6 +19,10 @@ function resolvePlanId(productId: string | undefined): "pro" | null {
   return null;
 }
 
+// Dodo's payload shape (per docs) nests subscription/customer data under
+// `payload.data`. Field names below (customer.email, product_id, etc.) are
+// the documented shape as of writing — re-check against a real payload in
+// test_mode before going live, since this is the part most likely to drift.
 async function upsertSubscription(
   payload: any,
   status: "active" | "past_due" | "canceled",
@@ -57,35 +68,42 @@ async function upsertSubscription(
     },
     { onConflict: "user_id" },
   );
-}
 
-console.log("dodo webhook key diagnostic:", {
-  webhookKeyLength: process.env.DODO_PAYMENTS_WEBHOOK_KEY?.length,
-  webhookKeyStart: process.env.DODO_PAYMENTS_WEBHOOK_KEY?.slice(0, 12),
-  webhookKeyIsSet: !!process.env.DODO_PAYMENTS_WEBHOOK_KEY,
-});
+  return { customerEmail, planId };
+}
 
 if (!process.env.DODO_PAYMENTS_WEBHOOK_KEY) {
   throw new Error(
     "DODO_PAYMENTS_WEBHOOK_KEY is not set — check .env.local (or your " +
-      "deployment platform's env vars) for this exact variable name. " +
-      "Get the value from Dodo dashboard → Settings → Webhooks → " +
-      "your endpoint's signing secret.",
+      "deployment platform's env vars). Get it from Dodo dashboard → " +
+      "Settings → Webhooks → your endpoint → signing secret (starts with whsec_).",
   );
 }
 
 export const POST = Webhooks({
   webhookKey: process.env.DODO_PAYMENTS_WEBHOOK_KEY,
 
+  // "Active" fires on a genuinely NEW subscription — this is the only
+  // event that should send the Pro welcome email. Renewals and plan
+  // changes reuse upsertSubscription for the DB write but deliberately
+  // do NOT send this email again (see their handlers below).
   onSubscriptionActive: async (payload) => {
-    await upsertSubscription(payload, "active");
+    const result = await upsertSubscription(payload, "active");
+    if (result?.planId === "pro") {
+      const { subject, html } = proWelcomeEmail();
+      await sendEmail({ to: result.customerEmail, subject, html });
+    }
   },
+
+  // Renewals/plan-changes: keep subscriptions table in sync, but no
+  // welcome email — they're already a Pro user, this isn't a new upgrade.
   onSubscriptionRenewed: async (payload) => {
     await upsertSubscription(payload, "active");
   },
   onSubscriptionPlanChanged: async (payload) => {
     await upsertSubscription(payload, "active");
   },
+
   onSubscriptionOnHold: async (payload) => {
     await upsertSubscription(payload, "past_due");
   },
@@ -100,8 +118,6 @@ export const POST = Webhooks({
   },
 
   onPayload: async (payload) => {
-    // Fallback log for any event type not explicitly handled above —
-    // useful during test_mode to see the real payload shape.
     console.log("dodo webhook (unhandled type logged):", payload.type);
   },
 });

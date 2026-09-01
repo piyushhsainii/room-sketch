@@ -8,7 +8,7 @@ const PUBLIC_ROUTES = ["/", "/community", "/login"];
 const PUBLIC_PREFIXES = ["/share"];
 
 // Prefixes that require auth
-const PRIVATE_PREFIXES = ["/projects", "/dashboard"];
+const PRIVATE_PREFIXES = ["/projects", "/dashboard", "/admin"];
 
 function isPublicPath(pathname: string) {
   if (PUBLIC_ROUTES.includes(pathname)) return true;

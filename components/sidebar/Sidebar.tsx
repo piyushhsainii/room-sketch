@@ -1,7 +1,9 @@
+// PATH: components/sidebar/Sidebar.tsx
 "use client";
 
 import { APP } from "@/constants/content";
 import { PlanId } from "@/lib/plan";
+import { usePlan } from "@/lib/hooks/usePlan";
 import React from "react";
 
 // ---- Claymorphism theme tokens (shared with ProjectCard / CollectionsPanel) ----
@@ -82,6 +84,11 @@ type Props = {
 export function Sidebar({
   open, userEmail, plan, authed, activeFeature, onFeatureChange, onSignOut, onSignIn,
 }: Props) {
+  // Supplements the `plan` prop with live usage data (projectsUsed/projectLimit)
+  // — the prop still drives which UI branch renders (kept as-is, likely
+  // already wired to real data upstream), this just adds the count/badge.
+  const { plan: livePlan } = usePlan();
+
   return (
     <aside
       className="ra-sidebar"
@@ -153,7 +160,7 @@ export function Sidebar({
                   marginBottom: 8,
                   boxShadow: "-2px -2px 5px rgba(255,255,255,0.75), 2px 2px 6px rgba(0,0,0,0.12)",
                 }}>
-                  FREE PLAN
+                  FREE PLAN{livePlan?.projectLimit != null ? ` · ${livePlan.projectsUsed}/${livePlan.projectLimit} PROJECTS` : ""}
                 </span>
                 <div style={{ fontSize: 11, fontWeight: 400, lineHeight: 1.4, color: CLAY.textMuted, marginBottom: 6 }}>
                   Unlock HD exports and unlimited projects.
@@ -167,6 +174,38 @@ export function Sidebar({
                 </button>
               </div>
             )}
+
+            {plan === "pro" && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: CLAY.surface,
+                boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                borderRadius: 16,
+                padding: "10px 14px",
+                marginBottom: 12,
+              }}>
+                <span style={{
+                  fontSize: 9.5,
+                  fontWeight: 500,
+                  padding: "3px 10px",
+                  borderRadius: 999,
+                  background: CLAY.surfaceChip,
+                  color: "#3D9A5C",
+                  letterSpacing: "0.04em",
+                  boxShadow: "-2px -2px 5px rgba(255,255,255,0.75), 2px 2px 6px rgba(0,0,0,0.12)",
+                }}>
+                  ✦ PRO
+                </span>
+                {livePlan?.projectLimit != null && (
+                  <span style={{ fontSize: 10.5, color: CLAY.textMuted }}>
+                    {livePlan.projectsUsed}/{livePlan.projectLimit} projects
+                  </span>
+                )}
+              </div>
+            )}
+
             <SidebarSignOutButton onClick={onSignOut} label={APP.signOut} />
           </>
         ) : (

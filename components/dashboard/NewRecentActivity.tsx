@@ -1,9 +1,11 @@
+// PATH: components/dashboard/RecentActivity.tsx
 "use client";
 
 import { Clock } from "lucide-react";
 import { ProjectCard, ProjectCardSkeleton } from "./ProjectsGrid";
 import type { ActiveFeature } from "@/components/sidebar/Sidebar";
 import { useState } from "react";
+import { useGatedCreate } from "@/lib/hooks/useGatedCreate";
 
 const CLAY = {
     canvas: "#E5E5E5",
@@ -50,6 +52,8 @@ export default function RecentActivity({
     onBrowseTemplates: () => void;
     onNavigate: (feature: ActiveFeature) => void;
 }) {
+    const { guard, atProjectLimit, plan } = useGatedCreate();
+
     return (
         <div style={{ marginTop: 40 }} className="max-w-[1600px]">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -110,7 +114,7 @@ export default function RecentActivity({
                             Start your first 3D floorplan or explore our templates to begin.
                         </p>
                         <div style={{ display: "flex", gap: 12 }}>
-                            <CreateNewProjectButton onClick={onCreateNew} />
+                            <CreateNewProjectButton onClick={() => guard(onCreateNew)} />
                             <BrowseTemplatesButton onClick={onBrowseTemplates} />
                         </div>
                     </div>
@@ -120,6 +124,23 @@ export default function RecentActivity({
             {
                 !error && !loading && projects.length > 0 && (
                     <>
+                        {atProjectLimit && plan && (
+                            <div style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between",
+                                background: CLAY.surface,
+                                boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+                                borderRadius: 14, padding: "10px 16px", marginBottom: 16,
+                                fontFamily: CLAY.font,
+                            }}>
+                                <span style={{ fontSize: 12, color: CLAY.textMuted }}>
+                                    You've used {plan.projectsUsed}/{plan.projectLimit} projects on the {plan.planLabel} plan.
+                                </span>
+                                <a href="/pricing" style={{ fontSize: 12, fontWeight: 500, color: "#3D9A5C", textDecoration: "underline" }}>
+                                    Upgrade
+                                </a>
+                            </div>
+                        )}
+
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
                             {projects.slice(0, VISIBLE_LIMIT).map(project => (
                                 <div key={project.id} style={{ flex: "1 1 270px", maxWidth: 320 }}>

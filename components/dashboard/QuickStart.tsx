@@ -1,7 +1,9 @@
+// PATH: components/dashboard/QuickStart.tsx
 "use client";
 
 import { useState } from "react";
 import { WORKSPACE_TEMPLATES, WorkspaceTemplate } from "./workspaceTemplates";
+import { useGatedCreate } from "@/lib/hooks/useGatedCreate";
 
 // ---- Claymorphism theme tokens (shared with ProjectCard / CollectionsPanel / Sidebar) ----
 const CLAY = {
@@ -38,7 +40,16 @@ function PlusIcon() {
     );
 }
 
-function TemplateCard({ template, onClick }: { template: WorkspaceTemplate; onClick: () => void }) {
+function LockIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="4" y="10" width="16" height="10" rx="2" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" strokeLinecap="round" />
+        </svg>
+    );
+}
+
+function TemplateCard({ template, onClick, locked }: { template: WorkspaceTemplate; onClick: () => void; locked: boolean }) {
     const [hovered, setHovered] = useState(false);
     return (
         <div
@@ -59,8 +70,21 @@ function TemplateCard({ template, onClick }: { template: WorkspaceTemplate; onCl
                 display: "flex",
                 flexDirection: "column",
                 fontFamily: CLAY.font,
+                position: "relative",
+                opacity: locked ? 0.7 : 1,
             }}
         >
+            {locked && (
+                <div style={{
+                    position: "absolute", top: 18, right: 18, zIndex: 1,
+                    width: 26, height: 26, borderRadius: "50%",
+                    background: CLAY.surfaceChip, display: "flex", alignItems: "center", justifyContent: "center",
+                    color: CLAY.textMuted,
+                    boxShadow: "-2px -2px 5px rgba(255,255,255,0.75), 2px 2px 6px rgba(0,0,0,0.14)",
+                }}>
+                    <LockIcon />
+                </div>
+            )}
             <div
                 style={{
                     aspectRatio: "4/3",
@@ -87,14 +111,14 @@ function TemplateCard({ template, onClick }: { template: WorkspaceTemplate; onCl
                     {template.label}
                 </span>
                 <span style={{ fontSize: 12, fontWeight: 400, color: CLAY.textMuted }}>
-                    {template.description}
+                    {locked ? "Upgrade to start a new project" : template.description}
                 </span>
             </div>
         </div>
     );
 }
 
-function BlankCanvasCard({ onClick }: { onClick: () => void }) {
+function BlankCanvasCard({ onClick, locked }: { onClick: () => void; locked: boolean }) {
     const [hovered, setHovered] = useState(false);
     return (
         <div
@@ -117,6 +141,7 @@ function BlankCanvasCard({ onClick }: { onClick: () => void }) {
                 padding: "20px 16px",
                 textAlign: "center",
                 fontFamily: CLAY.font,
+                opacity: locked ? 0.7 : 1,
             }}
         >
             <div
@@ -132,14 +157,14 @@ function BlankCanvasCard({ onClick }: { onClick: () => void }) {
                     color: CLAY.textPrimary,
                 }}
             >
-                <PlusIcon />
+                {locked ? <LockIcon /> : <PlusIcon />}
             </div>
             <div>
                 <div style={{ fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: "normal", marginBottom: 2 }}>
                     Blank Canvas
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 400, color: CLAY.textMuted }}>
-                    Start from scratch
+                    {locked ? "Upgrade to start a new project" : "Start from scratch"}
                 </div>
             </div>
         </div>
@@ -153,6 +178,8 @@ export default function QuickStart({
     onCreateFromTemplate: (template: WorkspaceTemplate) => void;
     onBlankCanvas: () => void;
 }) {
+    const { guard, atProjectLimit } = useGatedCreate();
+
     return (
         <div style={{ marginTop: 28, fontFamily: CLAY.font }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
@@ -168,9 +195,14 @@ export default function QuickStart({
                 style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 20 }}
             >
                 {WORKSPACE_TEMPLATES.map((template) => (
-                    <TemplateCard key={template.id} template={template} onClick={() => onCreateFromTemplate(template)} />
+                    <TemplateCard
+                        key={template.id}
+                        template={template}
+                        locked={atProjectLimit}
+                        onClick={() => guard(() => onCreateFromTemplate(template))}
+                    />
                 ))}
-                <BlankCanvasCard onClick={onBlankCanvas} />
+                <BlankCanvasCard locked={atProjectLimit} onClick={() => guard(onBlankCanvas)} />
             </div>
         </div>
     );

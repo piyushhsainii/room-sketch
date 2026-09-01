@@ -1,9 +1,9 @@
-// app/api/projects/route.ts
+// PATH: app/api/projects/route.ts
 import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-// POST — unchanged from the migrated version
+import { guardProjectSlot } from "@/lib/entitlements";
 
 export async function GET() {
   const supabase = await createServerSupabaseClient();
@@ -50,6 +50,7 @@ export async function GET() {
 
   return NextResponse.json({ projects: projectsWithStars });
 }
+
 export async function POST(req: NextRequest) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -59,6 +60,14 @@ export async function POST(req: NextRequest) {
 
   if (authError || !user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // ── Project-limit gate — the actual server-side enforcement. Returns a
+  // 402 with { error: "plan_limit", reason: "projectLimit", plan } if the
+  // user's already at their plan's limit. Must run before the insert, not
+  // after — otherwise a race (two rapid clicks) could let someone briefly
+  // exceed their limit before the check catches up.
+  const blocked = await guardProjectSlot(user.id);
+  if (blocked) return blocked;
 
   const body = await req.json().catch(() => ({}));
   const name = (body.name as string) || "New Project";

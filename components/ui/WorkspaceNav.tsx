@@ -148,6 +148,80 @@ function ClayPillButton({
     )
 }
 
+/* ConfirmDialog — shared modal for destructive/unsaved-change confirmations
+   (Clear floor plan, Close with unsaved changes). Renders via portal so it
+   sits above everything else in the topbar, same z-index tier as the other
+   portal menus. Backdrop click cancels unless a save/discard is in flight. */
+function ConfirmDialog({
+    title,
+    message,
+    confirmLabel,
+    secondaryLabel,
+    danger,
+    busy,
+    onConfirm,
+    onSecondary,
+    onCancel,
+}: {
+    title: string
+    message: string
+    confirmLabel: string
+    secondaryLabel?: string
+    danger?: boolean
+    busy?: boolean
+    onConfirm: () => void
+    onSecondary?: () => void
+    onCancel: () => void
+}) {
+    return (
+        <div
+            style={{
+                position: 'fixed', inset: 0, zIndex: 10000,
+                background: 'rgba(0,0,0,0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            onMouseDown={e => { if (e.target === e.currentTarget && !busy) onCancel() }}
+        >
+            <div
+                style={{
+                    width: 360, background: CLAY.surface, borderRadius: 20,
+                    padding: '22px 22px 18px', fontFamily: CLAY.font,
+                    boxShadow: `0 24px 48px rgba(0,0,0,0.28), -6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
+                    animation: 'wsnavMenuIn 140ms ease-out',
+                }}
+            >
+                <div style={{ fontSize: 15, fontWeight: 600, color: CLAY.textPrimary, marginBottom: 8 }}>
+                    {title}
+                </div>
+                <div style={{ fontSize: 12.5, color: CLAY.textMuted, lineHeight: 1.5, marginBottom: 18 }}>
+                    {message}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                    <ClayPillButton onClick={onCancel} disabled={busy}>Cancel</ClayPillButton>
+                    {secondaryLabel && onSecondary && (
+                        <ClayPillButton onClick={onSecondary} disabled={busy}>{secondaryLabel}</ClayPillButton>
+                    )}
+                    <button
+                        onClick={onConfirm}
+                        disabled={busy}
+                        style={{
+                            height: 32, padding: '0 14px', borderRadius: 999, border: 'none',
+                            background: danger ? '#B3503F' : 'linear-gradient(145deg, #E6D5AC, #D8C7A1)',
+                            color: danger ? '#fff' : '#3A2E1F',
+                            fontSize: 11.5, fontWeight: 600, fontFamily: CLAY.font,
+                            cursor: busy ? 'not-allowed' : 'pointer',
+                            opacity: busy ? 0.7 : 1,
+                            boxShadow: '0 3px 8px -2px rgba(0,0,0,0.18)',
+                        }}
+                    >
+                        {confirmLabel}
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 const WorkspaceNav = ({
     fp,
     setFp,
@@ -201,6 +275,11 @@ const WorkspaceNav = ({
     const [modelExportError, setModelExportError] = useState<string | null>(null)
 
     const saveMenuPortalRef = useRef<HTMLDivElement>(null)
+
+    // ── NEW: Clear / Close confirmation state ──
+    const [confirmClearOpen, setConfirmClearOpen] = useState(false)
+    const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
+    const [closeBusy, setCloseBusy] = useState<'save' | 'discard' | null>(null)
 
     const switchFloorForExport = useCallback((floorId: string): Promise<void> => {
         onSelectFloor(floorId)
@@ -362,6 +441,51 @@ const WorkspaceNav = ({
         setExportPlanOpen(true)
     }
 
+    // NEW — Clear now always requires confirmation (destructive regardless
+    // of dirty state). The actual wipe only happens from the dialog.
+    const handleClearRequest = () => {
+        setConfirmClearOpen(true)
+    }
+
+    const handleConfirmClear = () => {
+        setFp(DEFAULT_FP)
+        setSelectedId(null)
+        setConfirmClearOpen(false)
+    }
+
+    // NEW — Close only interrupts with a dialog when there are unsaved
+    // changes; otherwise it closes immediately like before.
+    const handleCloseRequest = () => {
+        if (isDirty) {
+            setConfirmCloseOpen(true)
+        } else {
+            router.push('/dashboard')
+        }
+    }
+
+    const handleConfirmSaveAndClose = async () => {
+        setCloseBusy('save')
+        setSaveError(null)
+        try {
+            await runSave()
+            setConfirmCloseOpen(false)
+            router.push('/dashboard')
+        } catch (err) {
+            console.error('[WorkspaceNav] save before close failed:', err)
+            setSaveError('Save failed — did not close. Try again.')
+            setConfirmCloseOpen(false)
+        } finally {
+            setCloseBusy(null)
+        }
+    }
+
+    const handleDiscardAndClose = async () => {
+        setCloseBusy('discard')
+        setConfirmCloseOpen(false)
+        router.push('/dashboard')
+        setCloseBusy(null)
+    }
+
     const isBusy = isSaving || pendingAction !== null
 
     const saveButtonLabel =
@@ -419,7 +543,7 @@ const WorkspaceNav = ({
             <div style={{ width: 1, height: 22, background: 'rgba(0,0,0,0.08)' }} />
             <span style={{ fontSize: 11, color: CLAY.textMuted }}>{Math.round(zoom * 100)}%</span>
             <ClayPillButton onClick={() => setZoom(1)}>Reset zoom</ClayPillButton>
-            <ClayPillButton onClick={() => { setFp(DEFAULT_FP); setSelectedId(null) }}>Clear</ClayPillButton>
+            <ClayPillButton onClick={handleClearRequest}>Clear</ClayPillButton>
             <div style={{ width: 1, height: 22, background: 'rgba(0,0,0,0.08)' }} />
             <ClayPillButton onClick={() => void toggleFullscreen()}>
                 {isFullscreen
@@ -427,7 +551,7 @@ const WorkspaceNav = ({
                     : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>}
                 {isFullscreen ? 'Exit' : 'Fullscreen'}
             </ClayPillButton>
-            {onClose && <ClayPillButton onClick={() => router.push('/dashboard')} danger>✕ Close</ClayPillButton>}
+            {onClose && <ClayPillButton onClick={handleCloseRequest} danger>✕ Close</ClayPillButton>}
             {projectId && (
                 <ClayPillButton onClick={() => setShareDialogOpen(true)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2">
@@ -596,6 +720,32 @@ const WorkspaceNav = ({
                     onSetViewModeForExport={setViewModeForExport}
                     onSetShowUnderlayForExport={setShowUnderlayForExport}
                 />
+            )}
+            {/* NEW — Clear confirmation */}
+            {confirmClearOpen && typeof document !== 'undefined' && createPortal(
+                <ConfirmDialog
+                    title="Clear floor plan?"
+                    message="This wipes everything on the current floor — walls, furniture, lights. This can't be undone."
+                    confirmLabel="Clear everything"
+                    danger
+                    onCancel={() => setConfirmClearOpen(false)}
+                    onConfirm={handleConfirmClear}
+                />,
+                document.body
+            )}
+            {/* NEW — Close confirmation, only shown when there are unsaved changes */}
+            {confirmCloseOpen && typeof document !== 'undefined' && createPortal(
+                <ConfirmDialog
+                    title="Unsaved changes"
+                    message="You have unsaved changes on this floor plan. Save before closing, or discard them?"
+                    confirmLabel={closeBusy === 'save' ? 'Saving…' : 'Save & close'}
+                    secondaryLabel={closeBusy === 'discard' ? 'Closing…' : 'Discard & close'}
+                    busy={closeBusy !== null}
+                    onCancel={() => setConfirmCloseOpen(false)}
+                    onSecondary={handleDiscardAndClose}
+                    onConfirm={handleConfirmSaveAndClose}
+                />,
+                document.body
             )}
             {pendingAction === 'export' && (
                 <div style={{

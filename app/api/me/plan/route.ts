@@ -12,7 +12,7 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
 
-  const plan = await getEntitlements(user.id);
+  const plan = await getEntitlements(supabase, user.id);
 
   const admin = createSupabaseAdmin();
   const { count, error } = await admin

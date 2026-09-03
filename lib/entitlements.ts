@@ -1,6 +1,7 @@
+// lib/entitlements.ts
 import "server-only";
 import { FeatureFlag, Plan, planFor, PLANS } from "./plan";
-import { createClient } from "./supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export class PlanLimitError extends Error {
   constructor(
@@ -12,13 +13,12 @@ export class PlanLimitError extends Error {
   }
 }
 
-// A subscription only grants its plan while active/current. past_due gets a
-// short grace window (still full access) so a failed card doesn't instantly
-// lock someone out mid-edit; canceled or expired past_period_end -> free.
-const GRACE_PERIOD_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+const GRACE_PERIOD_MS = 3 * 24 * 60 * 60 * 1000;
 
-export async function getEntitlements(userId: string): Promise<Plan> {
-  const supabase = await createClient();
+export async function getEntitlements(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<Plan> {
   const { data: sub, error } = await supabase
     .from("subscriptions")
     .select("plan_id, status, current_period_end")
@@ -37,23 +37,25 @@ export async function getEntitlements(userId: string): Promise<Plan> {
     return withinGrace ? planFor(sub.plan_id) : PLANS.free;
   }
 
-  // status === 'active'
   return planFor(sub.plan_id);
 }
 
 export async function requireFeature(
+  supabase: SupabaseClient,
   userId: string,
   flag: FeatureFlag,
 ): Promise<void> {
-  const plan = await getEntitlements(userId);
+  const plan = await getEntitlements(supabase, userId);
   if (!plan.features.has(flag)) throw new PlanLimitError(flag, plan);
 }
 
-export async function requireProjectSlot(userId: string): Promise<void> {
-  const plan = await getEntitlements(userId);
+export async function requireProjectSlot(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  const plan = await getEntitlements(supabase, userId);
   if (plan.projectLimit === Infinity) return;
 
-  const supabase = await createClient();
   const { count, error } = await supabase
     .from("projects")
     .select("id", { count: "exact", head: true })
@@ -64,26 +66,24 @@ export async function requireProjectSlot(userId: string): Promise<void> {
     throw new PlanLimitError("projectLimit", plan);
 }
 
-// Convenience for route handlers: returns a Response if blocked, or null if allowed.
-// Usage: const blocked = await guardFeature(userId, 'export3d'); if (blocked) return blocked
-export async function guardFeature(userId: string, flag: FeatureFlag) {
+export async function guardFeature(supabase: SupabaseClient, userId: string, flag: FeatureFlag) {
   try {
-    await requireFeature(userId, flag);
+    await requireFeature(supabase, userId, flag);
     return null;
   } catch (e) {
     if (e instanceof PlanLimitError) {
       return Response.json(
         { error: "plan_limit", reason: e.reason, plan: e.plan.id },
-        { status: 402 }, // Payment Required
+        { status: 402 },
       );
     }
     throw e;
   }
 }
 
-export async function guardProjectSlot(userId: string) {
+export async function guardProjectSlot(supabase: SupabaseClient, userId: string) {
   try {
-    await requireProjectSlot(userId);
+    await requireProjectSlot(supabase, userId);
     return null;
   } catch (e) {
     if (e instanceof PlanLimitError) {

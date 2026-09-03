@@ -4,11 +4,6 @@ import { Webhooks } from "@dodopayments/nextjs";
 import { sendEmail } from "@/lib/resend";
 import { proWelcomeEmail } from "@/lib/emails/proWelcome";
 
-// Maps a Dodo product_id -> your internal plan_id ('free' | 'pro').
-// Monthly and yearly are SEPARATE Dodo products (see Pricing.tsx for why),
-// both resolve to the same internal plan_id — billing_cycle is derived
-// separately below from payment_frequency_interval, not from which
-// product matched here.
 function resolvePlanId(productId: string | undefined): "pro" | null {
   if (!productId) return null;
   if (
@@ -19,10 +14,6 @@ function resolvePlanId(productId: string | undefined): "pro" | null {
   return null;
 }
 
-// Dodo's payload shape (per docs) nests subscription/customer data under
-// `payload.data`. Field names below (customer.email, product_id, etc.) are
-// the documented shape as of writing — re-check against a real payload in
-// test_mode before going live, since this is the part most likely to drift.
 async function upsertSubscription(
   payload: any,
   status: "active" | "past_due" | "canceled",
@@ -32,12 +23,17 @@ async function upsertSubscription(
   const customerEmail: string | undefined = data?.customer?.email;
   const dodoCustomerId: string | undefined =
     data?.customer?.customer_id ?? data?.customer_id;
+  const dodoSubscriptionId: string | undefined = data?.subscription_id;
   const productId: string | undefined =
     data?.product_id ?? data?.recurring_pre_tax_amount?.product_id;
   const currentPeriodEnd: string | undefined =
     data?.next_billing_date ?? data?.current_period_end;
   const billingCycle =
     data?.payment_frequency_interval === "Year" ? "yearly" : "monthly";
+  // Reflects a SCHEDULED cancellation (still active until period end) —
+  // separate from `status`, which only flips to 'canceled' once Dodo's
+  // subscription.cancelled event fires at the actual period boundary.
+  const cancelAtPeriodEnd: boolean = data?.cancel_at_next_billing_date ?? false;
 
   if (!customerEmail) {
     console.error("dodo webhook: no customer email in payload", payload);
@@ -64,7 +60,9 @@ async function upsertSubscription(
       status,
       billing_cycle: billingCycle,
       current_period_end: currentPeriodEnd ?? null,
-      // dodo_customer_id: dodoCustomerId, // add this column — see reply
+      dodo_subscription_id: dodoSubscriptionId ?? null,
+      cancel_at_period_end: cancelAtPeriodEnd,
+      // dodo_customer_id: dodoCustomerId, // add this column too if not already present
     },
     { onConflict: "user_id" },
   );
@@ -83,10 +81,6 @@ if (!process.env.DODO_PAYMENTS_WEBHOOK_KEY) {
 export const POST = Webhooks({
   webhookKey: process.env.DODO_PAYMENTS_WEBHOOK_KEY,
 
-  // "Active" fires on a genuinely NEW subscription — this is the only
-  // event that should send the Pro welcome email. Renewals and plan
-  // changes reuse upsertSubscription for the DB write but deliberately
-  // do NOT send this email again (see their handlers below).
   onSubscriptionActive: async (payload) => {
     const result = await upsertSubscription(payload, "active");
     if (result?.planId === "pro") {
@@ -95,8 +89,6 @@ export const POST = Webhooks({
     }
   },
 
-  // Renewals/plan-changes: keep subscriptions table in sync, but no
-  // welcome email — they're already a Pro user, this isn't a new upgrade.
   onSubscriptionRenewed: async (payload) => {
     await upsertSubscription(payload, "active");
   },
@@ -110,6 +102,12 @@ export const POST = Webhooks({
   onSubscriptionFailed: async (payload) => {
     await upsertSubscription(payload, "past_due");
   },
+
+  // This fires when a cancellation ACTUALLY TAKES EFFECT — whether it was
+  // immediate or scheduled via cancel_at_next_billing_date. This is what
+  // performs the real downgrade to free; the scheduled-cancel API call
+  // itself (below) only sets cancel_at_period_end=true and leaves status
+  // as 'active' until this event lands.
   onSubscriptionCancelled: async (payload) => {
     await upsertSubscription(payload, "canceled");
   },

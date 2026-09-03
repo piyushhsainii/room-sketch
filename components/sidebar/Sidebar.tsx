@@ -84,10 +84,12 @@ type Props = {
 export function Sidebar({
   open, userEmail, plan, authed, activeFeature, onFeatureChange, onSignOut, onSignIn,
 }: Props) {
-  // Supplements the `plan` prop with live usage data (projectsUsed/projectLimit)
-  // — the prop still drives which UI branch renders (kept as-is, likely
-  // already wired to real data upstream), this just adds the count/badge.
+  // Live plan is the source of truth for which branch renders below — the
+  // `plan` prop is only used as a fallback while the fetch is in flight, to
+  // avoid a flash of the wrong state. If `plan` prop was stale/hardcoded
+  // upstream, this is what actually fixes it showing the right plan.
   const { plan: livePlan } = usePlan();
+  const effectivePlan: PlanId = livePlan?.planId ?? plan;
 
   return (
     <aside
@@ -140,7 +142,7 @@ export function Sidebar({
       <div style={{ padding: "12px 14px 16px", flexShrink: 0 }}>
         {authed ? (
           <>
-            {plan === "free" && (
+            {effectivePlan === "free" && (
               <div style={{
                 background: CLAY.surface,
                 boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
@@ -175,7 +177,7 @@ export function Sidebar({
               </div>
             )}
 
-            {plan === "pro" && (
+            {effectivePlan === "pro" && (
               <div style={{
                 display: "flex",
                 alignItems: "center",

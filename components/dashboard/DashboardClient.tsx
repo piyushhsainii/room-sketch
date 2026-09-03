@@ -250,7 +250,7 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
       );
     }
     if (activeFeature === "settings") {
-      return <SettingsPanel userEmail={userEmail} plan={plan} onNavigate={setActiveFeature} />;
+      return <SettingsPanel userEmail={userEmail} onNavigate={setActiveFeature} />;
     }
     return null;
   }

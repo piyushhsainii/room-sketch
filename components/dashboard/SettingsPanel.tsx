@@ -1,9 +1,10 @@
+// PATH: components/settings/SettingsPanel.tsx
 "use client";
 
-import { PLAN_ORDER, PlanId, PRICING_PLANS } from "@/lib/plan";
+import { PLAN_ORDER, PLANS } from "@/lib/plan";
+import { usePlan } from "@/lib/hooks/usePlan";
 import { useEffect, useState } from "react";
 
-// ---- Claymorphism theme tokens (shared across the app) ----
 const CLAY = {
     canvas: "#E5E5E5",
     surface: "#EAEAEA",
@@ -138,22 +139,18 @@ function ClayButton({
 export default function SettingsPanel({
     fullName: fullNameProp,
     userEmail,
-    plan,
     avatarUrl,
-    storageUsedGb = 0,
-    renewalDate,
     onNavigate,
     onSave,
 }: {
     fullName?: string;
     userEmail: string;
-    plan: PlanId;
     avatarUrl?: string;
-    storageUsedGb?: number;
-    renewalDate?: string | number | Date;
     onNavigate?: (feature: "3d_viewer" | "collections" | "settings") => void;
     onSave?: (values: { fullName: string; email: string; unit: "metric" | "imperial" }) => Promise<void> | void;
 }) {
+    const { plan, loading: planLoading, cancelSubscription, canceling, cancelError } = usePlan();
+
     const derivedName = fullNameProp || (userEmail ? userEmail.split("@")[0] : "");
 
     const [fullName, setFullName] = useState(derivedName);
@@ -163,18 +160,11 @@ export default function SettingsPanel({
     const [upgradeOpen, setUpgradeOpen] = useState(false);
     const [avatarEditHovered, setAvatarEditHovered] = useState(false);
     const [manageHovered, setManageHovered] = useState(false);
+    const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+    const [cancelSuccess, setCancelSuccess] = useState(false);
 
-    // Keep local fields in sync if the parent's data arrives after mount
-    // (e.g. /api/me resolves after the panel has already rendered).
     useEffect(() => setFullName(derivedName), [derivedName]);
     useEffect(() => setEmail(userEmail || ""), [userEmail]);
-
-    const currentPlan = PRICING_PLANS[plan];
-    const storageTotalGb = currentPlan.storageGb;
-    const storagePct = storageTotalGb > 0 ? Math.min(100, Math.round((storageUsedGb / storageTotalGb) * 100)) : 0;
-    const renewalLabel = renewalDate
-        ? new Date(renewalDate).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
-        : "—";
 
     async function handleSave() {
         setSaving(true);
@@ -195,9 +185,30 @@ export default function SettingsPanel({
         }
     }
 
+    async function handleConfirmCancel() {
+        const ok = await cancelSubscription();
+        if (ok) {
+            setCancelSuccess(true);
+            setCancelConfirmOpen(false);
+        }
+    }
+
+    if (planLoading || !plan) {
+        return (
+            <div style={{ padding: "28px 36px 60px", maxWidth: 720, marginInline: "auto", background: CLAY.canvas, fontFamily: CLAY.font }}>
+                <p style={{ fontSize: 13.5, color: CLAY.textMuted }}>Loading account…</p>
+            </div>
+        );
+    }
+
+    const planConfig = PLANS[plan.planId];
+    const isPro = plan.planId === "pro";
+    const periodEndLabel = plan.currentPeriodEnd
+        ? new Date(plan.currentPeriodEnd).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
+        : "—";
+
     return (
         <div style={{ padding: "28px 36px 60px", maxWidth: 720, marginInline: "auto", background: CLAY.canvas, fontFamily: CLAY.font }}>
-            {/* Header */}
             <h1 style={{ margin: "0 0 6px", fontSize: 28, fontWeight: 400, letterSpacing: "-0.01em", color: CLAY.textPrimary }}>
                 Account Settings
             </h1>
@@ -205,7 +216,6 @@ export default function SettingsPanel({
                 Manage your profile, application preferences, and subscription details.
             </p>
 
-            {/* Profile card */}
             <section style={{
                 border: "none", borderRadius: 24, background: CLAY.surface, padding: 24, marginBottom: 24,
                 boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
@@ -274,7 +284,6 @@ export default function SettingsPanel({
                 </div>
             </section>
 
-            {/* Preferences card */}
             <section style={{
                 border: "none", borderRadius: 24, background: CLAY.surface, overflow: "hidden", marginBottom: 24,
                 boxShadow: clayRaised(false),
@@ -302,7 +311,6 @@ export default function SettingsPanel({
                 </div>
             </section>
 
-            {/* Account & Subscription card */}
             <section style={{
                 border: "none", borderRadius: 24, background: CLAY.surface, overflow: "hidden", marginBottom: 24,
                 boxShadow: clayRaised(false),
@@ -320,66 +328,104 @@ export default function SettingsPanel({
                                 padding: "4px 11px", borderRadius: 999, letterSpacing: "0.03em",
                                 boxShadow: "-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.14)",
                             }}>
-                                {currentPlan.label.toUpperCase()}
+                                {planConfig.label.toUpperCase()}
                             </span>
                             <span style={{ fontSize: 13, color: CLAY.accentText, fontWeight: 400 }}>
-                                {currentPlan.priceMonthly === 0
+                                {planConfig.priceMonthly === 0
                                     ? "Free plan"
-                                    : `Billed monthly ($${currentPlan.priceMonthly.toFixed(2)}/mo)`}
+                                    : `Billed monthly ($${planConfig.priceMonthly.toFixed(2)}/mo)`}
                             </span>
                         </div>
 
-                        {currentPlan.priceMonthly > 0 && (
+                        {isPro && (
                             <>
-                                <FieldLabel>Renewal date</FieldLabel>
-                                <p style={{ margin: "0 0 14px", fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary }}>
-                                    {renewalLabel}
+                                <FieldLabel>{plan.cancelAtPeriodEnd ? "Access ends" : "Renews"}</FieldLabel>
+                                <p style={{ margin: "0 0 6px", fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary }}>
+                                    {periodEndLabel}
                                 </p>
+                                {plan.cancelAtPeriodEnd && (
+                                    <p style={{ margin: "0 0 14px", fontSize: 12, color: CLAY.dangerText }}>
+                                        Your subscription is set to cancel. You'll keep Pro access until then.
+                                    </p>
+                                )}
+                                {!plan.cancelAtPeriodEnd && <div style={{ marginBottom: 14 }} />}
                             </>
                         )}
 
-                        <button
-                            type="button"
-                            onClick={() => setUpgradeOpen((o) => !o)}
-                            onMouseEnter={() => setManageHovered(true)}
-                            onMouseLeave={() => setManageHovered(false)}
-                            style={{
-                                fontSize: 13, fontWeight: 500, color: manageHovered ? CLAY.accentText : CLAY.textPrimary,
-                                display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none",
-                                padding: 0, cursor: "pointer", fontFamily: CLAY.font, transition: "color 160ms ease",
-                            }}
-                        >
-                            {currentPlan.priceMonthly > 0 ? "Manage Subscription" : "View Plans"}
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                                <path d="M5 12h14M13 6l6 6-6 6" />
-                            </svg>
-                        </button>
+                        {!isPro ? (
+                            <a
+                                href="/pricing"
+                                style={{
+                                    fontSize: 13, fontWeight: 500, color: CLAY.accentText,
+                                    display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none",
+                                }}
+                            >
+                                Upgrade to Pro
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                                    <path d="M5 12h14M13 6l6 6-6 6" />
+                                </svg>
+                            </a>
+                        ) : plan.cancelAtPeriodEnd ? (
+                            <span style={{ fontSize: 12.5, color: CLAY.textMuted }}>
+                                Changed your mind? <a href="/customer-portal" style={{ color: CLAY.accentText }}>Manage in customer portal</a>
+                            </span>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setCancelConfirmOpen(true)}
+                                onMouseEnter={() => setManageHovered(true)}
+                                onMouseLeave={() => setManageHovered(false)}
+                                style={{
+                                    fontSize: 13, fontWeight: 500, color: manageHovered ? CLAY.dangerText : CLAY.textMuted,
+                                    display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none",
+                                    padding: 0, cursor: "pointer", fontFamily: CLAY.font, transition: "color 160ms ease",
+                                }}
+                            >
+                                Cancel Subscription
+                            </button>
+                        )}
+
+                        {cancelSuccess && (
+                            <p style={{ margin: "10px 0 0", fontSize: 12, color: CLAY.successText }}>
+                                Cancellation scheduled — you'll stay on Pro until {periodEndLabel}.
+                            </p>
+                        )}
+                        {cancelError && (
+                            <p style={{ margin: "10px 0 0", fontSize: 12, color: CLAY.dangerText }}>
+                                {cancelError}
+                            </p>
+                        )}
                     </div>
 
                     <div style={{ flex: 1, minWidth: 200 }}>
-                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-                            <FieldLabel>Cloud storage</FieldLabel>
-                            <span style={{ fontSize: 11.5, color: CLAY.textPlaceholder }}>
-                                {storageUsedGb.toFixed(1)} GB of {storageTotalGb} GB
-                            </span>
-                        </div>
-                        <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 500, color: CLAY.textPrimary }}>{storagePct}% used</p>
-                        <div style={{
-                            height: 10, borderRadius: 999, overflow: "hidden", marginBottom: 18,
-                            background: CLAY.surface,
-                            boxShadow: `inset 2px 2px 5px ${CLAY.darkShadow}, inset -2px -2px 5px ${CLAY.lightShadow}`,
-                        }}>
-                            <div style={{ width: `${storagePct}%`, height: "100%", background: storagePct > 90 ? CLAY.dangerText : CLAY.successText, borderRadius: 999 }} />
-                        </div>
+                        <FieldLabel>Projects</FieldLabel>
+                        <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 500, color: CLAY.textPrimary }}>
+                            {plan.projectsUsed} {plan.projectLimit != null ? `/ ${plan.projectLimit}` : "(unlimited)"}
+                        </p>
+                        {plan.projectLimit != null && (
+                            <div style={{
+                                height: 10, borderRadius: 999, overflow: "hidden", marginBottom: 18,
+                                background: CLAY.surface,
+                                boxShadow: `inset 2px 2px 5px ${CLAY.darkShadow}, inset -2px -2px 5px ${CLAY.lightShadow}`,
+                            }}>
+                                <div style={{
+                                    width: `${Math.min(100, Math.round((plan.projectsUsed / plan.projectLimit) * 100))}%`,
+                                    height: "100%",
+                                    background: plan.projectsUsed >= plan.projectLimit ? CLAY.dangerText : CLAY.successText,
+                                    borderRadius: 999,
+                                }} />
+                            </div>
+                        )}
 
-                        <ClayButton onClick={() => setUpgradeOpen(true)} fullWidth>
-                            <ArrowUpIcon />
-                            Upgrade Storage
-                        </ClayButton>
+                        {!isPro && (
+                            <ClayButton onClick={() => setUpgradeOpen((o) => !o)} fullWidth>
+                                <ArrowUpIcon />
+                                Compare Plans
+                            </ClayButton>
+                        )}
                     </div>
                 </div>
 
-                {/* Plan comparison */}
                 {upgradeOpen && (
                     <div style={{ boxShadow: `inset 0 1px 0 rgba(255,255,255,0.6), 0 -1px 0 rgba(0,0,0,0.05)`, padding: "20px 24px 24px" }}>
                         <p style={{ margin: "0 0 14px", fontSize: 12.5, fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase", color: CLAY.textPlaceholder }}>
@@ -387,17 +433,15 @@ export default function SettingsPanel({
                         </p>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(160px, 100%), 1fr))", gap: 14 }}>
                             {PLAN_ORDER.map((id) => {
-                                const p = PRICING_PLANS[id];
-                                const isCurrent = id === plan;
+                                const p = PLANS[id];
+                                const isCurrent = id === plan.planId;
                                 return (
                                     <div
                                         key={id}
                                         style={{
                                             border: "none", borderRadius: 18, padding: 16,
                                             background: isCurrent ? CLAY.accentSoft : CLAY.surface,
-                                            boxShadow: isCurrent
-                                                ? `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`
-                                                : `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+                                            boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
                                         }}
                                     >
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
@@ -411,16 +455,20 @@ export default function SettingsPanel({
                                             <span style={{ fontSize: 11.5, fontWeight: 400, color: CLAY.textPlaceholder }}>/mo</span>
                                         </p>
                                         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
-                                            {p.features.map((f) => (
+                                            {p.displayFeatures.filter(([, on]) => on).map(([f]) => (
                                                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                                     <CheckIcon />
                                                     <span style={{ fontSize: 12, color: CLAY.textMuted }}>{f}</span>
                                                 </div>
                                             ))}
                                         </div>
-                                        <ClayButton disabled={isCurrent} fullWidth variant={isCurrent ? "secondary" : "primary"}>
-                                            {isCurrent ? "Current plan" : "Switch"}
-                                        </ClayButton>
+                                        {isCurrent ? (
+                                            <ClayButton disabled fullWidth>Current plan</ClayButton>
+                                        ) : (
+                                            <a href="/pricing" style={{ display: "block" }}>
+                                                <ClayButton fullWidth variant="primary">Switch</ClayButton>
+                                            </a>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -429,7 +477,6 @@ export default function SettingsPanel({
                 )}
             </section>
 
-            {/* Footer actions */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, flexWrap: "wrap", gap: 12 }}>
                 <button
                     type="button"
@@ -449,6 +496,35 @@ export default function SettingsPanel({
                     </ClayButton>
                 </div>
             </div>
+
+            {cancelConfirmOpen && (
+                <div style={{
+                    position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)",
+                    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50,
+                }}>
+                    <div style={{
+                        background: CLAY.canvas, borderRadius: 24, padding: 28, maxWidth: 380, width: "90%",
+                        boxShadow: "0 20px 50px rgba(0,0,0,0.3)", fontFamily: CLAY.font,
+                    }}>
+                        <h3 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 500, color: CLAY.textPrimary }}>
+                            Cancel your subscription?
+                        </h3>
+                        <p style={{ margin: "0 0 22px", fontSize: 13, lineHeight: 1.6, color: CLAY.textMuted }}>
+                            You'll keep full Pro access until {periodEndLabel}. After that, your account moves to
+                            the Free plan and any projects beyond the Free limit become read-only until you
+                            resubscribe or remove them.
+                        </p>
+                        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                            <ClayButton onClick={() => setCancelConfirmOpen(false)} disabled={canceling}>
+                                Keep Pro
+                            </ClayButton>
+                            <ClayButton onClick={handleConfirmCancel} disabled={canceling} variant="danger">
+                                {canceling ? "Cancelling…" : "Cancel Subscription"}
+                            </ClayButton>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

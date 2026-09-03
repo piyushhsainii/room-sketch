@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
   // user's already at their plan's limit. Must run before the insert, not
   // after — otherwise a race (two rapid clicks) could let someone briefly
   // exceed their limit before the check catches up.
-  const blocked = await guardProjectSlot(user.id);
+  const blocked = await guardProjectSlot(supabase, user.id);
   if (blocked) return blocked;
 
   const body = await req.json().catch(() => ({}));

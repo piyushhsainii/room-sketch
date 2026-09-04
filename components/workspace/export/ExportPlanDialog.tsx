@@ -8,6 +8,7 @@ import { Floor } from '../lib/floor-data'
 import { CameraView, getBuiltInViews } from '../lib/camera'
 import { Scene3DHandle } from '../3DScene'
 import { PrintableFloorPlan2D, PRINT_SCALES, PrintScale, pickAutoScale } from './PrintableFloorPlan2D'
+import { usePlan } from '@/lib/hooks/usePlan'
 
 interface Props {
     fp: FloorPlanState
@@ -146,6 +147,45 @@ export function ExportPlanDialog({
     // FloorGeometry.tsx before this can be made real.
     const [captureFurniture, setCaptureFurniture] = useState(true)
     const [captureLights, setCaptureLights] = useState(true)
+
+    // ── Plan gating: 3D snapshot export is Pro-only. `isDev` bypasses the
+    // gate entirely in local development so it's not necessary to keep
+    // flipping your own plan row in Supabase just to test this panel — the
+    // server-side /api/export3d/authorize check still enforces for real in
+    // every environment (including dev, against whatever's in your dev DB),
+    // this only short-circuits the CLIENT-side lock. See discussion above:
+    // this is a UX gate, not a hard security boundary, since the actual
+    // capture pipeline (captureSnapshot/toBlob/downloadBlob) runs entirely
+    // client-side and never leaves the browser.
+    const isDev = process.env.NODE_ENV !== 'production'
+    const { plan } = usePlan()
+    const hasExport3D = isDev || (plan?.features?.includes('export3d') ?? false)
+    const [authorizing3D, setAuthorizing3D] = useState(false)
+
+    const authorize3DExport = async (): Promise<boolean> => {
+        if (isDev) return true
+        if (!hasExport3D) {
+            setError('3D snapshot export is a Pro feature. Upgrade to unlock it.')
+            return false
+        }
+        setAuthorizing3D(true)
+        try {
+            const res = await fetch('/api/export3d/authorize', { method: 'POST' })
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}))
+                setError(body.error === 'plan_limit'
+                    ? '3D snapshot export is a Pro feature. Upgrade to unlock it.'
+                    : 'Could not verify plan access. Try again.')
+                return false
+            }
+            return true
+        } catch {
+            setError('Could not verify plan access. Try again.')
+            return false
+        } finally {
+            setAuthorizing3D(false)
+        }
+    }
 
     const selectedFloors = floors
         .filter(f => selectedFloorIds.has(f.id))
@@ -354,6 +394,7 @@ export function ExportPlanDialog({
     }
 
     const captureOne = async (floor: Floor, view: CameraView) => {
+        if (!(await authorize3DExport())) return
         const key = viewKey(floor.id, view.id)
         setBusyKey(key)
         setBusy(true)
@@ -395,6 +436,7 @@ export function ExportPlanDialog({
     }
 
     const captureAllIncluded = async () => {
+        if (!(await authorize3DExport())) return
         const jobs = floorsWithViews.flatMap(({ floor, views }) =>
             views.filter(v => isViewIncluded(floor.id, v.id)).map(v => ({ floor, view: v }))
         )
@@ -451,6 +493,7 @@ export function ExportPlanDialog({
     }
 
     const downloadAllAsZip = async () => {
+        if (!(await authorize3DExport())) return
         setBusy(true); setBusyKey('zip'); setError(null)
         try {
             const { default: JSZip } = await import('jszip')
@@ -514,7 +557,7 @@ export function ExportPlanDialog({
                     </h3>
                     <div style={{ display: 'flex', gap: 4, boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)` }}>
                         <TabButton label="2D Plans" active={tab === '2d'} onClick={() => setTab('2d')} />
-                        <TabButton label="3D Snapshots" active={tab === '3d'} onClick={() => setTab('3d')} />
+                        <TabButton label="3D Snapshots" active={tab === '3d'} onClick={() => setTab('3d')} locked={!hasExport3D} />
                     </div>
                 </div>
 
@@ -585,6 +628,18 @@ export function ExportPlanDialog({
                                     {busy && busyKey === 'export2d' ? (busyLabel || 'Exporting…') : `Download ${format.toUpperCase()}${selectedFloors.length > 1 ? ` (${selectedFloors.length} floors)` : ''}`}
                                 </CTAButton>
                             </>
+                        ) : !hasExport3D ? (
+                            <div style={{ padding: '32px 12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: UI.ink, marginBottom: 6 }}>
+                                    3D snapshots are a Pro feature
+                                </div>
+                                <div style={{ fontSize: 12, color: UI.inkFaint, marginBottom: 16, lineHeight: 1.5 }}>
+                                    Upgrade to capture and export 3D views of your floor plan.
+                                </div>
+                                <CTAButton onClick={() => { window.location.href = '/pricing' }}>
+                                    Upgrade to Pro
+                                </CTAButton>
+                            </div>
                         ) : (
                             <>
                                 <Label style={{ marginBottom: 8 }}>Scene options</Label>
@@ -617,12 +672,12 @@ export function ExportPlanDialog({
                                                         {snap && <span title="Captured" style={{ fontSize: 12, color: UI.successText }}>●</span>}
                                                         <button
                                                             onClick={() => captureOne(floor, v)}
-                                                            disabled={busy}
+                                                            disabled={busy || authorizing3D}
                                                             style={{
                                                                 fontSize: 10.5, padding: '5px 11px', borderRadius: 999, fontWeight: 500, letterSpacing: 'normal',
                                                                 border: 'none', background: UI.surfaceChip,
                                                                 boxShadow: '-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.14)',
-                                                                color: UI.ink, cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0,
+                                                                color: UI.ink, cursor: (busy || authorizing3D) ? 'not-allowed' : 'pointer', flexShrink: 0,
                                                             }}>
                                                             {isCapturingThis ? '…' : snap ? 'Recapture' : 'Capture'}
                                                         </button>
@@ -638,12 +693,12 @@ export function ExportPlanDialog({
 
                                 {error && <ErrorText>{error}</ErrorText>}
 
-                                <SecondaryButton onClick={captureAllIncluded} disabled={busy}>
+                                <SecondaryButton onClick={captureAllIncluded} disabled={busy || authorizing3D}>
                                     {busy && busyKey === 'captureAll'
                                         ? (captureProgress ? `Capturing… (${captureProgress.done}/${captureProgress.total})` : busyLabel)
                                         : 'Capture All Checked Views'}
                                 </SecondaryButton>
-                                <CTAButton onClick={downloadAllAsZip} disabled={busy}>
+                                <CTAButton onClick={downloadAllAsZip} disabled={busy || authorizing3D}>
                                     {busy && busyKey === 'zip' ? (busyLabel || 'Packaging…') : 'Download All as ZIP (3D + 2D)'}
                                 </CTAButton>
                             </>
@@ -657,7 +712,7 @@ export function ExportPlanDialog({
                         </button>
                     </div>
 
-                    {tab === '3d' && (
+                    {tab === '3d' && hasExport3D && (
                         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                             <Label style={{ marginBottom: 8 }}>Preview</Label>
                             <div style={{
@@ -729,7 +784,7 @@ export function ExportPlanDialog({
     )
 }
 
-function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function TabButton({ label, active, onClick, locked }: { label: string; active: boolean; onClick: () => void; locked?: boolean }) {
     return (
         <button
             onClick={onClick}
@@ -738,9 +793,16 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
                 fontSize: 13.5, fontWeight: 500, letterSpacing: 'normal', color: active ? UI.ink : UI.inkFaint,
                 boxShadow: active ? `inset 0 -2px 0 ${UI.accentText}` : 'none',
                 marginBottom: -1, transition: 'color 160ms ease', fontFamily: UI.font,
+                display: 'inline-flex', alignItems: 'center', gap: 5,
             }}
         >
             {label}
+            {locked && (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.6 }}>
+                    <rect x="5" y="11" width="14" height="9" rx="2" />
+                    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+            )}
         </button>
     )
 }

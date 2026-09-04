@@ -28,7 +28,7 @@ export default function BenchStrip() {
               {it.num}
             </span>
             <div
-              className="text-[13px] md:text-[13.5px] font-normal leading-[1.5] tracking-[-0.005em] max-w-[160px]"
+              className="text-[13px] md:text-[16.5px] font-normal leading-[1.3] tracking-[-0.005em] max-w-[160px]"
               style={{ color: "#666" }}
             >
               {it.label}

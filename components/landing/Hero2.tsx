@@ -60,9 +60,9 @@ export default function Hero2() {
                                     href="/dashboard"
                                     className="group inline-flex items-center gap-2 text-[14px] font-normal tracking-[-0.01em] px-8 py-[13px] rounded-full transition-shadow"
                                     style={{
-                                        color: "#1A1A1A",
-                                        background: "#F5F5F5",
-                                        boxShadow: "-5px -5px 10px rgba(255,255,255,0.8), 5px 5px 14px rgba(0,0,0,0.14)",
+                                        color: "#ffffff",
+                                        background: "#000000",
+                                        boxShadow: "-5px -5px 10px rgba(155,155,155,0.2), 5px 5px 14px rgba(0,0,0,0.4)",
                                     }}
                                 >
                                     Start sketching free

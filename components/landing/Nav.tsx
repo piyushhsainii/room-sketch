@@ -53,15 +53,15 @@ export default function Nav() {
         </div>
 
         <a
-          href="#get-started"
+          href="/dashboard"
           onMouseEnter={() => setCtaHovered(true)}
           onMouseLeave={() => setCtaHovered(false)}
           className="hidden md:inline-flex items-center whitespace-nowrap ml-auto"
           style={{
             fontFamily: CLAY.font,
             fontSize: 13, fontWeight: 500, letterSpacing: "0.02em",
-            color: CLAY.textPrimary,
-            background: CLAY.surfaceChip,
+            color: '#ffffff',
+            background: '#000000',
             borderRadius: 999, padding: "10px 22px",
             boxShadow: ctaHovered ? clayRaised(true) : clayRaised(false),
             transition: "box-shadow 180ms ease",

@@ -7,7 +7,7 @@ import { WallMat } from './wallmat';
 import { DoorVariant3D } from './door-variants';
 import { WindowVariant3D } from './window-variant3d';
 import { WallDecorMesh } from '../mesh/wall-decor-mesh';
-import { RoomSceneConfig } from '../FloorPlanEditor';
+import type { RoomSceneConfig } from '../lib/scene-config'
 import { Railing3D } from './railing-3d';
 import { matchClosedShape } from '../MaterialsPanel';
 import { Text } from '@react-three/drei';
@@ -1084,6 +1084,7 @@ function FloorPiece({
             <mesh
                 rotation={[-Math.PI / 2, 0, 0]}
                 position={[0, 0.006, 0]}
+                userData={{ walkSurface: true }}
                 receiveShadow
                 onClick={(e: any) => {
                     if (!clickable) return

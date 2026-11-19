@@ -1,41 +1,9 @@
 // components/workspace/ShareDialog.tsx
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { THEME } from '../workspace/FloorPlanEditor';
-
-function GlobeIcon({ color }: { color: string }) {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M3 12h18M12 3c2.5 2.7 4 6 4 9s-1.5 6.3-4 9c-2.5-2.7-4-6-4-9s1.5-6.3 4-9z" />
-        </svg>
-    );
-}
-
-function LinkIcon({ color }: { color: string }) {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 17H7a5 5 0 0 1 0-10h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8" />
-        </svg>
-    );
-}
-
-function CheckIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6L9 17l-5-5" />
-        </svg>
-    );
-}
-
-function CopyIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="12" height="12" rx="2" />
-            <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
-        </svg>
-    );
-}
+import { Check, Copy, Globe, Link, Mail, X } from 'lucide-react'
+import { editorMenuTheme, menuButton, menuSurface } from './editor-menu-theme'
+import { cn } from '@/lib/utils'
 
 function TwitterIcon() {
     return (
@@ -53,49 +21,60 @@ function WhatsAppIcon() {
     );
 }
 
-function MailIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="4" width="20" height="16" rx="2" />
-            <path d="M2 7l10 6 10-6" />
-        </svg>
-    );
-}
-
 const POPOVER_WIDTH = 360
 const MARGIN = 12
 const GAP = 10
 
-// ---- Claymorphism theme tokens (shared across dashboard components) ----
-const CLAY = {
-    canvas: "#E5E5E5",
-    surface: "#EAEAEA",
-    surfaceChip: "#F5F5F5",
-    textPrimary: "#1A1A1A",
-    textMuted: "#5A5A5A",
-    textPlaceholder: "#999999",
-    lightShadow: "rgba(255,255,255,0.75)",
-    darkShadow: "rgba(0,0,0,0.14)",
-    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+type ShareDetails = { token: string; published: boolean }
+const shareDetailsCache = new Map<string, ShareDetails>()
+const pendingShareDetails = new Map<string, Promise<ShareDetails>>()
+
+function loadShareDetails(projectId: string): Promise<ShareDetails> {
+    const pending = pendingShareDetails.get(projectId)
+    if (pending) return pending
+
+    const request = (async () => {
+        const response = await fetch(`/api/projects/${projectId}?view=share`, { cache: 'no-store' })
+        const data = await response.json()
+        if (!response.ok) {
+            if (response.status === 401 || response.status === 404) shareDetailsCache.delete(projectId)
+            throw new Error(data.error ?? 'Unable to load sharing details.')
+        }
+        const project = data.project
+        let token = project.share_token
+        if (!token || !project.share_enabled) {
+            const shareResponse = await fetch('/api/workspace/share', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_id: projectId, enabled: true }),
+            })
+            const shareData = await shareResponse.json()
+            if (!shareResponse.ok || !shareData.ok || !shareData.share_token) {
+                throw new Error(shareData.error ?? 'Unable to create a share link.')
+            }
+            token = shareData.share_token
+        }
+        const details = { token, published: !!project.published }
+        shareDetailsCache.set(projectId, details)
+        return details
+    })().finally(() => pendingShareDetails.delete(projectId))
+    pendingShareDetails.set(projectId, request)
+    return request
 }
 
-const clayRaised = (pressed = false) =>
-    pressed
-        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
-        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`
-
 export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: string; onClose: () => void; anchorEl?: HTMLElement | null }) {
-    const [shareUrl, setShareUrl] = useState<string | null>(null)
-    const [loading, setLoading] = useState(false)
+    const cached = shareDetailsCache.get(projectId)
+    const [shareUrl, setShareUrl] = useState<string | null>(() =>
+        cached && typeof window !== 'undefined' ? `${window.location.origin}/share/${cached.token}` : null)
+    const [loading, setLoading] = useState(!cached)
+    const [loadError, setLoadError] = useState<string | null>(null)
+    const [retry, setRetry] = useState(0)
     const [copied, setCopied] = useState(false)
-    const [pos, setPos] = useState<{ top: number; left: number; pointerLeft: number; openUp: boolean } | null>(null)
+    const [pos, setPos] = useState<{ top: number; left: number; openUp: boolean } | null>(null)
     const [visible, setVisible] = useState(false)
-    const [closeHovered, setCloseHovered] = useState(false)
-    const [copyHovered, setCopyHovered] = useState(false)
-    const [hoveredTarget, setHoveredTarget] = useState<string | null>(null)
 
-    const [published, setPublished] = useState(false)
-    const [publishLoading, setPublishLoading] = useState(true)
+    const [published, setPublished] = useState(cached?.published ?? false)
+    const [publishLoading, setPublishLoading] = useState(!cached)
     const [publishBusy, setPublishBusy] = useState(false)
     const [publishError, setPublishError] = useState<string | null>(null)
 
@@ -110,18 +89,16 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
 
     useEffect(() => {
         function computePosition() {
-            const popoverEstHeight = 260 // enough for the header+link+targets before first paint measures real height
+            const popoverEstHeight = 400 // enough for the header+link+targets before first paint measures real height
 
             if (!anchorEl) {
-                setPos({ top: 64, left: window.innerWidth - POPOVER_WIDTH - 24, pointerLeft: POPOVER_WIDTH - 40, openUp: false })
+                setPos({ top: 64, left: Math.max(MARGIN, window.innerWidth - POPOVER_WIDTH - 24), openUp: false })
                 return
             }
 
             const rect = anchorEl.getBoundingClientRect()
 
-            // Right-align to the card's right edge, opening ABOVE the card
-            // (top of card) with the popover's bottom sitting just above
-            // the card's top — per "show it on right and top of this card".
+            // Keep the panel aligned with its trigger and within the viewport.
             let left = rect.right - POPOVER_WIDTH
             left = Math.max(MARGIN, Math.min(left, window.innerWidth - POPOVER_WIDTH - MARGIN))
 
@@ -132,12 +109,7 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
                 ? rect.top - GAP // bottom-anchored via translateY in the style below
                 : rect.bottom + GAP
 
-            const pointerLeft = Math.min(
-                Math.max(rect.left + rect.width / 2 - left - 6, 16),
-                POPOVER_WIDTH - 28
-            )
-
-            setPos({ top, left, pointerLeft, openUp })
+            setPos({ top, left, openUp })
         }
 
         computePosition()
@@ -150,33 +122,32 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
     }, [anchorEl])
 
     useEffect(() => {
-        setLoading(true)
-        fetch('/api/workspace/share', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId, enabled: true }),
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data.ok) setShareUrl(`${window.location.origin}/share/${data.share_token}`)
-            })
-            .finally(() => setLoading(false))
-    }, [projectId])
-
-    useEffect(() => {
         let cancelled = false
-        setPublishLoading(true)
-        fetch(`/api/projects/${projectId}`, { cache: 'no-store' })
-            .then(res => res.json())
-            .then(data => {
+        const previous = shareDetailsCache.get(projectId)
+        setShareUrl(previous ? `${window.location.origin}/share/${previous.token}` : null)
+        setPublished(previous?.published ?? false)
+        setCopied(false)
+        setLoading(!previous)
+        setPublishLoading(!previous)
+        setLoadError(null)
+        loadShareDetails(projectId)
+            .then(details => {
                 if (cancelled) return
-                const proj = data.project ?? data
-                setPublished(!!proj.published)
+                setShareUrl(`${window.location.origin}/share/${details.token}`)
+                setPublished(details.published)
             })
-            .catch(err => console.error('[ShareDialog] failed to load publish state:', err))
-            .finally(() => { if (!cancelled) setPublishLoading(false) })
+            .catch(error => {
+                if (cancelled) return
+                if (!shareDetailsCache.has(projectId)) setShareUrl(null)
+                setLoadError(error instanceof Error ? error.message : 'Unable to load sharing details.')
+            })
+            .finally(() => {
+                if (cancelled) return
+                setLoading(false)
+                setPublishLoading(false)
+            })
         return () => { cancelled = true }
-    }, [projectId])
+    }, [projectId, retry])
 
     const handleCopy = () => {
         if (!shareUrl) return
@@ -186,15 +157,16 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
     }
 
     const shareTargets = shareUrl ? [
-        { label: 'Twitter', icon: TwitterIcon, bg: '#000000', href: `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('Check out my floor plan')}` },
-        { label: 'WhatsApp', icon: WhatsAppIcon, bg: '#25D366', href: `https://wa.me/?text=${encodeURIComponent(shareUrl)}` },
-        { label: 'Email', icon: MailIcon, bg: '#4F46E5', href: `mailto:?subject=${encodeURIComponent('Floor plan')}&body=${encodeURIComponent(shareUrl)}` },
+        { label: 'Twitter', icon: TwitterIcon, href: `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('Check out my floor plan')}` },
+        { label: 'WhatsApp', icon: WhatsAppIcon, href: `https://wa.me/?text=${encodeURIComponent(shareUrl)}` },
+        { label: 'Email', icon: Mail, href: `mailto:?subject=${encodeURIComponent('Floor plan')}&body=${encodeURIComponent(shareUrl)}` },
     ] : []
 
     const handleTogglePublish = async (next: boolean) => {
         setPublishBusy(true)
         setPublishError(null)
         try {
+            await pendingShareDetails.get(projectId)
             const res = await fetch(`/api/projects/${projectId}/publish`, {
                 method: next ? 'POST' : 'DELETE',
             })
@@ -204,6 +176,9 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
             }
             setPublished(next)
             const body = await res.json().catch(() => null)
+            const previous = shareDetailsCache.get(projectId)
+            const token = body?.share_token ?? previous?.token
+            if (token) shareDetailsCache.set(projectId, { token, published: next })
             if (next && body?.share_token && !shareUrl) {
                 setShareUrl(`${window.location.origin}/share/${body.share_token}`)
             }
@@ -217,179 +192,107 @@ export function ShareDialog({ projectId, onClose, anchorEl }: { projectId: strin
     if (!pos) return null
 
     return createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999 }} onClick={handleClose}>
-            <div
-                onClick={e => e.stopPropagation()}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999 }} onClick={handleClose}
+            onKeyDown={event => {
+                if (event.key === 'Escape') {
+                    event.stopPropagation()
+                    handleClose()
+                }
+            }}>
+            <section
+                role="dialog"
+                aria-label="Share Floor Plan"
+                onClick={event => event.stopPropagation()}
+                className={cn(menuSurface, "flex flex-col gap-4 p-5 text-sm tracking-tight text-neutral-900")}
                 style={{
                     position: 'fixed',
                     top: pos.top,
                     left: pos.left,
                     width: POPOVER_WIDTH,
-                    background: CLAY.surface,
-                    borderRadius: 24,
-                    padding: 22,
-                    boxShadow: `0 24px 48px rgba(0,0,0,0.16), -6px -6px 14px ${CLAY.lightShadow}, 6px 6px 16px ${CLAY.darkShadow}`,
-                    border: 'none',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 16,
-                    fontFamily: CLAY.font,
+                    maxWidth: 'calc(100vw - 24px)',
+                    maxHeight: pos.openUp ? pos.top - MARGIN : `calc(100dvh - ${pos.top + MARGIN}px)`,
+                    overflowY: 'auto',
+                    fontFamily: editorMenuTheme.font,
                     transformOrigin: pos.openUp ? 'bottom right' : 'top right',
-                    transform: `translateY(${pos.openUp ? '-100%' : '0%'}) scale(${visible ? 1 : 0.95})`,
+                    transform: `translateY(${pos.openUp ? '-100%' : '0%'}) scale(${visible ? 1 : 0.98})`,
                     opacity: visible ? 1 : 0,
-                    transition: 'transform 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 160ms ease',
+                    transition: 'transform 160ms ease, opacity 160ms ease',
                 }}
             >
-                {/* Pointer, anchored under/above the trigger button's actual
-                    on-screen position, flipping side depending on open direction. */}
-                <div style={{
-                    position: 'absolute',
-                    ...(pos.openUp
-                        ? { bottom: -6 }
-                        : { top: -6 }),
-                    left: pos.pointerLeft, width: 12, height: 12,
-                    background: CLAY.surface, transform: 'rotate(45deg)',
-                    boxShadow: pos.openUp
-                        ? `4px 4px 6px -2px rgba(0,0,0,0.10)`
-                        : `-4px -4px 6px -2px rgba(0,0,0,0.10)`,
-                }} />
-
-                {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 15, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: 'normal' }}>Share Floor Plan</span>
-                    <button
-                        onClick={handleClose}
-                        onMouseEnter={() => setCloseHovered(true)}
-                        onMouseLeave={() => setCloseHovered(false)}
-                        style={{
-                            width: 28, height: 28, borderRadius: '50%', border: 'none', background: closeHovered ? CLAY.surfaceChip : 'transparent',
-                            color: CLAY.textMuted, cursor: 'pointer', fontSize: 16, display: 'flex',
-                            alignItems: 'center', justifyContent: 'center',
-                            boxShadow: closeHovered ? 'inset 2px 2px 5px rgba(0,0,0,0.14), inset -2px -2px 5px rgba(255,255,255,0.7)' : 'none',
-                            transition: 'background 160ms ease, color 160ms ease, box-shadow 160ms ease',
-                        }}
-                    >
-                        ×
+                <header className="flex items-center justify-between gap-3">
+                    <h2 className="text-base font-semibold tracking-tight">Share Floor Plan</h2>
+                    <button type="button" autoFocus aria-label="Close share panel" onClick={handleClose}
+                        className={cn(menuButton, "h-10 w-10 p-0 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900")}>
+                        <X size={16} aria-hidden="true" />
                     </button>
-                </div>
+                </header>
 
-                <p style={{ fontSize: 12.5, color: CLAY.textMuted, margin: 0, display: 'flex', alignItems: 'flex-start', gap: 7, lineHeight: 1.5 }}>
-                    <span style={{ marginTop: 1, flexShrink: 0 }}><GlobeIcon color={CLAY.textMuted} /></span>
-                    Anyone with this link can view a read-only version — no account needed.
+                <p className="flex items-start gap-2 leading-5 text-neutral-600">
+                    <Globe size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <span>Anyone with this link can view a read-only version without an account.</span>
                 </p>
-                <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    height: 42, borderRadius: 999, border: 'none',
-                    background: CLAY.surface, padding: '0 14px',
-                    boxShadow: `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`,
-                }}>
-                    <label style={{
-                        display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: CLAY.textPrimary,
-                        cursor: publishBusy || publishLoading ? 'not-allowed' : 'pointer',
-                    }}>
-                        <input
-                            type="checkbox"
-                            checked={published}
-                            disabled={publishBusy || publishLoading}
-                            onChange={e => handleTogglePublish(e.target.checked)}
-                        />
-                        List on Community page
+
+                <div className="space-y-2">
+                    <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-xl bg-neutral-100 px-3 py-2 has-disabled:cursor-wait">
+                        <input type="checkbox" checked={published} disabled={publishBusy || publishLoading || !!loadError}
+                            className="h-4 w-4 accent-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
+                            onChange={event => handleTogglePublish(event.target.checked)} />
+                        <span className="flex-1">List on Community page</span>
+                        {(publishBusy || publishLoading) && (
+                            <span className="text-xs text-neutral-500" role="status">
+                                {publishLoading ? 'Loading…' : 'Saving…'}
+                            </span>
+                        )}
                     </label>
-                    {(publishBusy || publishLoading) && (
-                        <span style={{ fontSize: 10.5, color: CLAY.textPlaceholder }}>
-                            {publishLoading ? '' : 'Saving…'}
-                        </span>
+                    {publishError && <p role="alert" className="text-xs leading-5 text-red-800">{publishError}</p>}
+                    {published && (
+                        <p className="text-xs leading-5 text-neutral-500">
+                            Visible on the <a href="/community" className="text-neutral-700 underline underline-offset-2">Community page</a>, ranked by stars.
+                        </p>
                     )}
                 </div>
-                {publishError && (
-                    <div style={{ fontSize: 10.5, color: '#c2483f', marginTop: -8 }}>{publishError}</div>
-                )}
-                {published && (
-                    <p style={{ fontSize: 11, color: CLAY.textPlaceholder, margin: '-8px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        ★ Visible on the <a href="/community" style={{ color: CLAY.textPrimary, textDecoration: 'underline' }}>Community page</a>, ranked by stars.
-                    </p>
-                )}
 
-                {/* Link + copy */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                    <div style={{
-                        flex: 1, display: 'flex', alignItems: 'center', gap: 8, height: 42, borderRadius: 999,
-                        border: 'none', background: CLAY.surface, padding: '0 14px', minWidth: 0,
-                        boxShadow: `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`,
-                    }}>
-                        <span style={{ flexShrink: 0, display: 'flex' }}><LinkIcon color={CLAY.textMuted} /></span>
-                        <input
-                            readOnly
-                            value={loading ? 'Generating link…' : shareUrl ?? ''}
-                            onFocus={(e) => e.currentTarget.select()}
-                            style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', color: CLAY.textPrimary, fontSize: 12.5, outline: 'none', fontFamily: CLAY.font }}
-                        />
+                {loadError && (
+                    <div role="alert" className="flex items-center justify-between gap-2 text-xs text-red-800">
+                        <span>{loadError}</span>
+                        <button type="button" onClick={() => setRetry(value => value + 1)}
+                            className={cn(menuButton, "text-neutral-700 hover:bg-neutral-100")}>
+                            Retry
+                        </button>
                     </div>
-                    <button
-                        onClick={handleCopy}
-                        disabled={!shareUrl}
-                        title="Copy link"
-                        onMouseEnter={() => setCopyHovered(true)}
-                        onMouseLeave={() => setCopyHovered(false)}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: 6, height: 42, padding: '0 18px', borderRadius: 999,
-                            border: 'none',
-                            background: copied
-                                ? 'linear-gradient(145deg, #8fe3c0, #5fcf9e)'
-                                : CLAY.surface,
-                            color: CLAY.textPrimary,
-                            fontSize: 12.5, fontWeight: 500, cursor: shareUrl ? 'pointer' : 'not-allowed',
-                            fontFamily: CLAY.font,
-                            boxShadow: copied
-                                ? '0 6px 14px -4px rgba(95,207,158,0.45), inset 0 1px 1px rgba(255,255,255,0.4)'
-                                : copyHovered ? clayRaised(true) : clayRaised(false),
-                            transition: 'background 160ms ease, box-shadow 160ms ease, transform 100ms ease',
-                            flexShrink: 0,
-                        }}
-                        onMouseDown={e => { if (shareUrl) e.currentTarget.style.transform = 'scale(0.96)' }}
-                        onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}
-                    >
-                        {copied ? <CheckIcon /> : <CopyIcon />}
-                        {copied ? 'Copied' : 'Copy'}
+                )}
+                <div className="flex items-center gap-2">
+                    <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 focus-within:ring-2 focus-within:ring-neutral-900">
+                        <Link size={16} className="shrink-0 text-neutral-500" aria-hidden="true" />
+                        <input readOnly aria-label="Share link"
+                            value={shareUrl ?? (loading ? 'Loading share link…' : '')}
+                            onFocus={event => event.currentTarget.select()}
+                            className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none" />
+                    </div>
+                    <button type="button" onClick={handleCopy} disabled={!shareUrl} title="Copy link"
+                        className={cn(menuButton, "bg-neutral-900 text-white hover:bg-neutral-800")}>
+                        {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+                        <span role="status">{copied ? 'Copied' : 'Copy'}</span>
                     </button>
                 </div>
 
-                {/* Share targets — colored icon chips with labels underneath */}
                 {shareUrl && (
-                    <div style={{ display: 'flex', gap: 10 }}>
-                        {shareTargets.map(t => {
-                            const Icon = t.icon;
-                            const isHovered = hoveredTarget === t.label
+                    <div className="grid grid-cols-3 gap-2 border-t border-neutral-200 pt-4">
+                        {shareTargets.map(target => {
+                            const Icon = target.icon
                             return (
-                                <a
-                                    key={t.label}
-                                    href={t.href}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onMouseEnter={() => setHoveredTarget(t.label)}
-                                    onMouseLeave={() => setHoveredTarget(null)}
-                                    style={{
-                                        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7,
-                                        padding: '13px 0 11px', borderRadius: 16, border: 'none',
-                                        background: CLAY.surface, textDecoration: 'none',
-                                        boxShadow: isHovered ? clayRaised(true) : clayRaised(false),
-                                        transform: isHovered ? 'translateY(-1px)' : 'translateY(0)',
-                                        transition: 'box-shadow 180ms ease, transform 180ms ease',
-                                    }}
-                                >
-                                    <span style={{
-                                        width: 30, height: 30, borderRadius: '50%', background: t.bg,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                                    }}>
+                                <a key={target.label} href={target.href} target="_blank" rel="noopener noreferrer"
+                                    className={cn(menuButton, "flex-col gap-2 border border-neutral-200 py-3 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900")}>
+                                    <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 text-white [&>svg]:h-4 [&>svg]:w-4">
                                         <Icon />
                                     </span>
-                                    <span style={{ fontSize: 11, fontWeight: 400, color: CLAY.textMuted }}>{t.label}</span>
+                                    {target.label}
                                 </a>
-                            );
+                            )
                         })}
                     </div>
                 )}
-            </div>
+            </section>
         </div>,
         document.body
     )

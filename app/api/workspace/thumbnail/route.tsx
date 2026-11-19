@@ -20,6 +20,7 @@ export async function POST(request: Request) {
         // Multipart form-data, NOT JSON.
         const formData = await request.formData();
         const projectId = formData.get("project_id");
+        const revision = formData.get("revision");
         const thumbnail = formData.get("thumbnail");
 
         if (typeof projectId !== "string" || !projectId) {
@@ -35,13 +36,17 @@ export async function POST(request: Request) {
             );
         }
 
+        if (revision !== null && (typeof revision !== "string" || !/^[a-f0-9-]{36}$/.test(revision))) {
+            return NextResponse.json({ error: "Invalid thumbnail revision" }, { status: 400 });
+        }
+
         // Ownership check — the REAL authorization boundary for this route.
         // Uses the authenticated user's own session (not service role), so
         // this genuinely enforces "you can only upload a thumbnail for a
         // project you own" regardless of what happens below.
         const { data: project } = await supabase
             .from("projects")
-            .select("id")
+            .select("id, revision:floorplan_editor_state->>revision")
             .eq("id", projectId)
             .eq("user_id", user.id)
             .single();
@@ -50,9 +55,13 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Not found" }, { status: 404 });
         }
 
+        if ((project.revision ?? null) !== revision) {
+            return NextResponse.json({ error: "Project has a newer save" }, { status: 409 });
+        }
+
         const arrayBuffer = await thumbnail.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);
-        const path = `${projectId}/thumbnail.jpg`;
+        const path = `${projectId}/${crypto.randomUUID()}.jpg`;
 
         const serviceSupabase = getSupabaseServerClient();
 
@@ -60,7 +69,7 @@ export async function POST(request: Request) {
             .from(BUCKET)
             .upload(path, bytes, {
                 contentType: thumbnail.type || "image/jpeg",
-                upsert: true,
+                upsert: false,
             });
 
         if (uploadError) {
@@ -75,17 +84,23 @@ export async function POST(request: Request) {
             .from(BUCKET)
             .getPublicUrl(path);
 
-        // Cache-bust — same path reused on every save (upsert), so without
-        // a query param the browser/CDN may keep serving the stale image.
-        const thumbnailUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
-
-        // Persist via the regular authenticated client — still scoped by
-        // user_id, still a real authorization check, not service role.
-        await supabase
+        const thumbnailUrl = publicUrlData.publicUrl;
+        const update = supabase
             .from("projects")
             .update({ thumbnail_url: thumbnailUrl })
             .eq("id", projectId)
             .eq("user_id", user.id);
+        const guardedUpdate = revision === null
+            ? update.is("floorplan_editor_state->>revision", null)
+            : update.eq("floorplan_editor_state->>revision", revision);
+        const { data: updated, error } = await guardedUpdate.select("id").maybeSingle();
+        if (error || !updated) {
+            await serviceSupabase.storage.from(BUCKET).remove([path]);
+            return NextResponse.json(
+                { error: error ? "Could not save thumbnail" : "Project has a newer save" },
+                { status: error ? 500 : 409 },
+            );
+        }
 
         return NextResponse.json({ thumbnail_url: thumbnailUrl });
     } catch (err) {

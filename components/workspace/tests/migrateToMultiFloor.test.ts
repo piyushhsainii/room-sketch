@@ -1,76 +1,36 @@
-// // migrateToMultiFloor.test.ts
-// import {
-//   migrateToMultiFloor,
-//   recomputeFloorElevations,
-// } from "./migrateToMultiFloor";
-// import { DEFAULT_FP } from "@/components/workspace/lib/constants";
+import { DEFAULT_FP } from '../lib/constants'
+import type { FloorPlanState } from '../lib/constants'
+import { migrateToMultiFloor, recomputeFloorElevations } from '../lib/migrateToMultiFloor'
 
-// describe("migrateToMultiFloor", () => {
-//   it("wraps a bare FloorPlanState as a single Ground Floor", () => {
-//     const oldState = { ...DEFAULT_FP, roomHeight: 2.8 };
-//     const result = migrateToMultiFloor(oldState);
+test('legacy windows receive defaults without mutating the source or dropping extension fields', () => {
+    const source = { ...structuredClone(DEFAULT_FP), customField: 'retained', openings: [{
+        id: 'window', type: 'window' as const, roomId: 'room', wall: 'north' as const,
+        position: 1, width: 1.2, height: 1.5, isOpen: true,
+    }] }
+    // Serialized older windows predate fields required by the current editor type.
+    const migrated = migrateToMultiFloor(source as unknown as FloorPlanState)
+    expect(migrated.floors[0].state).toMatchObject({ customField: 'retained', openings: [{
+        variant: 'window-fixed', isOpen: true, openAmount: 1,
+    }] })
+    expect(source.openings[0]).not.toHaveProperty('variant')
+    expect(migrateToMultiFloor(migrated)).toEqual(migrated)
+})
 
-//     expect(result.floors).toHaveLength(1);
-//     expect(result.floors[0].label).toBe("Ground Floor");
-//     expect(result.floors[0].order).toBe(0);
-//     expect(result.floors[0].elevation).toBe(0);
-//     expect(result.floors[0].state).toBe(oldState); // same reference, not cloned
-//     expect(result.activeFloorId).toBe(result.floors[0].id);
-//     expect(result.viewMode).toBe("single");
-//   });
+test('existing project and floor metadata survive migration', () => {
+    const initial = migrateToMultiFloor(structuredClone(DEFAULT_FP))
+    const source = { ...initial, customProjectField: true, floors: initial.floors.map(floor => ({
+        ...floor, customFloorField: 'retained', state: { ...floor.state, roomHeight: 3.1 },
+    })) }
+    const migrated = migrateToMultiFloor(source)
+    expect(migrated).toMatchObject({ customProjectField: true, floors: [{ customFloorField: 'retained' }] })
+    expect(migrated.activeFloorId).toBe(source.activeFloorId)
+    expect(migrated.floors[0].state.roomHeight).toBe(3.1)
+})
 
-//   it("is idempotent — returns already-migrated data unchanged", () => {
-//     const already = migrateToMultiFloor({ ...DEFAULT_FP });
-//     const result = migrateToMultiFloor(already);
-//     expect(result).toBe(already);
-//   });
-// });
-
-// describe("recomputeFloorElevations", () => {
-//   it("stacks floors by roomHeight in order", () => {
-//     const floors = [
-//       {
-//         id: "a",
-//         label: "Ground",
-//         order: 0,
-//         elevation: 0,
-//         visible: true,
-//         state: { ...DEFAULT_FP, roomHeight: 2.8 },
-//       },
-//       {
-//         id: "b",
-//         label: "Level 2",
-//         order: 1,
-//         elevation: 0,
-//         visible: true,
-//         state: { ...DEFAULT_FP, roomHeight: 3.0 },
-//       },
-//     ];
-//     const result = recomputeFloorElevations(floors);
-//     expect(result[0].elevation).toBe(0);
-//     expect(result[1].elevation).toBe(2.8);
-//   });
-
-//   it("respects manually overridden elevations", () => {
-//     const floors = [
-//       {
-//         id: "a",
-//         label: "Ground",
-//         order: 0,
-//         elevation: 0,
-//         visible: true,
-//         state: { ...DEFAULT_FP, roomHeight: 2.8 },
-//       },
-//       {
-//         id: "b",
-//         label: "Level 2",
-//         order: 1,
-//         elevation: 5,
-//         visible: true,
-//         state: { ...DEFAULT_FP, roomHeight: 3.0 },
-//       },
-//     ];
-//     const result = recomputeFloorElevations(floors, new Set(["b"]));
-//     expect(result[1].elevation).toBe(5); // untouched
-//   });
-// });
+test('elevations stack by height and respect the existing explicit override contract', () => {
+    const ground = migrateToMultiFloor({ ...structuredClone(DEFAULT_FP), roomHeight: 3 }).floors[0]
+    const upper = { ...ground, id: 'upper', order: 1, elevation: 5 }
+    expect(recomputeFloorElevations([upper, ground]).map(floor => floor.elevation)).toEqual([0, 3])
+    expect(recomputeFloorElevations([ground, upper], new Set(['upper']))[1].elevation).toBe(5)
+    expect(upper.elevation).toBe(5)
+})

@@ -112,15 +112,16 @@ export function GLTFFurnitureMesh({
             (d / measuredSize[2]) *
             GLB_DEFAULT_SIZE_MULTIPLIER
 
-        const sy =
-            (f.heightScale ?? userScale) *
-            GLB_DEFAULT_SIZE_MULTIPLIER
+        const sy = f.targetHeight !== undefined
+            ? f.targetHeight * userScale / measuredSize[1]
+            : (f.heightScale ?? userScale) * GLB_DEFAULT_SIZE_MULTIPLIER
 
         return [sx, sy, sz] as [number, number, number]
     }, [
         f.targetWidth,
         f.targetDepth,
         f.heightScale,
+        f.targetHeight,
         f.scale,
         def,
         measuredSize,
@@ -199,10 +200,6 @@ export function GLTFFurnitureMesh({
         textureScale,
         textureScale,
     )
-    const materialReady =
-        !overrideMat?.textureUrl ||
-        status === 'loaded' ||
-        status === 'failed'
     // -------------------------------------------------------------------------
     // DEBUG GLTF MATERIALS / UVs
     // -------------------------------------------------------------------------
@@ -258,6 +255,7 @@ export function GLTFFurnitureMesh({
     // -------------------------------------------------------------------------
 
     useEffect(() => {
+        const restored: { mesh: THREE.Mesh; original: THREE.Material | THREE.Material[]; materials: THREE.Material[] }[] = []
         cloned.traverse((obj) => {
             const mesh = obj as THREE.Mesh
 
@@ -301,7 +299,7 @@ export function GLTFFurnitureMesh({
                  * Material slots that aren't intended for furniture
                  * replacement should retain their original material.
                  */
-                if (!eligible) {
+                if (!eligible && !f.finishPalette) {
                     return mat
                 }
 
@@ -313,6 +311,17 @@ export function GLTFFurnitureMesh({
                     mat instanceof THREE.MeshStandardMaterial ||
                     mat instanceof THREE.MeshPhysicalMaterial
                 ) {
+                    if (f.finishPalette && !overrideMat) {
+                        const name = matName.toLowerCase()
+                        const color = /metal|steel|chrome/.test(name) ? f.finishPalette.metal
+                            : /carpet|fabric|cushion|leather/.test(name) ? f.finishPalette.upholstery
+                            : /wood/.test(name) ? f.finishPalette.wood : undefined
+                        if (color) {
+                            mat.color.set(color)
+                            mat.roughness = /metal|steel/.test(name) ? 0.36 : /wood/.test(name) ? 0.48 : 0.9
+                            mat.metalness = /metal|steel/.test(name) ? 0.65 : 0
+                        }
+                    }
                     if (overrideMat) {
                         // -----------------------------------------------------
                         // COLOR / DIFFUSE MAP
@@ -518,12 +527,19 @@ export function GLTFFurnitureMesh({
             /*
              * Preserve the original GLB's multi-material structure.
              */
+            restored.push({ mesh, original: mesh.material, materials: newMaterials })
             mesh.material =
                 Array.isArray(mesh.material)
                     ? newMaterials
                     : newMaterials[0]
         })
 
+        return () => {
+            for (const { mesh, original, materials } of restored) {
+                mesh.material = original
+                materials.forEach(material => material.dispose())
+            }
+        }
         /*
          * Cleanup:
          *
@@ -536,6 +552,7 @@ export function GLTFFurnitureMesh({
     }, [
         cloned,
         overrideMat,
+        f.finishPalette,
         def,
         opacity,
         itemTransparent,
@@ -622,7 +639,6 @@ export function GLTFFurnitureMesh({
                 0,
             ]}
             scale={scale}
-            visible={materialReady}
             {...clickHandlers}
             onPointerOver={handleOver}
             onPointerOut={handleOut}

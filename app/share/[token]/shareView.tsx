@@ -11,7 +11,10 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useRef, useState } from "react";
 import * as THREE from "three"
 import Scene3D, { Scene3DHandle } from '@/components/workspace/3DScene'
-import { SceneConfig } from "@/components/workspace/FloorPlanEditor";
+import type { SceneConfig } from "@/components/workspace/lib/scene-config"
+import { ProjectReviews } from '@/components/workspace/ProjectReviews'
+import { QualityControl } from '@/components/workspace/QualityControl'
+import { useSceneQuality } from '@/components/workspace/hooks/useSceneQuality'
 
 // ── Soft-UI (neumorphic) design tokens ──────────────────────────────────
 // Light gray surface, raised elements via a dual light/dark soft shadow,
@@ -29,6 +32,8 @@ const NEU = {
 }
 
 export default function ShareView({ token, initialData }: { token: string; initialData: ShareProject }) {
+    const [reviewsOpen, setReviewsOpen] = useState(false)
+    const [quality] = useSceneQuality()
     const searchParams = useSearchParams()
     const viewId = searchParams.get('view')
 
@@ -273,6 +278,14 @@ export default function ShareView({ token, initialData }: { token: string; initi
                 )}
             </div>
 
+            <button type="button" onClick={() => setReviewsOpen(open => !open)}
+                className="fixed bottom-4 right-4 z-20 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-900 shadow-lg"
+                aria-expanded={reviewsOpen}>{reviewsOpen ? 'Close reviews' : 'Client reviews'}</button>
+            {reviewsOpen && <aside aria-label="Client review panel"
+                className="fixed top-20 right-4 bottom-20 z-20 w-[min(360px,calc(100vw-32px))] space-y-4 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 shadow-lg">
+                <QualityControl />
+                <ProjectReviews token={token} floors={floors} activeFloorId={activeFloorId} />
+            </aside>}
             <div style={{ flex: 1, position: 'relative' }}>
                 {!fp ? (
                     <div style={{
@@ -284,7 +297,7 @@ export default function ShareView({ token, initialData }: { token: string; initi
                     </div>
                 ) : View === '3d' ? (
                     <Canvas
-                        shadows
+                        shadows={quality !== 'performance'}
                         frameloop="always"
                         gl={{
                             antialias: true,
@@ -294,7 +307,7 @@ export default function ShareView({ token, initialData }: { token: string; initi
                             depth: true,
                             preserveDrawingBuffer: true,
                         }}
-                        dpr={[1, 2]}
+                        dpr={quality === 'performance' ? 1 : quality === 'high' ? [1, 2] : [1, 1.5]}
                         camera={{ position: [8, 10, 12], fov: 50, near: 0.1, far: 500 }}
                     >
                         <SceneErrorBoundary fallback={

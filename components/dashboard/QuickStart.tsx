@@ -1,27 +1,11 @@
 // PATH: components/dashboard/QuickStart.tsx
 "use client";
 
+import { dashboardTheme as CLAY } from "@/components/dashboard/dashboard-theme";
+
 import { useState } from "react";
 import { WORKSPACE_TEMPLATES, WorkspaceTemplate } from "./workspaceTemplates";
 import { useGatedCreate } from "@/lib/hooks/useGatedCreate";
-
-// ---- Claymorphism theme tokens (shared with ProjectCard / CollectionsPanel / Sidebar) ----
-const CLAY = {
-    canvas: "#E5E5E5",
-    surface: "#EAEAEA",
-    surfaceChip: "#F5F5F5",
-    textPrimary: "#1A1A1A",
-    textMuted: "#5A5A5A",
-    textPlaceholder: "#999999",
-    lightShadow: "rgba(255,255,255,0.75)",
-    darkShadow: "rgba(0,0,0,0.14)",
-    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
-};
-
-const clayRaised = (pressed = false) =>
-    pressed
-        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
-        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
 
 function BoltIcon() {
     return (
@@ -49,46 +33,34 @@ function LockIcon() {
     );
 }
 
-function TemplateCard({ template, onClick, locked }: { template: WorkspaceTemplate; onClick: () => void; locked: boolean }) {
+function TemplateCard({ template, onClick }: { template: WorkspaceTemplate; onClick: () => void }) {
     const [hovered, setHovered] = useState(false);
     return (
-        <div
+        <button
+            type="button"
             onClick={onClick}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-                border: "none",
-                borderRadius: 22,
+                border: `1px solid ${CLAY.border}`,
+                borderRadius: 16,
                 overflow: "hidden",
                 background: CLAY.surface,
                 cursor: "pointer",
                 transition: "box-shadow 200ms ease, transform 200ms ease",
-                boxShadow: hovered
-                    ? "0 16px 32px rgba(0,0,0,0.12), -6px -6px 12px rgba(255,255,255,0.6), 6px 6px 14px rgba(0,0,0,0.10)"
-                    : "0 8px 18px rgba(0,0,0,0.08), -5px -5px 10px rgba(255,255,255,0.55), 5px 5px 12px rgba(0,0,0,0.08)",
+                boxShadow: "none",
                 transform: hovered ? "translateY(-2px)" : "none",
                 display: "flex",
                 flexDirection: "column",
                 fontFamily: CLAY.font,
-                position: "relative",
-                opacity: locked ? 0.7 : 1,
+                textAlign: "left",
+                padding: 0,
             }}
         >
-            {locked && (
-                <div style={{
-                    position: "absolute", top: 18, right: 18, zIndex: 1,
-                    width: 26, height: 26, borderRadius: "50%",
-                    background: CLAY.surfaceChip, display: "flex", alignItems: "center", justifyContent: "center",
-                    color: CLAY.textMuted,
-                    boxShadow: "-2px -2px 5px rgba(255,255,255,0.75), 2px 2px 6px rgba(0,0,0,0.14)",
-                }}>
-                    <LockIcon />
-                </div>
-            )}
-            <div
+            <span
                 style={{
                     aspectRatio: "4/3",
-                    background: "#DEDEDE",
+                    background: CLAY.surfaceChip,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -96,7 +68,7 @@ function TemplateCard({ template, onClick, locked }: { template: WorkspaceTempla
                     flexShrink: 0,
                     margin: 10,
                     borderRadius: 16,
-                    boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                    boxShadow: "none",
                 }}
             >
                 <img
@@ -104,17 +76,17 @@ function TemplateCard({ template, onClick, locked }: { template: WorkspaceTempla
                     alt=""
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                 />
-            </div>
+            </span>
 
-            <div style={{ padding: "6px 16px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={{ padding: "6px 16px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: "normal" }}>
                     {template.label}
                 </span>
                 <span style={{ fontSize: 12, fontWeight: 400, color: CLAY.textMuted }}>
-                    {locked ? "Upgrade to start a new project" : template.description}
+                    {template.description}
                 </span>
-            </div>
-        </div>
+            </span>
+        </button>
     );
 }
 
@@ -126,12 +98,12 @@ function BlankCanvasCard({ onClick, locked }: { onClick: () => void; locked: boo
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-                border: "none",
-                borderRadius: 22,
+                border: `1px solid ${CLAY.border}`,
+                borderRadius: 16,
                 background: CLAY.surface,
                 cursor: "pointer",
                 transition: "box-shadow 200ms ease",
-                boxShadow: hovered ? clayRaised(true) : clayRaised(false),
+                boxShadow: "none",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -150,7 +122,7 @@ function BlankCanvasCard({ onClick, locked }: { onClick: () => void; locked: boo
                     height: 40,
                     borderRadius: "50%",
                     background: CLAY.surfaceChip,
-                    boxShadow: "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.16)",
+                    border: `1px solid ${CLAY.border}`,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -183,7 +155,7 @@ export default function QuickStart({
     return (
         <div style={{ marginTop: 28, fontFamily: CLAY.font }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
-                <span style={{ color: "#22c55e", display: "inline-flex" }}>
+                <span style={{ color: CLAY.textMuted, display: "inline-flex" }}>
                     <BoltIcon />
                 </span>
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: "normal" }}>
@@ -198,8 +170,7 @@ export default function QuickStart({
                     <TemplateCard
                         key={template.id}
                         template={template}
-                        locked={atProjectLimit}
-                        onClick={() => guard(() => onCreateFromTemplate(template))}
+                        onClick={() => onCreateFromTemplate(template)}
                     />
                 ))}
                 <BlankCanvasCard locked={atProjectLimit} onClick={() => guard(onBlankCanvas)} />

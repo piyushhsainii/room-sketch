@@ -20,18 +20,31 @@ export function FurnitureRenderer(props: {
     const { f } = props
     const def = FURNITURE_MODELS[f.type]
 
-    if (!def || f.forceProcedural) {
-        return <FurnitureMesh {...props} />
-    }
-    const previewUrl = def?.previewUrl
-    console.log('[FurnitureRenderer]', f.type, 'hasDef:', !!FURNITURE_MODELS[f.type], 'forceProcedural:', f.forceProcedural)
+    const fallback = <FurnitureMesh {...props} />
     return (
-        <GLTFErrorBoundary fallback={<FurnitureMesh {...props} />}>
-            <Suspense fallback={null}>
+        <>
+        {(!def || f.forceProcedural) ? fallback :
+        <GLTFErrorBoundary key={f.type} fallback={fallback}>
+            <Suspense fallback={fallback}>
                 <GLTFFurnitureMesh {...props} def={def} />
             </Suspense>
         </GLTFErrorBoundary>
+        }
+        {f.workstation && f.type === 'desk' && <WorkstationDetails f={f} opacity={props.opacity ?? 1} />}
+        </>
     )
+}
+
+function WorkstationDetails({ f, opacity }: { f: PlacedFurniture; opacity: number }) {
+    const y = (f.heightOffset ?? 0) + (f.targetHeight ?? 0.74) * (f.scale ?? 1)
+    return <group position={[f.x, y, f.z]} rotation={[0, f.rotation + (f.rotationOffset ?? 0), 0]} scale={f.scale ?? 1}>
+        <mesh position={[0, 0.23, -0.18]} castShadow><boxGeometry args={[0.6, 0.34, 0.028]} /><meshStandardMaterial color="#252b2d" roughness={0.42} transparent={opacity < 1} opacity={opacity} /></mesh>
+        <mesh position={[0, 0.23, -0.163]}><planeGeometry args={[0.55, 0.29]} /><meshStandardMaterial color="#567b7d" emissive="#27484d" emissiveIntensity={0.16} roughness={0.35} /></mesh>
+        <mesh position={[0, 0.07, -0.18]}><boxGeometry args={[0.035, 0.12, 0.03]} /><meshStandardMaterial color="#292e30" roughness={0.4} /></mesh>
+        <mesh position={[0, 0.012, -0.17]}><boxGeometry args={[0.2, 0.018, 0.13]} /><meshStandardMaterial color="#292e30" roughness={0.4} /></mesh>
+        <mesh position={[0, 0.02, 0.13]}><boxGeometry args={[0.38, 0.018, 0.13]} /><meshStandardMaterial color="#c2c6c0" roughness={0.65} /></mesh>
+        <mesh position={[0.3, 0.025, 0.13]}><sphereGeometry args={[0.045, 12, 8]} /><meshStandardMaterial color="#292e30" roughness={0.6} /></mesh>
+    </group>
 }
 
 

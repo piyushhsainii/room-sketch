@@ -1,11 +1,7 @@
 import * as React from "react"
-import * as Icons from "lucide-react" // adjust to your actual icon lib import if different
-import { CATEGORY_LABELS, FurnitureType } from "./furniture-constants" // adjust path
 
 import { EditorTool, FurnitureCatalogEntry, FurnitureCategory, ICONS, ToolGroup } from "./constants"
 import { PresetsPanel } from "@/components/ui/PresetPanel"
-import { THEME } from "../FloorPlanEditor"
-import { ScrollableList } from "@/components/ui/ScrollableList"
 import { RoomTemplate, WallPreset } from "./presets"
 
 export interface ToolGroupsContext {
@@ -26,14 +22,15 @@ export function getToolGroups(ctx: ToolGroupsContext): ToolGroup[] {
     {
       id: "presets",
       label: "Room Presets",
+      menuOnly: true,
       flyoutWidth: 280,
       leaves: [{ id: "presets", label: "Room Presets", icon: ICONS.presets }],
-      renderFlyout: () => (
+      renderFlyout: ({ close }) => (
         <PresetsPanel
           armedWallPresetId={ctx.armedWallPresetId}
           armedTemplateId={ctx.armedTemplateId}
-          onSelectWallPreset={ctx.armWallPreset}
-          onSelectRoomTemplate={ctx.armRoomTemplate}
+          onSelectWallPreset={preset => { ctx.armWallPreset(preset); close() }}
+          onSelectRoomTemplate={template => { ctx.armRoomTemplate(template); close() }}
         />
       ),
     },
@@ -181,7 +178,6 @@ export function getToolGroups(ctx: ToolGroupsContext): ToolGroup[] {
     {
       id: "furniture",
       label: "Furniture",
-      flyoutWidth: 280,
       leaves: [
         {
           id: "furniture",
@@ -190,111 +186,6 @@ export function getToolGroups(ctx: ToolGroupsContext): ToolGroup[] {
           icon: ICONS.furniture,
         },
       ],
-      renderFlyout: () => (
-        <div style={{ padding: "8px" }}>
-          <ScrollableList maxHeight={340}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {(Object.keys(ctx.furnitureByCategory) as FurnitureCategory[]).map((catId) => {
-                const items = ctx.furnitureByCategory[catId]
-                if (!items || items.length === 0) return null
-                const isOpen = ctx.openFurnitureCats.has(catId)
-                return (
-                  <div
-                    key={catId}
-                    style={{
-                      borderRadius: 10,
-                      border: `1px solid ${isOpen ? THEME.accent : THEME.border}`,
-                      background: isOpen ? "rgba(99,102,241,0.06)" : "transparent",
-                      overflow: "hidden",
-                      transition: "border-color 150ms, background 150ms",
-                    }}
-                  >
-                    <button
-                      onClick={() =>
-                        ctx.setOpenFurnitureCats((prev) => {
-                          const next = new Set(prev)
-                          next.has(catId) ? next.delete(catId) : next.add(catId)
-                          return next
-                        })
-                      }
-                      style={{
-                        width: "100%", display: "flex", alignItems: "center", gap: 10,
-                        padding: "8px 10px", background: "transparent", border: "none",
-                        cursor: "pointer", textAlign: "left",
-                      }}
-                    >
-                      <span style={{
-                        fontSize: 13, fontWeight: 600, flex: 1, color: THEME.text,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                        {CATEGORY_LABELS[catId]}
-                      </span>
-                      <span style={{
-                        fontSize: 10.5, fontWeight: 700, color: THEME.accent,
-                        background: "rgba(99,102,241,0.12)", borderRadius: 999,
-                        padding: "1px 7px", flexShrink: 0, minWidth: 18, textAlign: "center",
-                      }}>
-                        {items.length}
-                      </span>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={THEME.textMuted} strokeWidth="2.5"
-                        style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 150ms", flexShrink: 0 }}>
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                    </button>
-
-                    {isOpen && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 8px 8px" }}>
-                        {items.map((catalogEntry) => {
-                          const id = catalogEntry.type
-                          const isNew = ctx.isFurnitureNew(catalogEntry)
-                          const Icon = (Icons as any)[catalogEntry.icon] ?? Icons.Box
-                          const selected = ctx.selectedFurnitureType === id
-                          return (
-                            <button
-                              key={id}
-                              onClick={() => ctx.setSelectedFurnitureType(id)}
-                              style={{
-                                display: "flex", alignItems: "center", gap: 8,
-                                padding: "6px 8px", borderRadius: 8, border: "none",
-                                background: selected ? "rgba(99,102,241,0.1)" : "transparent",
-                                cursor: "pointer", textAlign: "left", width: "100%",
-                              }}
-                            >
-                              <div style={{
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-                                background: selected ? "rgba(99,102,241,0.14)" : THEME.bgCanvas,
-                              }}>
-                                <Icon size={14} strokeWidth={1.8} color={selected ? THEME.accent : THEME.textMuted} />
-                              </div>
-                              <span style={{
-                                flex: 1, fontSize: 12, fontWeight: selected ? 600 : 400,
-                                color: selected ? THEME.accent : THEME.text,
-                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                              }}>
-                                {catalogEntry.label}
-                              </span>
-                              {isNew && (
-                                <span style={{
-                                  fontSize: 9, fontWeight: 700, letterSpacing: "0.02em",
-                                  color: "#fff", background: THEME.accent,
-                                  borderRadius: 4, padding: "2px 5px", flexShrink: 0,
-                                }}>
-                                  NEW
-                                </span>
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </ScrollableList>
-        </div>
-      ),
     },
     {
       id: "delete",

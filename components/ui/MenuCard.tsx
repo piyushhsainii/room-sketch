@@ -1,11 +1,12 @@
-import { THEME } from "../workspace/FloorPlanEditor";
+import { cn } from "@/lib/utils";
+import { menuRow } from "./editor-menu-theme";
 
 export function ExportMenuSection({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div style={{ padding: '10px 8px 6px' }}>
             <div style={{
                 padding: '0 6px 6px', fontSize: 9.5, fontWeight: 700,
-                letterSpacing: '0.06em', textTransform: 'uppercase', color: THEME.textFaint,
+                letterSpacing: '0.06em', textTransform: 'uppercase', color: "#525252",
             }}>
                 {label}
             </div>
@@ -42,20 +43,18 @@ export function ExportMenuCard({
                 animationDelay: `${delay}ms`,
                 transition: 'background 100ms',
             }}
-            onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = highlight ? 'rgba(99,102,241,0.11)' : '#F3F4F6' }}
-            onMouseLeave={e => { e.currentTarget.style.background = highlight ? 'rgba(99,102,241,0.06)' : 'transparent' }}
         >
             <div style={{
                 flexShrink: 0, width: 30, height: 30, borderRadius: 7,
-                background: highlight ? THEME.accent : 'rgba(15,15,15,0.05)',
-                color: highlight ? '#FFF' : THEME.textMuted,
+                background: highlight ? '#171717' : '#f5f5f5',
+                color: highlight ? '#FFF' : "#525252",
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
                 {icon}
             </div>
             <div style={{ paddingTop: 1 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: highlight ? THEME.accent : '#111827' }}>{label}</div>
-                {sub && <div style={{ fontSize: 10.5, color: THEME.textMuted, marginTop: 1, lineHeight: 1.3 }}>{sub}</div>}
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#171717' }}>{label}</div>
+                {sub && <div style={{ fontSize: 10.5, color: "#525252", marginTop: 1, lineHeight: 1.3 }}>{sub}</div>}
             </div>
         </button>
     )

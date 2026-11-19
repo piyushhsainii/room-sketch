@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
+import { projectFloorPlanToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
-import type { SceneConfig } from "@/components/workspace/FloorPlanEditor";
+import type { SceneConfig } from "@/components/workspace/lib/scene-config"
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ProjectFloorPlan } from "@/components/workspace/lib/floor-data";
 import { migrateToMultiFloor } from "@/components/workspace/lib/migrateToMultiFloor";
@@ -71,6 +71,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       project_id: string;
       state: FloorplanEditorState;
+      base_revision?: string | null;
       thumbnail_url?: string;
     };
 
@@ -99,19 +100,19 @@ export async function POST(request: Request) {
       body.state.projectFloorPlan ??
       migrateToMultiFloor(body.state.floorPlanState ?? DEFAULT_FP);
 
-    const activeFloor = projectFloorPlan.floors.find(
-      (f) => f.id === projectFloorPlan.activeFloorId,
-    );
-    const sceneJSON = floorPlanStateToSceneJSON(
-      activeFloor?.state ?? DEFAULT_FP,
-      body.state.sceneConfig,
-    );
+    const baseRevision = body.base_revision ?? null;
+    if (baseRevision !== null && typeof baseRevision !== "string") {
+      return NextResponse.json({ error: "Invalid save revision" }, { status: 400 });
+    }
+    const revision = crypto.randomUUID();
+    const sceneJSON = projectFloorPlanToSceneJSON(projectFloorPlan, body.state.sceneConfig);
     const workspaceConfig = sceneConfigToWorkspaceConfig(
       body.state.sceneConfig,
     );
 
     const updatePayload: Record<string, unknown> = {
       floorplan_editor_state: {
+        revision,
         projectFloorPlan,
         sceneConfig: body.state.sceneConfig,
       },
@@ -124,16 +125,26 @@ export async function POST(request: Request) {
       updatePayload.thumbnail_url = body.thumbnail_url;
     }
 
-    const { error } = await supabase
+    const update = supabase
       .from("projects")
       .update(updatePayload)
       .eq("id", body.project_id)
       .eq("user_id", user.id);
-
+    const guardedUpdate = baseRevision === null
+      ? update.is("floorplan_editor_state->>revision", null)
+      : update.eq("floorplan_editor_state->>revision", baseRevision);
+    const { data: saved, error } = await guardedUpdate.select("id").maybeSingle();
     if (error) throw new Error(error.message);
+    if (!saved) {
+      return NextResponse.json(
+        { error: "This project changed in another session. Your edits are still open in this tab." },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({
       ok: true,
+      revision,
       scene_json: sceneJSON,
       workspace_config: workspaceConfig,
     });

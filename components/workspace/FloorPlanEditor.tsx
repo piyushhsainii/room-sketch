@@ -1,18 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ResilientCanvas from './ResilientCanvas'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { inter } from '@/app/fonts/inter'
+import dynamic from 'next/dynamic'
 import { TOOL_CURSORS, Toolbar } from './Tools/ToolBar'
-import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, DoorStyle, EditorOpening, EditorRoom, EditorTool, FloorMaterial, FloorPlanState, FURNITURE_CATEGORIES, FurnitureCategory, getFurnitureByCategory, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, WALL_DECOR_DEFAULTS, WallDecorType, WallMaterial } from './lib/constants'
+import { Annotation, ClosedShape, DEFAULT_FP, DEFAULT_SCENE_CONFIG, EditorOpening, EditorRoom, EditorTool, FloorPlanState, FURNITURE_CATEGORIES, FurnitureCategory, getFurnitureByCategory, isFurnitureNew, KEY_TO_DEFAULT_TOOL, LineNode, LineSegment, MIN_ROOM, PlacedWallDecor, PX_PER_M, STAIRS_FOOTPRINTS, WALL_DECOR_DEFAULTS, WallDecorType } from './lib/constants'
 import { bboxForEntity, bboxFullyInside, deriveClosedPolygons, getFloorContentBounds, getSegmentOpeningWorldPos, getWallHit, labelForHover, roomContainsPoint, snapFurniture, snapM, toCanvas, toWorld, tryConvertClosedLineShape, uid } from '@/lib/helpers'
 import * as THREE from 'three'
 import * as Icons from 'lucide-react'
 import { ScrollableList } from '../ui/ScrollableList'
 import { matchClosedShape, MaterialsPanel } from './MaterialsPanel'
-import Scene3D, { Scene3DHandle } from './3DScene'
+import type { Scene3DHandle } from './3DScene'
 import { PropsPanel } from './PropsPanel'
 import { draw2D } from './2dDraw'
 import WorkspaceNav from '../ui/WorkspaceNav'
+import EditorPerformanceMonitor from './EditorPerformanceMonitor'
 import ToolHintBar from '../ui/ToolHint'
 import { createPortal } from 'react-dom'
 import { LIGHT_FIXTURE_DEFAULTS, LIGHT_PLACEMENT_KIND, LightFixtureType, PlacedLight } from './lights-constant'
@@ -23,11 +25,9 @@ import { duplicateFurniture, duplicateOpening, duplicateOutdoorObject, duplicate
 import { FloatingDock } from '../ui/FloatingDock'
 import { useFurnitureCollisions } from './hooks/useFurnitureCollisions'
 import { FurnitureType, getFurnitureFootprint, PlacedFurniture } from './lib/furniture-constants'
-import { bendSegment, classifySelection, getSelectionAnchorWorld, QuickActionMenu } from './QuickActionMenu'
+import { classifySelection, getSelectionAnchorWorld, QuickActionMenu } from './QuickActionMenu'
 import { RoomTemplate, WallPreset } from './lib/presets'
-import { PresetsPanel } from '../ui/PresetPanel'
-import { useDelayedUnmount } from './hooks/useDelayedAmt'
-import { insertNodeIntoShapesOnSplit } from './objects/line-walls-3d'
+import { normalizeWallSegments, splitWallSegment } from './lib/wall-segments'
 import { DragKindEntry, DragOrigin, pastThreshold, runActiveDrag } from '@/lib/drag-controller'
 import { FloatingMenu } from '../ui/FloatingMenu'
 import { CameraViewPickerV2 } from '../ui/CameraViewPicker'
@@ -36,41 +36,28 @@ import { SunScenePanel } from '../ui/SunCompassPanel'
 import { PlacedStairs, StairsType } from './lib/stairs-constants'
 import { checkPlacementValidity, findNearestWallPoint } from './lib/lights-drag-utils'
 import { migrateToMultiFloor, recomputeFloorElevations } from './lib/migrateToMultiFloor'
-import { createEmptyFloor, DEFAULT_ROOF, Floor, ProjectFloorPlan, RoofConfig } from './lib/floor-data'
+import { createEmptyFloor, Floor, ProjectFloorPlan } from './lib/floor-data'
+import { getPreviewFloors } from './lib/floor-view'
 import { computeDerivedFloorData } from './computeDerivedFloorData'
 import ViewModeControl from '../ui/ViewModeControl'
+import { WalkMinimap } from './WalkMinimap'
+import type { WalkPose } from './WalkModeControls'
 import { useAnimatedMount } from './hooks/useAnimatedMount'
 import { getToolGroups } from './lib/tool-constants'
 import { getPreviewUrl } from './mesh/furniture-model-registry'
 
-export type RoomSceneConfig = {
-    roomId: string
-    wallColor?: string
-    wallMaterial?: WallMaterial
-    floorMaterial?: FloorMaterial
-    wallOverrides?: Partial<Record<'north' | 'south' | 'east' | 'west', { color?: string; material?: WallMaterial }>>
-    exteriorWallColor?: string
-    exteriorWallMaterial?: WallMaterial
-    wallMaterialSide?: 'interior' | 'exterior' | 'both'
-}
+const EditorPreview = dynamic(() => import('./EditorPreview'), {
+    ssr: false,
+    loading: () => <div role="status" className="absolute inset-0 grid place-items-center">Preparing 3D preview…</div>,
+})
 
-export type SceneConfig = {
-    ambientIntensity: number
-    wallRoughness: number
-    wallTextured: boolean
-    showFurniture: boolean
-    showLabels: boolean
-    fogEnabled: boolean
-    doorStyle: DoorStyle
-    globalFloorMaterial: FloorMaterial
-    globalWallMaterial?: WallMaterial
-    groundMaterial?: string
-    rooms: RoomSceneConfig[]
-    lights: PlacedLight[]
-    sunToolEnabled?: boolean
-    sunTimeOfDay?: number      // 0–24, default 12
-    sunCompassHeading?: number // 0–360°, default 180
-}
+import type { SceneConfig } from './lib/scene-config'
+export type { SceneConfig, RoomSceneConfig } from './lib/scene-config'
+import { useProjectDocument } from './hooks/useProjectDocument'
+import { PracticalTools } from './PracticalTools'
+import { TracingUnderlay } from './TracingUnderlay'
+import { drawAlignmentGuides } from './lib/alignment-guides'
+import { FloorHistory, type HistoryEntry } from './lib/floor-history'
 
 export const THEME = {
     bg: '#F7F7F5',
@@ -90,10 +77,13 @@ type Props = {
     projectId?: string,
     onSave?: (
         projectFloorPlan: ProjectFloorPlan,
-        sceneConfig: SceneConfig,
-        thumbnailUrl?: string
-    ) => Promise<{ projectId: string } | void>
+        sceneConfig: SceneConfig
+    ) => Promise<{ projectId: string; revision: string }>
     onClose?: () => void
+    onDraftChange?: (plan: ProjectFloorPlan, config: SceneConfig) => void
+    onDiscardDraft?: () => void
+    saveAccess?: 'checking' | 'guest' | 'signed-in'
+    onSignInToSave?: () => void
     initialState?: FloorPlanState              // legacy — single-floor draft/fallback
     initialProjectFloorPlan?: ProjectFloorPlan  // new — preferred when present
     initialSceneConfig?: SceneConfig
@@ -105,6 +95,10 @@ export default function FloorPlanEditor({
     projectId,
     onSave,
     onClose,
+    onDraftChange,
+    onDiscardDraft,
+    saveAccess,
+    onSignInToSave,
     initialState,
     initialProjectFloorPlan,
     initialSceneConfig,
@@ -130,125 +124,82 @@ export default function FloorPlanEditor({
     // ─────────────────────────────────────────────────────────────────────────
     // Floor plan data + scene config
     // ─────────────────────────────────────────────────────────────────────────
-    // const [fp, setFp] = useState<FloorPlanState>(initialState ?? DEFAULT_FP)
-    // const fpRef = useRef(fp); fpRef.current = fp
-    // const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
     const [sceneConfig, setSceneConfig] = useState<SceneConfig>(initialSceneConfig ?? DEFAULT_SCENE_CONFIG)
     const sceneConfigRef = useRef(sceneConfig)
-    const historyRef = useRef<HistoryEntry[]>([])
-    const historyIndexRef = useRef(-1)
-
-    // MULTI FLOOR 
-
-    // New state, alongside the existing fp/setFp/sceneConfig — nothing existing removed.
-    const [floors, setFloors] = useState<Floor[]>(() =>
-        initialProjectFloorPlan?.floors
-        ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).floors
-    )
-    const [activeFloorId, setActiveFloorId] = useState<string>(() =>
-        initialProjectFloorPlan?.activeFloorId
-        ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).activeFloorId
-    )
-    const [viewMode, setViewMode] = useState<'single' | 'stacked' | 'stacked-full'>(
-        initialProjectFloorPlan?.viewMode ?? 'single'
-    )
-    const [roof, setRoof] = useState<RoofConfig>(
-        initialProjectFloorPlan?.roof ?? DEFAULT_ROOF
-    )
-    const [fp, setFp] = useState<FloorPlanState>(() => {
-        const resolvedFloors = initialProjectFloorPlan?.floors
-            ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).floors
-        const resolvedActiveId = initialProjectFloorPlan?.activeFloorId
-            ?? migrateToMultiFloor(initialState ?? DEFAULT_FP).activeFloorId
-        return resolvedFloors.find(f => f.id === resolvedActiveId)?.state ?? DEFAULT_FP
+    const [history] = useState(() => new FloorHistory())
+    const dragHistoryStart = useRef<HistoryEntry | null>(null)
+    const [initialPlan] = useState(() => {
+        const plan = initialProjectFloorPlan ?? migrateToMultiFloor(initialState ?? DEFAULT_FP)
+        return { ...plan, floors: recomputeFloorElevations(plan.floors.map(floor => ({
+            ...floor,
+            state: normalizeWallSegments(floor.state, uid),
+        }))) }
     })
+    const {
+        document: projectDocument, fp, setFp, switchFloor, addFloor: addProjectFloor,
+        deleteFloor: deleteProjectFloor, reorderFloors, renameFloor, toggleFloorVisible,
+        setViewMode, setRoof, setShowUnderlay, replaceDocument,
+    } = useProjectDocument(initialPlan)
+    const { floors, activeFloorId, viewMode, roof, showUnderlay } = projectDocument
+    const activeFloorIdRef = useRef(activeFloorId)
+    activeFloorIdRef.current = activeFloorId
     const fpRef = useRef(fp); fpRef.current = fp
     const [layersOpen, setLayersOpen] = useState(false);
-
-    const [lastSavedSnapshot, setLastSavedSnapshot] = useState<{ fp: FloorPlanState; sceneConfig: SceneConfig } | null>(
-        () => ({ fp, sceneConfig })
-    )
+    const dockRef = useRef<HTMLDivElement>(null)
+    const floorViewTriggerRef = useRef<HTMLButtonElement>(null)
+    const floorViewId = useId()
+    const closeFloorView = useCallback(() => setLayersOpen(false), [])
 
     const switchToFloor = useCallback((newFloorId: string) => {
-        if (newFloorId === activeFloorId) return
-        const target = floors.find(f => f.id === newFloorId)
-        if (!target) return
-
-        const folded = floors.map(f =>
-            f.id === activeFloorId ? { ...f, state: fpRef.current } : f
-        )
-        const recomputed = recomputeFloorElevations(folded)
-
-        setFloors(recomputed)
-        const newTarget = recomputed.find(f => f.id === newFloorId)!
-        setFp(newTarget.state)
-        setActiveFloorId(newFloorId)
+        if (newFloorId === activeFloorId || !floors.some(floor => floor.id === newFloorId)) return
+        switchFloor(newFloorId)
         setSelectedId(null)
         setSelectedIds([])
-    }, [activeFloorId, floors])
+    }, [activeFloorId, floors, switchFloor])
 
     const deleteFloor = useCallback((floorId: string) => {
-        setFloors(prev => {
-            if (prev.length <= 1) return prev // never delete the last floor
-            const remaining = prev.filter(f => f.id !== floorId)
-            return recomputeFloorElevations(remaining)
-        })
-        if (activeFloorId === floorId) {
-            const remaining = floors.filter(f => f.id !== floorId)
-            const fallback = remaining[0]
-            if (fallback) {
-                setActiveFloorId(fallback.id)
-                setFp(fallback.state)
-            }
-        }
+        deleteProjectFloor(floorId)
         setSelectedId(null)
         setSelectedIds([])
-    }, [floors, activeFloorId])
-
-    const reorderFloors = useCallback((newFloors: Floor[]) => {
-        setFloors(newFloors)
-    }, [])
+    }, [deleteProjectFloor])
 
     const addFloor = useCallback((direction: 'above' | 'below' = 'above') => {
         const maxOrder = Math.max(...floors.map(f => f.order))
         const minOrder = Math.min(...floors.map(f => f.order))
         const newOrder = direction === 'above' ? maxOrder + 1 : minOrder - 1
         const label = direction === 'above' ? `Level ${newOrder + 1}` : `Basement ${Math.abs(newOrder)}`
-        const newFloor = createEmptyFloor(label, newOrder, 0) // elevation recomputed below
-
-        setFloors(prev => {
-            const withCurrentSaved = prev.map(f =>
-                f.id === activeFloorId ? { ...f, state: fpRef.current } : f
-            )
-            return recomputeFloorElevations([...withCurrentSaved, newFloor])
-        })
-        setFp(newFloor.state)
-        setActiveFloorId(newFloor.id)
+        addProjectFloor(createEmptyFloor(label, newOrder, 0))
         setSelectedId(null)
         setSelectedIds([])
-    }, [activeFloorId, floors])
+    }, [floors, addProjectFloor])
 
-    const renameFloor = useCallback((floorId: string, newLabel: string) => {
-        setFloors(prev => prev.map(f => f.id === floorId ? { ...f, label: newLabel } : f))
-    }, [])
-
-    const toggleFloorVisible = useCallback((floorId: string) => {
-        setFloors(prev => prev.map(f => f.id === floorId ? { ...f, visible: !f.visible } : f))
-    }, [])
-
-
-    const [showUnderlay, setShowUnderlay] = useState<boolean>(
-        initialProjectFloorPlan?.showUnderlay ?? true
+    const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() =>
+        projectId && (initialProjectFloorPlan || initialState)
+            ? { plan: projectDocument, sceneConfig }
+            : null
     )
-    useEffect(() => {
-        setFloors(prev => {
-            const folded = prev.map(f =>
-                f.id === activeFloorId ? { ...f, state: { ...f.state, roomHeight: fp.roomHeight } } : f
-            )
-            return recomputeFloorElevations(folded)
+    const savedPlan = lastSavedSnapshot?.plan
+    const isDirty = !savedPlan || lastSavedSnapshot?.sceneConfig !== sceneConfig ||
+        savedPlan.activeFloorId !== activeFloorId || savedPlan.viewMode !== viewMode ||
+        savedPlan.showUnderlay !== showUnderlay || savedPlan.roof !== roof ||
+        floors.length !== savedPlan.floors.length ||
+        floors.some((floor, index) => {
+            const saved = savedPlan.floors[index]
+            const currentState = floor.state
+            return floor.id !== saved.id || floor.label !== saved.label ||
+                floor.order !== saved.order || floor.elevation !== saved.elevation ||
+                floor.visible !== saved.visible || currentState !== saved.state
         })
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fp.roomHeight, activeFloorId])
+
+    useEffect(() => {
+        if (!onSave || !isDirty || onDraftChange) return
+        const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault()
+            event.returnValue = ''
+        }
+        window.addEventListener('beforeunload', warnBeforeUnload)
+        return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+    }, [onSave, isDirty, onDraftChange])
 
     // ─────────────────────────────────────────────────────────────────────────
     // Tool / mode
@@ -261,6 +212,20 @@ export default function FloorPlanEditor({
     const isStairsTool = tool.startsWith('stairs-') || tool === 'elevator'
     const [interactiveMode, setInteractiveMode] = useState(false)
     const [walkMode, setWalkMode] = useState(false)
+    const [projectToolsOpen, setProjectToolsOpen] = useState(false)
+    const exitWalk = useCallback(() => setWalkMode(false), [])
+    const walkPoseRef = useRef<WalkPose | null>(null)
+    useEffect(() => {
+        if (!walkMode) return
+        const exitOnEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return
+            event.preventDefault()
+            event.stopPropagation()
+            setWalkMode(false)
+        }
+        window.addEventListener('keydown', exitOnEscape, true)
+        return () => window.removeEventListener('keydown', exitOnEscape, true)
+    }, [walkMode])
     const justToggledRef = useRef(false)
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -405,12 +370,9 @@ export default function FloorPlanEditor({
         })
     }, [])
     const handleToolClick = useCallback((id: EditorTool) => {
-        setTool(prev => (id === 'presets' && prev === 'presets') ? 'select' : id)
+        setTool(id)
     }, [])
 
-
-    const presetsMounted = useDelayedUnmount(tool === 'presets')
-    const presetsOpen = tool === 'presets'
 
     const handleSceneSelect = (id: string | null) => {
         if (justToggledRef.current) return
@@ -424,19 +386,13 @@ export default function FloorPlanEditor({
         }))
     }, [])
 
-    type HistoryEntry = {
-        fp: FloorPlanState
-        sceneConfig: SceneConfig
-    }
     const pushHistory = useCallback((overrideFp?: FloorPlanState, overrideSceneConfig?: SceneConfig) => {
         const entry: HistoryEntry = {
             fp: overrideFp ?? fpRef.current,
             sceneConfig: overrideSceneConfig ?? sceneConfigRef.current,
         }
-        historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1)
-        historyRef.current.push(JSON.parse(JSON.stringify(entry)))
-        historyIndexRef.current = historyRef.current.length - 1
-    }, [])
+        history.record(activeFloorIdRef.current, entry)
+    }, [history])
 
     const quickMenuAnchor = useMemo(() => {
         if (!canvasRef.current) return null
@@ -474,8 +430,12 @@ export default function FloorPlanEditor({
     }, [fp, selectedId, selectedIds, pan, zoom])
 
     const handleBendSelectedSegment = useCallback((segId: string) => {
+        const current = fpRef.current
+        const wall = current.lineSegments.find(segment => segment.id === segId)
+        const result = wall && splitWallSegment(current, wall, 0.5, uid)
+        if (!result) return
         pushHistory()
-        setFp(prev => bendSegment(prev, segId, uid))
+        setFp(result.state)
     }, [pushHistory])
 
     // Call at the top of every hit-test branch, right where you'd normally
@@ -518,7 +478,6 @@ export default function FloorPlanEditor({
     const lastCanvasSizeRef = useRef({ w: 0, h: 0 })
     const groupAnchorsRef = useRef<Record<string, HTMLDivElement | null>>({})
     const [furnitureAnchorRect, setFurnitureAnchorRect] = useState<DOMRect | null>(null)
-    const [presetsAnchorRect, setPresetsAnchorRect] = useState<DOMRect | null>(null)
     const scene3DRef = useRef<Scene3DHandle>(null)
     const hoverHitTestRafRef = useRef<number | null>(null)
     const pendingHoverPosRef = useRef<{ wx: number; wz: number; clientX: number; clientY: number } | null>(null)
@@ -686,52 +645,30 @@ export default function FloorPlanEditor({
     }, [tool])
 
     // const closedPolygonsCacheRef = useRef<{ segs: FloorPlanState['lineSegments']; result: string[][] } | null>(null)
-    const openingsIndexCacheRef = useRef<{
-        openings: FloorPlanState['openings']
-        byRoom: Map<string, FloorPlanState['openings']>
-        bySegment: Map<string, FloorPlanState['openings']>
-    } | null>(null)
-    const shapesIndexCacheRef = useRef<{
-        shapes: FloorPlanState['closedShapes']
-        map: Map<string, NonNullable<FloorPlanState['closedShapes']>[number]>
-    } | null>(null)
-
-    function getOpeningsIndex(fp: FloorPlanState) {
-        const cache = openingsIndexCacheRef.current
-        if (cache && cache.openings === fp.openings) return cache
-        const byRoom = new Map<string, FloorPlanState['openings']>()
-        const bySegment = new Map<string, FloorPlanState['openings']>()
-        for (const o of fp.openings) {
-            const target = o.segmentNodeIds ? bySegment : byRoom
-            const arr = target.get(o.roomId)
-            if (arr) arr.push(o)
-            else target.set(o.roomId, [o])
-        }
-        const next = { openings: fp.openings, byRoom, bySegment }
-        openingsIndexCacheRef.current = next
-        return next
-    }
-
-    function getShapesIndex(fp: FloorPlanState) {
-        const cache = shapesIndexCacheRef.current
-        if (cache && cache.shapes === fp.closedShapes) return cache.map
-        const map = new Map<string, NonNullable<FloorPlanState['closedShapes']>[number]>()
-        for (const s of fp.closedShapes ?? []) {
-            map.set([...s.nodeIds].sort().join(','), s)
-        }
-        shapesIndexCacheRef.current = { shapes: fp.closedShapes, map }
-        return map
-    }
-
-    const flat2D = useMemo(() => deriveFlatPlan2D(fp), [fp])
+    const { lineNodes, lineSegments, rooms, roomHeight, openings, closedShapes, annotations, wallDecor, lights } = fp
+    const flat2D = useMemo(() => deriveFlatPlan2D({
+        lineNodes, lineSegments, rooms, roomHeight, openings, closedShapes, annotations, wallDecor, lights,
+    }), [lineNodes, lineSegments, rooms, roomHeight, openings, closedShapes, annotations, wallDecor, lights])
     const flat2DRef = useRef(flat2D)
     useEffect(() => { flat2DRef.current = flat2D }, [flat2D])
 
-    const openingsIndex = useMemo(() => getOpeningsIndex(fp), [fp])
+    const openingsIndex = useMemo(() => {
+        const byRoom = new Map<string, FloorPlanState['openings']>()
+        const bySegment = new Map<string, FloorPlanState['openings']>()
+        for (const opening of openings) {
+            const target = opening.segmentNodeIds ? bySegment : byRoom
+            const existing = target.get(opening.roomId)
+            if (existing) existing.push(opening)
+            else target.set(opening.roomId, [opening])
+        }
+        return { byRoom, bySegment }
+    }, [openings])
     const openingsIndexRef = useRef(openingsIndex)
     useEffect(() => { openingsIndexRef.current = openingsIndex }, [openingsIndex])
 
-    const shapesIndex = useMemo(() => getShapesIndex(fp), [fp])
+    const shapesIndex = useMemo(() => new Map(
+        closedShapes?.map(shape => [[...shape.nodeIds].sort().join(','), shape])
+    ), [closedShapes])
     const shapesIndexRef = useRef(shapesIndex)
     useEffect(() => { shapesIndexRef.current = shapesIndex }, [shapesIndex])
 
@@ -818,6 +755,7 @@ export default function FloorPlanEditor({
                 nodesByIdRef.current, roomsByIdRef.current,
                 sceneConfig.showFurniture, sceneConfig.showLabels
             )
+            drawAlignmentGuides(ctx, fpRef.current, selectedId, pan, zoom)
         })
     }, [tool, selectedId, selectedIds, zoom, pan, overlappingIds, sceneConfig.showFurniture, sceneConfig.showLabels])
 
@@ -877,19 +815,12 @@ export default function FloorPlanEditor({
                 })
                 setSelectedId(null)
             }
-            if (key === 'z' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-                if (historyIndexRef.current > 0) {
-                    historyIndexRef.current--
-                    const snapshot = historyRef.current[historyIndexRef.current]!
-                    restoreHistoryEntry(snapshot)
-                }
-            }
-            if (key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-                if (historyIndexRef.current < historyRef.current.length - 1) {
-                    historyIndexRef.current++
-                    const snapshot = historyRef.current[historyIndexRef.current]!
-                    restoreHistoryEntry(snapshot)
-                }
+            if (key === 'z' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                const snapshot = history.step(activeFloorIdRef.current, e.shiftKey ? 'redo' : 'undo', {
+                    fp: fpRef.current, sceneConfig: sceneConfigRef.current,
+                })
+                if (snapshot) restoreHistoryEntry(snapshot)
             }
             if (key === 'd' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault() // stop the browser's own Ctrl/CmdD (bookmark) from firing
@@ -1009,7 +940,8 @@ export default function FloorPlanEditor({
     }, [])
 
     const hitLineSegment = useCallback((wx: number, wz: number) => {
-        const threshold = 0.35 / zoomRef.current
+        let nearestDistance = 0.35 / zoomRef.current
+        let hit: { seg: LineSegment; subIndex: number; t: number; ax: number; az: number; bx: number; bz: number; fromId: string; toId: string } | null = null
         for (const seg of fpRef.current.lineSegments ?? []) {
             const nodes = seg.nodeIds.map(nid => fpRef.current.lineNodes.find(n => n.id === nid)).filter(Boolean) as LineNode[]
             for (let i = 0; i < nodes.length - 1; i++) {
@@ -1019,10 +951,13 @@ export default function FloorPlanEditor({
                 if (len2 === 0) continue
                 const t = Math.max(0, Math.min(1, ((wx - a.x) * dx + (wz - a.z) * dz) / len2))
                 const dist = Math.hypot(wx - (a.x + t * dx), wz - (a.z + t * dz))
-                if (dist < threshold) return { seg, subIndex: i, t, ax: a.x, az: a.z, bx: b.x, bz: b.z, fromId: a.id, toId: b.id }
+                if (dist < nearestDistance) {
+                    nearestDistance = dist
+                    hit = { seg, subIndex: i, t, ax: a.x, az: a.z, bx: b.x, bz: b.z, fromId: a.id, toId: b.id }
+                }
             }
         }
-        return null
+        return hit
     }, [])
 
     const hitCutoutGuardEdge = useCallback((wx: number, wz: number) => {
@@ -1435,6 +1370,7 @@ export default function FloorPlanEditor({
 
     const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
         isMouseDownRef.current = true
+        dragHistoryStart.current = { fp: fpRef.current, sceneConfig: sceneConfigRef.current }
         const { wx, wz, cx, cy } = evWorld(e)
 
         if (spaceHeldRef.current) {
@@ -1837,25 +1773,11 @@ export default function FloorPlanEditor({
             if (!targetNodeId) {
                 const segHit = hitLineSegment(snapX, snapZ)
                 if (segHit) {
-                    const { seg, fromId, toId } = segHit
-                    const a = fpRef.current.lineNodes.find(n => n.id === fromId)!
-                    const b = fpRef.current.lineNodes.find(n => n.id === toId)!
-
-                    const segLen = Math.hypot(b.x - a.x, b.z - a.z)
-                    if (segLen > 0.1) {
-                        const newNode: LineNode = { id: uid(), x: snapX, z: snapZ }
-                        const segA: LineSegment = { id: uid(), nodeIds: [fromId, newNode.id], thickness: seg.thickness, closed: false, ...(seg.wallType ? { wallType: seg.wallType } : {}) }
-                        const segB: LineSegment = { id: uid(), nodeIds: [newNode.id, toId], thickness: seg.thickness, closed: false, ...(seg.wallType ? { wallType: seg.wallType } : {}) }
-                        splitUpdate = {
-                            lineNodes: [...fpRef.current.lineNodes, newNode],
-                            lineSegments: [
-                                ...fpRef.current.lineSegments.filter(s => s.id !== seg.id),
-                                segA,
-                                segB,
-                            ],
-                            closedShapes: insertNodeIntoShapesOnSplit(fpRef.current.closedShapes, fromId, toId, newNode.id),
-                        }
-                        targetNodeId = newNode.id
+                    const { seg, t } = segHit
+                    const split = splitWallSegment(fpRef.current, seg, t, uid)
+                    if (split) {
+                        splitUpdate = split.state
+                        targetNodeId = split.node.id
                     }
                 }
             }
@@ -1904,12 +1826,14 @@ export default function FloorPlanEditor({
                     if (tool === 'bend') {
                         const fromNode = fpRef.current.lineNodes.find(n => n.id === fromId)!
                         const midNode: LineNode = { id: uid(), x: (fromNode.x + snapX) / 2, z: (fromNode.z + snapZ) / 2 }
-                        const seg: LineSegment = { id: uid(), nodeIds: [fromId, midNode.id, newNode.id], thickness: 0.15, closed: false }
+                        const first: LineSegment = { id: uid(), nodeIds: [fromId, midNode.id], thickness: 0.15, closed: false }
+                        const second = { ...first, id: uid(), nodeIds: [midNode.id, newNode.id] }
                         lineActiveNodeRef.current = newNode.id
                         pushHistory()
-                        setFp(prev => ({ ...prev, lineNodes: [...prev.lineNodes, midNode, newNode], lineSegments: [...prev.lineSegments, seg] }))
+                        setFp(prev => ({ ...prev, lineNodes: [...prev.lineNodes, midNode, newNode], lineSegments: [...prev.lineSegments, first, second] }))
                     } else {
-                        const seg: LineSegment = { id: uid(), nodeIds: [fromId, newNode.id], thickness: 0.15, closed: false }
+                        const preset = pendingWallPresetRef.current
+                        const seg: LineSegment = { id: uid(), nodeIds: [fromId, newNode.id], thickness: preset?.thickness ?? 0.15, wallType: preset?.wallType, closed: false }
                         lineActiveNodeRef.current = newNode.id
                         pushHistory()
                         setFp(prev => ({ ...prev, lineNodes: [...prev.lineNodes, newNode], lineSegments: [...prev.lineSegments, seg] }))
@@ -2699,11 +2623,21 @@ export default function FloorPlanEditor({
                 apply: (wx, wz) => {
                     const fd = furnitureDragRef.current!
                     const nx = snapFurniture(wx - fd.ox), nz = snapFurniture(wz - fd.oz)
-                    setFp(prev => ({
-                        ...prev,
-                        furniture: (prev.furniture ?? []).map(f => f.id === fd.id ? { ...f, x: nx, z: nz } : f),
-                        stairs: (prev.stairs ?? []).map(s => s.id === fd.id ? { ...s, x: nx, z: nz } : s),
-                    }))
+                    setFp(prev => {
+                        const furniture = prev.furniture?.find(item => item.id === fd.id)
+                        if (furniture) {
+                            if (furniture.x === nx && furniture.z === nz) return prev
+                            return { ...prev, furniture: prev.furniture.map(item =>
+                                item.id === fd.id ? { ...item, x: nx, z: nz } : item
+                            ) }
+                        }
+
+                        const stairs = prev.stairs?.find(item => item.id === fd.id)
+                        if (!stairs || (stairs.x === nx && stairs.z === nz)) return prev
+                        return { ...prev, stairs: prev.stairs.map(item =>
+                            item.id === fd.id ? { ...item, x: nx, z: nz } : item
+                        ) }
+                    })
                     const prevOverlap = overlappingRef.current
                     const newOverlap = checkCollisions(fpRef.current, fd.id, nx, nz)
                     if (hasChanged(newOverlap, prevOverlap)) {
@@ -3069,7 +3003,11 @@ export default function FloorPlanEditor({
         dragOriginRef.current = null
         dragConfirmedRef.current = false
         setIsDraggingSelection(false)
-        if (hadDrag) pushHistory()
+        const dragStart = dragHistoryStart.current
+        dragHistoryStart.current = null
+        if (hadDrag && dragStart && dragStart.fp !== fpRef.current) {
+            pushHistory(dragStart.fp, dragStart.sceneConfig)
+        }
 
         if (marqueeRef.current) {
             const m = marqueeRef.current
@@ -3154,6 +3092,7 @@ export default function FloorPlanEditor({
                     depth: d,
                     label: `Room ${fpRef.current.rooms.length + 1}`,
                 }
+                pushHistory()
                 setFp(prev => ({ ...prev, rooms: [...prev.rooms, newRoom] }))
                 setSelectedId(newRoom.id)
             }
@@ -3251,13 +3190,13 @@ export default function FloorPlanEditor({
         }
 
         if (newIds.length === 0) return
+        pushHistory()
         fpRef.current = workingFp
         sceneConfigRef.current = workingSceneConfig
         setFp(workingFp)
         setSceneConfig(workingSceneConfig)
         selectedIdsRef.current = newIds
         setSelectedIds(newIds)
-        pushHistory(workingFp, workingSceneConfig)             // one history entry for the whole batch, same pattern as group-move
     }, [selectedIds, sceneConfig, pushHistory])
 
     const handleMirrorSelected = useCallback((axis: MirrorAxis) => {
@@ -3274,7 +3213,11 @@ export default function FloorPlanEditor({
     const pendingTemplateRef = useRef<RoomTemplate | null>(null)
     const [armedTemplateId, setArmedTemplateId] = useState<string | null>(null)
 
-    const armWallPreset = (preset: WallPreset) => setArmedWallPresetId(preset.id)
+    const armWallPreset = useCallback((preset: WallPreset) => {
+        pendingWallPresetRef.current = preset
+        setArmedWallPresetId(preset.id)
+        setTool('line')
+    }, [])
 
     const armRoomTemplate = useCallback((template: RoomTemplate) => {
         pendingTemplateRef.current = template
@@ -3306,27 +3249,6 @@ export default function FloorPlanEditor({
             setFurnitureAnchorRect(null)
         }
 
-        if (tool === 'presets') {
-            const el = groupAnchorsRef.current['presets']
-            setPresetsAnchorRect(el ? el.getBoundingClientRect() : null)
-        } else {
-            setPresetsAnchorRect(null)
-        }
-    }, [tool])
-    useEffect(() => {
-        if (tool === 'furniture') {
-            const el = groupAnchorsRef.current['furniture']
-            setFurnitureAnchorRect(el ? el.getBoundingClientRect() : null)
-        } else {
-            setFurnitureAnchorRect(null)
-        }
-
-        if (tool === 'presets') {
-            const el = groupAnchorsRef.current['presets']
-            setPresetsAnchorRect(el ? el.getBoundingClientRect() : null)
-        } else {
-            setPresetsAnchorRect(null)
-        }
     }, [tool])
 
     useEffect(() => {
@@ -3428,45 +3350,40 @@ export default function FloorPlanEditor({
         const next = Math.min(0.75, Math.max(0.22, drag.startRatio + deltaRatio))
         setSplitRatio(next)
     }, [])
-    const getProjectFloorPlanForSave = useCallback((): ProjectFloorPlan => {
-        const floorsWithCurrent = floors.map(f =>
-            f.id === activeFloorId ? { ...f, state: fpRef.current } : f
-        )
-        return { floors: floorsWithCurrent, activeFloorId, viewMode, showUnderlay, roof }
-    }, [floors, activeFloorId, viewMode, showUnderlay, roof])
+    const getProjectFloorPlanForSave = useCallback((): ProjectFloorPlan => projectDocument, [projectDocument])
 
-    const handleSaveWithThumbnail = useCallback(async (fp: FloorPlanState, sceneConfig: SceneConfig) => {
-        const projectFloorPlan = getProjectFloorPlanForSave() // full floors array, current fp already folded in
+    useEffect(() => {
+        if (onDraftChange) onDraftChange(getProjectFloorPlanForSave(), sceneConfig)
+    }, [fp, sceneConfig, getProjectFloorPlanForSave, onDraftChange])
 
-        const saveResult = await onSave?.(projectFloorPlan, sceneConfig, undefined)
-        const effectiveProjectId = projectId ?? saveResult?.projectId
-        setLastSavedSnapshot({ fp, sceneConfig })
-        if (!effectiveProjectId) {
-            console.warn('[FloorPlanEditor] no projectId after save, skipping thumbnail')
-            return
-        }
-
+    const updateThumbnail = useCallback(async (saved: { projectId: string; revision: string }) => {
         try {
             const blob = await scene3DRef.current?.captureSnapshot()
-            if (blob) {
-                const formData = new FormData()
-                formData.append('project_id', effectiveProjectId)
-                formData.append('thumbnail', blob, 'thumbnail.jpg')
+            if (!blob) return
 
-                const res = await fetch('/api/workspace/thumbnail', { method: 'POST', body: formData })
-                if (res.ok) {
-                    const body = await res.json() as { thumbnail_url?: string }
-                    if (body.thumbnail_url) {
-                        await onSave?.(projectFloorPlan, sceneConfig, body.thumbnail_url)
-                    }
-                } else {
-                    console.warn('[FloorPlanEditor] thumbnail upload failed:', await res.text())
-                }
+            const formData = new FormData()
+            formData.append('project_id', saved.projectId)
+            formData.append('revision', saved.revision)
+            formData.append('thumbnail', blob, 'thumbnail.jpg')
+            const res = await fetch('/api/workspace/thumbnail', { method: 'POST', body: formData })
+            if (!res.ok && res.status !== 409) {
+                console.warn('[FloorPlanEditor] thumbnail upload failed:', await res.text())
             }
         } catch (err) {
-            console.warn('[FloorPlanEditor] thumbnail capture failed, continuing:', err)
+            console.warn('[FloorPlanEditor] thumbnail capture failed:', err)
         }
-    }, [onSave, projectId, getProjectFloorPlanForSave])
+    }, [])
+
+    const handleSaveWithThumbnail = useCallback(async (fp: FloorPlanState, sceneConfig: SceneConfig) => {
+        if (!onSave) return
+        const current = getProjectFloorPlanForSave()
+        const plan = { ...current, floors: current.floors.map(floor =>
+            floor.id === current.activeFloorId ? { ...floor, state: fp } : floor
+        ) }
+        const saved = await onSave(plan, sceneConfig)
+        setLastSavedSnapshot({ plan, sceneConfig })
+        void updateThumbnail(saved)
+    }, [onSave, getProjectFloorPlanForSave, updateThumbnail])
 
     const handleDividerMouseUp = useCallback(() => {
         dragStateRef.current = null
@@ -3491,19 +3408,25 @@ export default function FloorPlanEditor({
     const ghostFloorsDerivedRef = useRef<{ floor: Floor; derived: ReturnType<typeof computeDerivedFloorData> }[]>([])
 
     const ghostFloorsDerived = useMemo(() => {
+        // Active edits now update floors too. Reuse unchanged ghost indexes rather
+        // than rebuilding every inactive floor on each pointer movement.
+        const deriveGhost = (floor: Floor) => ({
+            floor,
+            derived: ghostFloorsDerivedRef.current.find(entry => entry.floor.state === floor.state)?.derived
+                ?? computeDerivedFloorData(floor.state),
+        })
+        const activeFloor = floors.find(f => f.id === activeFloorId)
         if (viewMode === 'single') {
             // Underlay only — floor directly below active, faded, if enabled
-            if (!showUnderlay) return []
-            const activeFloor = floors.find(f => f.id === activeFloorId)
-            if (!activeFloor) return []
+            if (!showUnderlay || !activeFloor) return []
             const belowFloor = [...floors]
                 .filter(f => f.order < activeFloor.order && f.visible)
                 .sort((a, b) => b.order - a.order)[0]
-            return belowFloor ? [{ floor: belowFloor, derived: computeDerivedFloorData(belowFloor.state) }] : []
+            return belowFloor ? [deriveGhost(belowFloor)] : []
         }
-        return floors
-            .filter(f => f.visible && f.id !== activeFloorId)
-            .map(f => ({ floor: f, derived: computeDerivedFloorData(f.state) }))
+        return getPreviewFloors(floors, activeFloor, viewMode)
+            .filter(f => f.id !== activeFloorId)
+            .map(deriveGhost)
     }, [viewMode, showUnderlay, floors, activeFloorId])
 
 
@@ -3549,6 +3472,17 @@ export default function FloorPlanEditor({
 
     return (
         <>
+            <PracticalTools open={projectToolsOpen} onClose={() => setProjectToolsOpen(false)}
+                projectId={projectId} plan={projectDocument} config={sceneConfig}
+                onChangeFloor={state => { pushHistory(); setFp(state) }}
+                onRestore={(plan, config) => {
+                    history.clear()
+                    replaceDocument(plan)
+                    setSceneConfig(config)
+                    setSelectedId(null)
+                    const active = plan.floors.find(floor => floor.id === plan.activeFloorId)
+                    if (active) centerOnContent(active.state, canvasRef.current)
+                }} />
 
             <div
                 ref={editorRef}
@@ -3556,6 +3490,10 @@ export default function FloorPlanEditor({
             >
                 {/* ── Top bar ────────────────────────────────────────────────────── */}
                 <div className='z-99999]'>
+                    {process.env.NODE_ENV === 'development' &&
+                        typeof window !== 'undefined' &&
+                        new URLSearchParams(window.location.search).get('performance') === '1' &&
+                        <EditorPerformanceMonitor />}
                     <WorkspaceNav
                         fp={fp}
                         isFullscreen={isFullscreen}
@@ -3566,10 +3504,13 @@ export default function FloorPlanEditor({
                         setZoom={setZoom}
                         toggleFullscreen={toggleFullscreen}
                         zoom={zoom}
-                        isSaved={isSaved}
+                        isSaved={isSaved || Boolean(lastSavedSnapshot)}
                         isSaving={isSaving}
                         key={1}
                         onClose={onClose}
+                        onDiscardDraft={onDiscardDraft}
+                        saveAccess={saveAccess}
+                        onSignInToSave={onSignInToSave}
                         onSave={handleSaveWithThumbnail}
                         projectId={projectId}
                         floors={floors}
@@ -3584,7 +3525,7 @@ export default function FloorPlanEditor({
                         onSetViewMode={setViewMode}
                         onSetShowUnderlay={setShowUnderlay}
                         showUnderlay={showUnderlay}
-                        lastSavedSnapshot={lastSavedSnapshot}
+                        isDirty={isDirty}
                         scene3DRef={scene3DRef}
 
                     />
@@ -3765,37 +3706,7 @@ export default function FloorPlanEditor({
                             </div>,
                             document.body
                         )}
-                        {presetsMounted && presetsAnchorRect && typeof document !== 'undefined' && createPortal(
-                            <div
-                                style={{
-                                    position: 'fixed',
-                                    top: presetsAnchorRect.top,
-                                    left: presetsAnchorRect.right + 10,
-                                    background: THEME.bgPanel,
-                                    border: `1px solid ${THEME.border}`,
-                                    borderRadius: 12,
-                                    width: 280,
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    boxShadow: THEME.shadowLg,
-                                    overflow: 'hidden',
-                                    zIndex: 9999,
-                                    transformOrigin: 'top left',
-                                    transform: presetsOpen ? 'scale(1)' : 'scale(0.94)',
-                                    opacity: presetsOpen ? 1 : 0,
-                                    transition: 'transform 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 130ms ease-out',
-                                    pointerEvents: presetsOpen ? 'auto' : 'none', // avoid intercepting clicks while fading out
-                                }}
-                            >
-                                <PresetsPanel
-                                    armedWallPresetId={armedWallPresetId}
-                                    armedTemplateId={armedTemplateId}
-                                    onSelectWallPreset={armWallPreset}
-                                    onSelectRoomTemplate={armRoomTemplate}
-                                />
-                            </div>,
-                            document.body
-                        )}
+
                     </div>
 
                     {/* 2D canvas */}
@@ -3807,10 +3718,11 @@ export default function FloorPlanEditor({
                             animation: 'canvasFadeIn 400ms cubic-bezier(0.16, 1, 0.3, 1)',
                         }}
                     >
+                        <TracingUnderlay image={fp.tracingImage} pan={pan} zoom={zoom} />
                         <canvas
                             ref={canvasRef}
                             style={{
-                                width: '100%', height: '100%', display: 'block', maxHeight
+                                position: 'relative', width: '100%', height: '100%', display: 'block', maxHeight
                                     : "800px"
                             }}
                             onMouseDown={handleMouseDown}
@@ -3916,7 +3828,7 @@ export default function FloorPlanEditor({
 
                     {/* ── Right: 3D preview + collapsible dock ─────────────────────── */}
                     <div style={{ width: 1, background: THEME.border, flexShrink: 0 }} />
-                    {previewOpen && (
+                    {(previewOpen || walkMode) && (
                         <>
                             <div
                                 onMouseDown={handleDividerMouseDown}
@@ -3930,62 +3842,52 @@ export default function FloorPlanEditor({
 
                             {/* 3D pane */}
                             <div
-                                style={{
+                                style={walkMode ? { position: 'absolute', inset: 0, zIndex: 900, display: 'flex', flexDirection: 'column', background: THEME.bgPanel } : {
                                     width: `${splitRatio * 100}%`, flexShrink: 0, display: 'flex', flexDirection: 'column',
                                     overflow: 'hidden', background: THEME.bgPanel, minWidth: 260, position: 'relative',
                                 }}
                             >
                                 <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#EFEFEC' }}>
-                                    <ResilientCanvas
-                                        frameloop='always'
-                                        shadows
-                                        gl={{
-                                            antialias: true,
-                                            alpha: false,
-                                            powerPreference: 'low-power',
-                                            stencil: true,
-                                            depth: true,
-                                            preserveDrawingBuffer: true
-                                        }}
-                                        dpr={[1, 2]}
-                                        camera={{
-                                            position: [
-                                                (fp?.roomHeight ?? 2.8) * 3,
-                                                (fp?.roomHeight ?? 2.8) * 4,
-                                                (fp?.roomHeight ?? 2.8) * 4
-                                            ],
-                                            fov: 45, near: 0.1, far: 500
-                                        }}
-                                        style={{ width: '100%', height: '100%', background: '#EFEFEC', display: 'block' }}
-                                        onWheel={e => e.stopPropagation()}
-                                        resize={{ scroll: false, debounce: { scroll: 50, resize: 0 } }}
-                                    >
-                                        <Scene3D
-                                            ref={scene3DRef}
-                                            exportRootRef={exportRootRef}
-                                            floors={floors}
-                                            activeFloorId={activeFloorId}
-                                            viewMode={viewMode}
-                                            showUnderlay={showUnderlay}
-                                            sceneConfig={sceneConfig}
-                                            walkMode={walkMode}
-                                            activeFp={fp}
-                                            interactiveMode={interactiveMode}
-                                            selectedId={selectedId}
-                                            onSelect={handleSceneSelect}
-                                            onToggleDoorOpen={handleToggleDoorOpen}
-                                            overlappingIds={overlappingIds}
-                                            cutoutDrawInProgress={cutoutArmed}
-                                        />
-                                    </ResilientCanvas>
+                                    <EditorPreview
+                                        sceneRef={scene3DRef}
+                                        exportRootRef={exportRootRef}
+                                        floors={floors}
+                                        activeFloorId={activeFloorId}
+                                        viewMode={viewMode}
+                                        showUnderlay={showUnderlay}
+                                        sceneConfig={sceneConfig}
+                                        walkMode={walkMode}
+                                        onExitWalk={exitWalk}
+                                        walkPoseRef={walkPoseRef}
+                                        activeFp={fp}
+                                        interactiveMode={interactiveMode}
+                                        selectedId={selectedId}
+                                        onSelect={handleSceneSelect}
+                                        onToggleDoorOpen={handleToggleDoorOpen}
+                                        overlappingIds={overlappingIds}
+                                        cutoutDrawInProgress={cutoutArmed}
+                                    />
+                                    {walkMode && (
+                                        <>
+                                            <WalkMinimap pose={walkPoseRef} floors={floors} activeFloorId={activeFloorId} fp={fp} />
+                                            <button type="button" onClick={exitWalk}
+                                                className="absolute top-4 right-4 rounded-xl border border-white/20 bg-neutral-950 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-neutral-800">
+                                                Exit Walk <kbd className="ml-1 text-xs text-neutral-300">Esc</kbd>
+                                            </button>
+                                            <p className="pointer-events-none absolute bottom-4 right-4 max-w-[calc(100%-9rem)] rounded-lg border border-white/20 bg-neutral-950/85 px-3 py-2 text-xs text-white shadow-sm sm:right-auto sm:left-1/2 sm:-translate-x-1/2">
+                                                WASD or arrows to move · Click the scene for unlimited mouse-look · Scroll to zoom
+                                            </p>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </>
                     )}
                 </div>
-                {typeof document !== 'undefined' && createPortal(
+                {!walkMode && typeof document !== 'undefined' && createPortal(
                     <div style={{ position: 'fixed', top: 64, right: 16, zIndex: 1000 }}>
                         <FloatingMenu
+                            onOpenProjectTools={() => setProjectToolsOpen(true)}
                             walkMode={walkMode}
                             onToggleWalkMode={() => setWalkMode(w => !w)}
                             interactiveMode={interactiveMode}
@@ -4009,7 +3911,7 @@ export default function FloorPlanEditor({
                                         sceneConfig={sceneConfig}
                                         pushHistory={pushHistory}
                                         scene3DRef={scene3DRef}
-                                        onSave={(fpArg, cfgArg) => { void handleSaveWithThumbnail(fpArg, cfgArg) }}
+                                        onSave={handleSaveWithThumbnail}
                                     />
                                 ) : null
                             }
@@ -4017,10 +3919,16 @@ export default function FloorPlanEditor({
                     </div>,
                     document.body
                 )}
-                <div style={{ position: "relative" }} className='flex items-center justify-center'>
+                <div
+                    ref={dockRef}
+                    className={`relative mx-auto w-fit ${inter.variable}`}
+                    style={{ fontFamily: 'var(--landing-font), system-ui, sans-serif' }}
+                    onBlur={event => {
+                        if (layersOpen && event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) closeFloorView()
+                    }}
+                >
                     <FloatingDock
-                        orientation="horizontal"
-                        activeId={sheetOpen ? rightTab : (layersOpen ? 'layers' : null)}
+                        activeId={layersOpen ? 'layers' : sheetOpen ? rightTab : null}
                         items={[
                             {
                                 id: 'layers',
@@ -4032,7 +3940,12 @@ export default function FloorPlanEditor({
                                         <path d="M2 12l10 5 10-5" strokeLinejoin="round" strokeLinecap="round" />
                                     </svg>
                                 ),
-                                onClick: () => setLayersOpen(v => !v),
+                                controls: layersOpen ? floorViewId : undefined,
+                                buttonRef: floorViewTriggerRef,
+                                onClick: () => {
+                                    setSheetOpen(false)
+                                    setLayersOpen(open => !open)
+                                },
                             },
                             {
                                 id: 'properties',
@@ -4046,6 +3959,7 @@ export default function FloorPlanEditor({
                                     </svg>
                                 ),
                                 onClick: () => {
+                                    closeFloorView()
                                     if (sheetOpen && rightTab === 'properties') setSheetOpen(false)
                                     else { setRightTab('properties'); setSheetOpen(true) }
                                 },
@@ -4061,6 +3975,7 @@ export default function FloorPlanEditor({
                                     </svg>
                                 ),
                                 onClick: () => {
+                                    closeFloorView()
                                     if (sheetOpen && rightTab === 'scene') setSheetOpen(false)
                                     else { setRightTab('scene'); setSheetOpen(true) }
                                 },
@@ -4075,18 +3990,23 @@ export default function FloorPlanEditor({
                                     </svg>
                                 ),
                                 onClick: () => {
+                                    closeFloorView()
                                     if (sheetOpen && rightTab === 'sun') setSheetOpen(false)
                                     else { setRightTab('sun'); setSheetOpen(true) }
                                 },
                             },
                         ]}
                     />
-                    <ViewModeControl
-                        open={layersOpen}
-                        viewMode={viewMode}
-                        onSetViewMode={setViewMode}
-                        onClose={() => setLayersOpen(false)}
-                    />
+                    {layersOpen && (
+                        <ViewModeControl
+                            id={floorViewId}
+                            viewMode={viewMode}
+                            onSetViewMode={setViewMode}
+                            onClose={closeFloorView}
+                            dockRef={dockRef}
+                            triggerRef={floorViewTriggerRef}
+                        />
+                    )}
                 </div>
                 <div ref={toolbarRef}>
 

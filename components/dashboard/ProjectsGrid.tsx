@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardTheme as CLAY } from "@/components/dashboard/dashboard-theme";
+
 import { useMemo, useState, useRef, useEffect } from "react";
 import { ShareDialog } from "../ui/ExportShareable";
 import { CheckIcon, XIcon } from "lucide-react";
@@ -63,8 +65,9 @@ function CardMenu({
                 top: 44,
                 right: 8,
                 background: "#ffffff",
-                borderRadius: 10,
-                boxShadow: "0 8px 24px rgba(15,23,42,0.18), 0 2px 8px rgba(15,23,42,0.08)",
+                borderRadius: 16,
+                border: `1px solid ${CLAY.border}`,
+                boxShadow: CLAY.shadow,
                 overflow: "hidden",
                 minWidth: 130,
                 zIndex: 20,
@@ -121,30 +124,10 @@ function MoreIcon() {
     );
 }
 
-
 function formatDate(dateStr?: string) {
     if (!dateStr) return "";
     return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
 }
-
-
-// ---- Claymorphism theme tokens ----
-const CLAY = {
-    canvas: "#E5E5E5",
-    surface: "#EAEAEA",
-    textPrimary: "#1A1A1A",
-    textMuted: "#5A5A5A",
-    textPlaceholder: "#999999",
-    lightShadow: "rgba(255,255,255,0.75)",
-    darkShadow: "rgba(0,0,0,0.14)",
-    font: "'General Sans', system-ui, -apple-system, sans-serif",
-};
-
-// Dual soft-extrusion shadow used on chips, pills, and the card itself
-const clayRaised = (pressed = false) =>
-    pressed
-        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
-        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
 
 export function ProjectCard({
     project,
@@ -270,31 +253,29 @@ export function ProjectCard({
             onClick={() => { if (!isEditing) onOpen(); }}
             style={{
                 position: "relative",
-                border: "none",
-                borderRadius: 30,
+                border: `1px solid ${CLAY.border}`,
+                borderRadius: 16,
                 overflow: "hidden",
                 background: CLAY.surface,
                 cursor: isEditing ? "default" : "pointer",
-                boxShadow: hovered
-                    ? "0 24px 44px rgba(0,0,0,0.14), -6px -6px 14px rgba(255,255,255,0.65), 6px 6px 16px rgba(0,0,0,0.12)"
-                    : "0 20px 40px rgba(0,0,0,0.10), -6px -6px 12px rgba(255,255,255,0.6), 6px 6px 14px rgba(0,0,0,0.10)",
-                transform: hovered ? "translateY(-3px)" : "translateY(0)",
+                boxShadow: hovered ? "0 4px 12px rgb(0 0 0 / 6%)" : "0 1px 2px rgb(0 0 0 / 3%)",
+                transform: hovered ? "translateY(-2px)" : "translateY(0)",
                 transition: "box-shadow 220ms ease, transform 220ms ease",
                 display: "flex",
                 flexDirection: "column",
-                maxWidth: 340,
+                width: "100%",
+                minWidth: 0,
                 fontFamily: CLAY.font,
                 fontWeight: 400,
                 letterSpacing: "normal",
             }}
         >
-            <style>{`@import url("https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap");`}</style>
-
             {/* Thumbnail */}
             <div style={{
-                position: "relative", aspectRatio: "1/1", background: "#DEDEDE", overflow: "hidden", flexShrink: 0,
-                margin: 14, borderRadius: 22,
-                boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                position: "relative", aspectRatio: "4/3", background: CLAY.surfaceChip, overflow: "hidden", flexShrink: 0,
+                margin: 0, borderRadius: 0,
+                borderBottom: `1px solid ${CLAY.border}`,
+                boxShadow: "none",
             }}>
                 {thumbnail ? (
                     <img
@@ -320,10 +301,10 @@ export function ProjectCard({
                     <div style={{
                         position: "absolute", top: 12, left: 12,
                         padding: "6px 14px", borderRadius: 999,
-                        background: "linear-gradient(120deg, rgba(167,243,208,0.55), rgba(191,219,254,0.55))",
+                        background: CLAY.surface,
                         backdropFilter: "blur(8px)",
                         color: "#3f3f46", fontSize: 12, fontWeight: 500, letterSpacing: "normal",
-                        boxShadow: "inset 0 1px 1px rgba(255,255,255,0.6)",
+                        boxShadow: "none",
                     }}>
                         {formatStatusLabel(project.status)}
                     </div>
@@ -338,7 +319,7 @@ export function ProjectCard({
                     transition: "opacity 180ms ease, transform 180ms ease",
                     pointerEvents: hovered || menuOpen ? "auto" : "none",
                 }}>
-                    <ClayIconChip
+                    <ProjectIconButton
                         title="Export / Share"
                         onClick={e => { e.stopPropagation(); setShareOpen(true); }}
                         hovered={shareHovered}
@@ -346,15 +327,15 @@ export function ProjectCard({
                         buttonRef={shareButtonRef}
                     >
                         <ShareIcon />
-                    </ClayIconChip>
-                    <ClayIconChip
+                    </ProjectIconButton>
+                    <ProjectIconButton
                         title="More"
                         onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
                         hovered={moreHovered}
                         onHoverChange={setMoreHovered}
                     >
                         <MoreIcon />
-                    </ClayIconChip>
+                    </ProjectIconButton>
                 </div>
 
                 {menuOpen && (
@@ -369,7 +350,7 @@ export function ProjectCard({
                     <div
                         onClick={e => e.stopPropagation()}
                         style={{
-                            position: "absolute", inset: 14, borderRadius: 22,
+                            position: "absolute", inset: 14, borderRadius: 16,
                             background: "rgba(20,20,20,0.72)", backdropFilter: "blur(3px)",
                             display: "flex", flexDirection: "column", alignItems: "center",
                             justifyContent: "center", gap: 12, padding: 20, zIndex: 21,
@@ -383,14 +364,14 @@ export function ProjectCard({
                             <button
                                 type="button"
                                 onClick={() => setConfirmingDelete(false)}
-                                style={{ padding: "7px 14px", borderRadius: 999, border: "none", background: "rgba(255,255,255,0.9)", color: "#1A1A1A", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}
+                                style={{ padding: "7px 14px", borderRadius: 12, border: "none", background: "rgba(255,255,255,0.9)", color: "#1A1A1A", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}
                             >
                                 Cancel
                             </button>
                             <button
                                 type="button"
                                 onClick={() => { setConfirmingDelete(false); onDelete?.(); }}
-                                style={{ padding: "7px 14px", borderRadius: 999, border: "none", background: "#dc2626", color: "#fff", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}
+                                style={{ padding: "7px 14px", borderRadius: 12, border: "none", background: "#dc2626", color: "#fff", fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}
                             >
                                 Delete
                             </button>
@@ -416,7 +397,7 @@ export function ProjectCard({
             </div>
 
             {/* Info */}
-            <div style={{ padding: "8px 22px 22px", display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 6 }}>
                 {isEditing ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
@@ -454,7 +435,7 @@ export function ProjectCard({
                         </button>
                     </div>
                 ) : (
-                    <span /* ...unchanged display span... */ >
+                    <span style={{ fontSize: 16, fontWeight: 600, color: CLAY.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={project.name || "Untitled"}>
                         {project.name || "Untitled"}
                     </span>
                 )}
@@ -475,7 +456,7 @@ export function ProjectCard({
                 </p>
 
                 {/* Bottom row — star where the reference shows price, CTA where it shows "Buy Now" */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
                     <button
                         onClick={handleToggleStar}
                         onMouseEnter={e => { e.stopPropagation(); setStarHovered(true); }}
@@ -483,14 +464,12 @@ export function ProjectCard({
                         title={starred ? "Unstar" : "Star"}
                         style={{
                             display: "flex", alignItems: "center", gap: 8,
-                            border: "none", borderRadius: 999,
+                            border: `1px solid ${CLAY.border}`, borderRadius: 12,
                             background: CLAY.surface,
                             padding: "8px 14px 8px 10px",
                             cursor: "pointer", color: CLAY.textPrimary,
                             fontFamily: CLAY.font,
-                            boxShadow: starHovered
-                                ? `${clayRaised(false)}, 0 0 14px rgba(245,158,11,0.45)`
-                                : clayRaised(true),
+                            boxShadow: "none",
                             transition: "box-shadow 220ms ease",
                         }}
                     >
@@ -508,11 +487,11 @@ export function ProjectCard({
                         title={published ? "Remove from Community" : "Post to Community"}
                         style={{
                             display: "flex", alignItems: "center", gap: 7,
-                            border: "none", borderRadius: 999,
+                            border: `1px solid ${CLAY.border}`, borderRadius: 12,
                             background: published
                                 ? (publishHovered
-                                    ? "linear-gradient(145deg, #f28b8b, #e35d5d)"
-                                    : "linear-gradient(145deg, #8fe3c0, #5fcf9e)")
+                                    ? CLAY.dangerSoft
+                                    : CLAY.surfaceChip)
                                 : CLAY.surface,
                             color: "#1A1A1A",
                             padding: "10px 16px",
@@ -520,11 +499,7 @@ export function ProjectCard({
                             fontFamily: CLAY.font,
                             cursor: publishBusy ? "default" : "pointer",
                             opacity: publishBusy ? 0.7 : 1,
-                            boxShadow: published
-                                ? (publishHovered
-                                    ? "0 6px 14px -4px rgba(227,93,93,0.45), inset 0 1px 1px rgba(255,255,255,0.4)"
-                                    : "0 6px 14px -4px rgba(95,207,158,0.45), inset 0 1px 1px rgba(255,255,255,0.4)")
-                                : (publishHovered ? clayRaised(true) : clayRaised(false)),
+                            boxShadow: "none",
                             transform: publishHovered ? "translateY(-1px)" : "translateY(0)",
                             transition: "background 200ms ease, box-shadow 200ms ease, transform 200ms ease, opacity 160ms ease",
                         }}
@@ -553,7 +528,7 @@ export function ProjectCard({
     );
 }
 
-function ClayIconChip({
+function ProjectIconButton({
     children,
     title,
     onClick,
@@ -576,14 +551,12 @@ function ClayIconChip({
             onMouseEnter={e => { e.stopPropagation(); onHoverChange(true); }}
             onMouseLeave={e => { e.stopPropagation(); onHoverChange(false); }}
             style={{
-                width: 34, height: 34, borderRadius: "50%",
+                width: 34, height: 34, borderRadius: 12,
                 border: "none",
-                background: "#F5F5F5",
+                background: hovered ? CLAY.surfaceChip : CLAY.surface,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer",
-                boxShadow: hovered
-                    ? "inset 2px 2px 6px rgba(0,0,0,0.14), inset -2px -2px 6px rgba(255,255,255,0.7)"
-                    : "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.16)",
+                boxShadow: "none",
                 transition: "box-shadow 180ms ease",
             }}
         >
@@ -623,7 +596,6 @@ function ArrowIcon({ color = "#fff" }: { color?: string }) {
     );
 }
 
-
 function GlobeIcon({ color, size = 14 }: { color: string; size?: number }) {
     return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
@@ -647,7 +619,7 @@ export function ProjectCardSkeleton() {
     return (
         <div style={{
             border: "1px solid rgba(15,15,15,0.1)",
-            borderRadius: 8,
+            borderRadius: 16,
             overflow: "hidden",
             background: "#ffffff",
         }}>

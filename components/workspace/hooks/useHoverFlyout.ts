@@ -28,15 +28,22 @@ export function useHoverFlyout({
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
       const target = e.target as Node;
       if (anchorRef.current?.contains(target)) return;
       const flyoutEl = document.getElementById(`flyout-${id}`);
       if (flyoutEl?.contains(target)) return;
       setOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", handler);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handler);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
   }, [open, id]);
 
   const scheduleOpen = () => {

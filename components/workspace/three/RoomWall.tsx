@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo } from 'react'
 import * as THREE from 'three'
-import { useTexture } from '@react-three/drei'
+import { useTextureMaterialProps } from '../texture/textureLoader'
 
 import { makeWallNormalTexture } from '@/components/workspace/three/RoomFloor'
 import type { RoomDoor } from '@/types/workspace'
@@ -137,18 +137,10 @@ function DoorMaterialWood({
   urls: { map: string; normalMap: string; roughnessMap: string }
 }) {
   const cfg = DOOR_MAT_CONFIGS[style] ?? DOOR_MAT_CONFIGS.wood_oak
-  const textures = useTexture(urls)
-  useMemo(() => {
-    Object.values(textures).forEach((t) => {
-      if (t) {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping
-        t.repeat.set(1, 2.2)
-        t.needsUpdate = true
-      }
-    })
-  }, [textures])
+  const { textures } = useTextureMaterialProps(urls, 1, 2.2)
   return (
     <meshStandardMaterial
+      key={Object.keys(textures).join(",")}
       map={textures.map}
       normalMap={textures.normalMap}
       roughnessMap={textures.roughnessMap}
@@ -165,18 +157,10 @@ function DoorMaterialMetal({
   urls: { map: string; normalMap: string; roughnessMap: string }
 }) {
   const cfg = DOOR_MAT_CONFIGS['metal_steel']
-  const textures = useTexture(urls)
-  useMemo(() => {
-    Object.values(textures).forEach((t) => {
-      if (t) {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping
-        t.repeat.set(2, 3)
-        t.needsUpdate = true
-      }
-    })
-  }, [textures])
+  const { textures } = useTextureMaterialProps(urls, 2, 3)
   return (
     <meshStandardMaterial
+      key={Object.keys(textures).join(",")}
       map={textures.map}
       normalMap={textures.normalMap}
       roughnessMap={textures.roughnessMap}
@@ -255,8 +239,8 @@ const WALL_TEXTURE_URLS = {
     roughnessMap: '/textures/Marble022_1K-JPG_Roughness.jpg',
   },
   tile: {
-    normalMap: '/textures/Tiles101_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/Tiles101_Roughness.jpg',
+    normalMap: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_NormalGL.jpg',
+    roughnessMap: '/textures/tiles/Tiles101_1K-JPG/Tiles101_Roughness.jpg',
   },
 }
 
@@ -266,14 +250,10 @@ function WallMaterialPBR({ color, wallType, roughness }: {
   roughness: number
 }) {
   const urls = WALL_TEXTURE_URLS[wallType]
-  const textures = useTexture(urls)
-  useMemo(() => {
-    Object.values(textures).forEach((t) => {
-      if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); t.needsUpdate = true }
-    })
-  }, [textures])
+  const { textures } = useTextureMaterialProps(urls, 2, 2)
   return (
     <meshStandardMaterial
+      key={Object.keys(textures).join(",")}
       color={color}
       roughness={roughness}
       metalness={wallType === 'marble' ? 0.04 : 0.0}

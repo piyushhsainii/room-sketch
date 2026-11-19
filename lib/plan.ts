@@ -36,6 +36,7 @@ export const PLANS: Record<PlanId, Plan> = {
     ctaLabel: "Start for free",
     displayFeatures: [
       ["1 project included", true],
+      ["MCP access · Codex & Claude Code", true],
       ["Full floor plan editor", true],
       ["Live 3D preview", true],
       ["Basic material library", true],
@@ -57,6 +58,7 @@ export const PLANS: Record<PlanId, Plan> = {
     displayFeatures: [
       ["5 projects", true],
       ["Everything in Free", true],
+      ["MCP access · Codex & Claude Code", true],
       ["Full material library", true],
       ["3D snapshot export", true],
       ["Custom GLB asset import", true],

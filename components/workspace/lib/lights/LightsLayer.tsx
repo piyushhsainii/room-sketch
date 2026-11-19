@@ -25,10 +25,11 @@ export function LightsLayer({
     onSelect,
     opacity,
     transparent,
+    shadowEligibleIds: sceneShadowIds,
 }: LightsLayerProps) {
     const shadowEligibleIds = useMemo(
-        () => resolveShadowEligibleLightIds(fp),
-        [fp.lights, fp.rooms]
+        () => sceneShadowIds ?? resolveShadowEligibleLightIds(fp),
+        [sceneShadowIds, fp]
     )
 
     const { stringLights, otherLights } = useMemo(() => {

@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test": "jest --runInBand",
+    "test:mcp": "jest --config mcp/jest.config.cjs --runInBand && node --test mcp/tests/database.test.mjs",
+    "mcp:smoke": "node mcp/scripts/smoke.mjs",
+    "mcp:check-build": "node mcp/scripts/check-build.mjs",
     "dev": "next dev",
     "build": "next build --webpack",
     "build:types": "npx supabase gen types typescript --project-id iugqowtzihdopawsoddn > supabase/types.ts",
@@ -13,6 +17,7 @@
   "dependencies": {
     "@dodopayments/nextjs": "^0.3.9",
     "@google/genai": "^1.45.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@supabase/ssr": "^0.9.0",
@@ -38,9 +43,11 @@
     "resend": "^6.25.0",
     "tailwind-merge": "^3.6.0",
     "three": "^0.183.2",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

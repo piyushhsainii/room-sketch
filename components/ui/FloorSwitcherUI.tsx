@@ -3,83 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import type { Floor } from "@/components/workspace/lib/floor-data";
 
-// ---- Claymorphism theme tokens (shared across the app) ----
-const CLAY = {
-    surface: "#EAEAEA",
-    surfaceChip: "#F5F5F5",
-    textPrimary: "#1A1A1A",
-    textMuted: "#5A5A5A",
-    textPlaceholder: "#999999",
-    lightShadow: "rgba(255,255,255,0.75)",
-    darkShadow: "rgba(0,0,0,0.14)",
-    accentSoft: "rgba(99,102,241,0.14)",
-    accentText: "#4C4FBF",
-    dangerText: "#B3503F",
-    dangerSoft: "rgba(179,80,63,0.14)",
-    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
-};
-
-const clayRaised = (pressed = false) =>
-    pressed
-        ? `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`
-        : `-3px -3px 7px ${CLAY.lightShadow}, 3px 3px 8px ${CLAY.darkShadow}`;
-
-function ChevronIcon() {
-    return (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M6 9l6 6 6-6" />
-        </svg>
-    );
-}
-
-function EyeIcon({ off }: { off?: boolean }) {
-    if (off) {
-        return (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a13.16 13.16 0 0 1-1.67 2.68" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 8 10 8a9.74 9.74 0 0 0 5.39-1.61" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" strokeLinecap="round" strokeLinejoin="round" />
-                <line x1="2" y1="2" x2="22" y2="22" strokeLinecap="round" />
-            </svg>
-        );
-    }
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="12" cy="12" r="3" />
-        </svg>
-    );
-}
-
-function PlusIcon() {
-    return (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-    );
-}
-
-function TrashIcon() {
-    return (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
-        </svg>
-    );
-}
-
-function DragHandleIcon() {
-    return (
-        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-            <circle cx="2.5" cy="2.5" r="1.3" />
-            <circle cx="7.5" cy="2.5" r="1.3" />
-            <circle cx="2.5" cy="7" r="1.3" />
-            <circle cx="7.5" cy="7" r="1.3" />
-            <circle cx="2.5" cy="11.5" r="1.3" />
-            <circle cx="7.5" cy="11.5" r="1.3" />
-        </svg>
-    );
-}
+import { ChevronDown, Eye, EyeOff, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { editorMenuTheme, menuSurface } from './editor-menu-theme'
+const CLAY = editorMenuTheme
 
 function FloorRow({
     floor,
@@ -143,14 +69,15 @@ function FloorRow({
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                padding: "10px 12px",
+                padding: "6px 12px",
                 marginBottom: 4,
                 borderRadius: 12,
                 background: isActive ? CLAY.accentSoft : hovered ? CLAY.surfaceChip : "transparent",
-                boxShadow: isActive ? clayRaised(true) : "none",
                 cursor: isEditing ? "default" : "pointer",
-                borderTop: isDragOver ? `2px solid ${CLAY.accentText}` : "2px solid transparent",
+                boxShadow: isDragOver ? "inset 0 2px #737373" : undefined,
                 minHeight: 40,
+                minWidth: 0,
+                maxWidth: "100%",
                 transition: "background 160ms ease, box-shadow 160ms ease",
                 fontFamily: CLAY.font,
             }}
@@ -164,7 +91,7 @@ function FloorRow({
                     width: 12,
                 }}
             >
-                <DragHandleIcon />
+                <GripVertical size={16} aria-hidden="true" />
             </span>
 
             {isEditing ? (
@@ -179,7 +106,7 @@ function FloorRow({
                         if (e.key === "Escape") { setEditValue(floor.label); setIsEditing(false); }
                     }}
                     style={{
-                        flex: 1, fontSize: 13, fontWeight: 500, letterSpacing: "normal",
+                        flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, letterSpacing: "normal",
                         color: CLAY.textPrimary,
                         border: "none", borderBottom: `1px solid ${CLAY.accentText}`,
                         background: "transparent", outline: "none", padding: "0 0 3px",
@@ -188,9 +115,10 @@ function FloorRow({
                 />
             ) : (
                 <span
+                    title={floor.label}
                     onDoubleClick={e => { e.stopPropagation(); setIsEditing(true); }}
                     style={{
-                        flex: 1, fontSize: 13, fontWeight: isActive ? 500 : 400,
+                        flex: 1, minWidth: 0, fontSize: 14, fontWeight: isActive ? 600 : 400,
                         letterSpacing: "normal",
                         color: isActive ? CLAY.accentText : CLAY.textPrimary,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -209,13 +137,12 @@ function FloorRow({
                     display: "flex", alignItems: "center", justifyContent: "center",
                     width: 28, height: 28, borderRadius: "50%", border: "none",
                     background: eyeHovered ? CLAY.surfaceChip : "transparent",
-                    boxShadow: eyeHovered ? clayRaised(true) : "none",
                     color: floor.visible ? CLAY.textMuted : CLAY.textPlaceholder,
                     cursor: "pointer", flexShrink: 0,
                     transition: "background 160ms ease, box-shadow 160ms ease",
                 }}
             >
-                <EyeIcon off={!floor.visible} />
+                {floor.visible ? <Eye size={16} aria-hidden="true" /> : <EyeOff size={16} aria-hidden="true" />}
             </button>
 
             {canDelete && (
@@ -231,14 +158,13 @@ function FloorRow({
                         display: "flex", alignItems: "center", justifyContent: "center",
                         width: 28, height: 28, borderRadius: "50%", border: "none",
                         background: trashHovered ? CLAY.dangerSoft : "transparent",
-                        boxShadow: trashHovered ? clayRaised(true) : "none",
                         color: trashHovered ? CLAY.dangerText : CLAY.textPlaceholder,
                         cursor: "pointer", flexShrink: 0,
                         opacity: hovered ? 1 : 0,
                         transition: "opacity 120ms, background 160ms ease, color 160ms ease, box-shadow 160ms ease",
                     }}
                 >
-                    <TrashIcon />
+                    <Trash2 size={16} aria-hidden="true" />
                 </button>
             )}
         </div>
@@ -312,40 +238,30 @@ export default function FloorSwitcher({
     }
 
     return (
-        <div ref={containerRef} style={{ position: "relative", fontFamily: CLAY.font }}>
+        <div ref={containerRef} style={{ position: "relative", minWidth: 0, maxWidth: "100%", fontFamily: CLAY.font }}>
             <button
                 type="button"
                 onClick={() => setOpen(v => !v)}
+                aria-expanded={open}
                 style={{
                     display: "flex", alignItems: "center", gap: 8,
-                    height: 34, padding: "0 14px", borderRadius: 999,
-                    border: "none",
+                    height: 40, padding: "0 12px", borderRadius: 12,
+                    border: `1px solid ${CLAY.border}`,
                     background: open ? CLAY.accentSoft : CLAY.surface,
                     color: open ? CLAY.accentText : CLAY.textPrimary,
-                    fontSize: 12.5, fontWeight: 500, letterSpacing: "normal",
+                    fontSize: 14, fontWeight: 500, letterSpacing: "normal",
                     fontFamily: CLAY.font,
+                    minWidth: 0, maxWidth: "100%",
                     cursor: "pointer", whiteSpace: "nowrap",
-                    boxShadow: open ? clayRaised(true) : clayRaised(false),
                     transition: "background 160ms ease, box-shadow 160ms ease, color 160ms ease",
                 }}
             >
-                {activeFloor?.label ?? "Floor"}
-                <ChevronIcon />
+                <span title={activeFloor?.label} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{activeFloor?.label ?? "Floor"}</span>
+                <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
             </button>
 
             {open && (
-                <div style={{
-                    position: "absolute", top: 42, left: 0, zIndex: 20,
-                    width: 260, borderRadius: 20,
-                    border: "none",
-                    background: CLAY.surface,
-                    boxShadow: `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
-                    padding: 10,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                    fontFamily: CLAY.font,
-                }}>
+                <div className={`${menuSurface} absolute top-full left-0 z-20 mt-2 grid w-[320px] max-w-[calc(100vw-32px)] grid-cols-[minmax(0,1fr)] gap-1`}>
                     {sortedFloors.map(floor => (
                         <FloorRow
                             key={floor.id}
@@ -364,7 +280,7 @@ export default function FloorSwitcher({
                         />
                     ))}
 
-                    <div style={{ height: 1, boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`, margin: "8px 4px" }} />
+                    <div style={{ height: 1, background: CLAY.border, margin: "8px 4px" }} />
 
                     <button
                         type="button"
@@ -373,17 +289,16 @@ export default function FloorSwitcher({
                         onMouseLeave={() => setAddAboveHovered(false)}
                         style={{
                             display: "flex", alignItems: "center", gap: 8, width: "100%",
-                            padding: "9px 12px", borderRadius: 12, border: "none",
+                            minHeight: 40, padding: "6px 12px", borderRadius: 12, border: "none",
                             background: addAboveHovered ? CLAY.surfaceChip : "transparent",
-                            boxShadow: addAboveHovered ? clayRaised(true) : "none",
-                            color: CLAY.accentText, fontSize: 12.5, fontWeight: 500, letterSpacing: "normal",
+                            color: CLAY.accentText, fontSize: 14, fontWeight: 500, letterSpacing: "normal",
                             fontFamily: CLAY.font,
                             cursor: "pointer",
                             textAlign: "left", whiteSpace: "nowrap",
                             transition: "background 160ms ease, box-shadow 160ms ease",
                         }}
                     >
-                        <PlusIcon /> Add Floor
+                        <Plus size={16} aria-hidden="true" /> Add Floor
                     </button>
                     <button
                         type="button"
@@ -392,17 +307,16 @@ export default function FloorSwitcher({
                         onMouseLeave={() => setAddBelowHovered(false)}
                         style={{
                             display: "flex", alignItems: "center", gap: 8, width: "100%",
-                            padding: "9px 12px", borderRadius: 12, border: "none",
+                            minHeight: 40, padding: "6px 12px", borderRadius: 12, border: "none",
                             background: addBelowHovered ? CLAY.surfaceChip : "transparent",
-                            boxShadow: addBelowHovered ? clayRaised(true) : "none",
-                            color: CLAY.textMuted, fontSize: 12.5, fontWeight: 400, letterSpacing: "normal",
+                            color: CLAY.textMuted, fontSize: 14, fontWeight: 400, letterSpacing: "normal",
                             fontFamily: CLAY.font,
                             cursor: "pointer",
                             textAlign: "left", whiteSpace: "nowrap",
                             transition: "background 160ms ease, box-shadow 160ms ease",
                         }}
                     >
-                        <PlusIcon /> Add Floor Below
+                        <Plus size={16} aria-hidden="true" /> Add Floor Below
                     </button>
                 </div>
             )}

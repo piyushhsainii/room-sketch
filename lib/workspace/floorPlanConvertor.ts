@@ -75,10 +75,7 @@
 //   };
 // ─────────────────────────────────────────────────────────────────────────
 
-import {
-  RoomSceneConfig,
-  SceneConfig,
-} from "@/components/workspace/FloorPlanEditor";
+import type { RoomSceneConfig, SceneConfig } from "@/components/workspace/lib/scene-config"
 import {
   ClosedShape,
   DoorStyle,
@@ -109,7 +106,7 @@ import {
   SceneRoom,
   SceneSegmentOpening,
 } from "@/types/workspace";
-import { uid } from "../helpers";
+import { uid } from "./entity-id";
 import { PlacedFurniture } from "@/components/workspace/lib/furniture-constants";
 import { PlacedStairs } from "@/components/workspace/lib/stairs-constants";
 import { PlacedOutdoorObject } from "@/components/workspace/lib/outdoor-constants";

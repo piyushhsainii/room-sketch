@@ -1,25 +1,21 @@
-import { NextResponse } from "next/server";
-
-import { ERRORS } from "@/constants/content";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { authReturnPath } from "@/lib/auth/return-path";
+import { redirectResponse } from "@/lib/auth/redirect-response";
 
 export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const next = authReturnPath(url.searchParams.get("next"));
+  const retry = `/login?${new URLSearchParams({ redirectTo: next, error: "auth" })}`;
+  const redirect = (location: string) => redirectResponse(request, location, 303);
   try {
-    const url = new URL(request.url);
     const code = url.searchParams.get("code");
-    const rawNext = url.searchParams.get("next") ?? "/";
-    const next = rawNext.startsWith("/") ? rawNext : "/";
+    if (!code) return redirect(retry);
+    const supabase = await createServerSupabaseClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) return redirect(retry);
 
-    if (code) {
-      const supabase = await createServerSupabaseClient();
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) {
-        return NextResponse.redirect(new URL("/?error=auth", url.origin));
-      }
-    }
-
-    return NextResponse.redirect(new URL(next, url.origin));
+    return redirect(next);
   } catch {
-    return NextResponse.json({ error: ERRORS.unauthorized }, { status: 500 });
+    return redirect(retry);
   }
 }

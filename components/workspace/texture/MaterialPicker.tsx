@@ -111,11 +111,11 @@ export function MaterialTexturePicker({
                 <div
                     style={{
                         width: 40, height: 40, borderRadius: RADIUS.md, overflow: 'hidden', flexShrink: 0,
-                        background: current?.thumbnail ? undefined : (current?.swatch ?? DEFAULT_SWATCH),
+                        background: current?.swatch ?? DEFAULT_SWATCH,
                     }}
                 >
                     {current?.thumbnail && (
-                        <img src={current.thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        <img key={current.thumbnail} src={current.thumbnail} alt="" onError={hideBrokenPreview} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     )}
                 </div>
                 <span style={{ fontSize: 12.5, color: COLOR.text, fontWeight: 500, flex: 1 }}>
@@ -276,7 +276,7 @@ function TextureTile({
                     width: '100%', aspectRatio: '1 / 1', borderRadius: RADIUS.sm,
                     // No more white card background/border behind the preview —
                     // the swatch or thumbnail now fills the tile directly.
-                    background: thumbnail ? undefined : swatch,
+                    background: swatch,
                     overflow: 'hidden',
                     transition: `transform 180ms ${EASE}`,
                 }}
@@ -289,8 +289,10 @@ function TextureTile({
                     Generating real thumbnail-sized previews is a separate follow-up. */}
                 {thumbnail && (
                     <img
+                        key={thumbnail}
                         src={thumbnail}
                         alt=""
+                        onError={hideBrokenPreview}
                         loading="lazy"
                         decoding="async"
                         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
@@ -302,4 +304,7 @@ function TextureTile({
             </span>
         </button>
     )
+}
+function hideBrokenPreview(event: React.SyntheticEvent<HTMLImageElement>) {
+    event.currentTarget.style.visibility = 'hidden'
 }

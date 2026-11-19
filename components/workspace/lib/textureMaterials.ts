@@ -76,39 +76,39 @@ export const WALL_TEXTURE_MATERIALS: Record<string, TextureMaterialDef> = {
     id: "brick-red",
     label: "Red Brick",
     swatch: "#9C4A3C",
-    map: "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_Color.jpg",
-    normalMap: "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_NormalGL.jpg",
+    map: "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_Color.jpg",
+    normalMap: "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_NormalGL.jpg",
     roughnessMap:
-      "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_Roughness.jpg",
+      "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_Roughness.jpg",
     repeat: [2, 2],
   },
   "brick-white": {
     id: "brick-white",
     label: "White Brick",
     swatch: "#E8E2D8",
-    map: "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_Color.jpg", // same geometry, tinted lighter
-    normalMap: "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_NormalGL.jpg",
+    map: "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_Color.jpg", // same geometry, tinted lighter
+    normalMap: "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_NormalGL.jpg",
     roughnessMap:
-      "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_Roughness.jpg",
+      "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_Roughness.jpg",
     repeat: [2, 2],
   },
   "tile-ceramic": {
     id: "tile-ceramic",
     label: "Ceramic Tile",
     swatch: "#DCE6E8",
-    map: "/textures/tile/Tile001_1K-JPG/Tile001_1K-JPG_Color.jpg",
-    normalMap: "/textures/tile/Tile001_1K-JPG/Tile001_1K-JPG_NormalGL.jpg",
-    roughnessMap: "/textures/tile/Tile001_1K-JPG/Tile001_1K-JPG_Roughness.jpg",
+    map: "/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_Color.jpg",
+    normalMap: "/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_NormalGL.jpg",
+    roughnessMap: "/textures/tiles/Tiles101_1K-JPG/Tiles101_Roughness.jpg",
     repeat: [3, 3],
   },
   "exposed-brick": {
     id: "exposed-brick",
     label: "Exposed Brick",
     swatch: "#8A5A45",
-    map: "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_Color.jpg",
-    normalMap: "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_NormalGL.jpg",
+    map: "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_Color.jpg",
+    normalMap: "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_NormalGL.jpg",
     roughnessMap:
-      "/textures/brick/Brick012_1K-JPG/Brick012_1K-JPG_Roughness.jpg",
+      "/textures/bricks/Bricks031_1K-JPG/Bricks031_1K-JPG_Roughness.jpg",
     repeat: [2.5, 2.5],
   },
 };

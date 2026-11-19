@@ -18,8 +18,6 @@ export function resolveLightTransform(
   light: PlacedLight,
   fp: FloorPlanState,
 ): ResolvedLightTransform {
-  const T = 0.15,
-    normalOffset = T / 2 + 0.05;
   const inward = light.facingInward ?? true;
   const faceDir = inward ? 1 : -1;
 
@@ -27,6 +25,13 @@ export function resolveLightTransform(
     const a = fp.lineNodes.find((n) => n.id === light.segmentNodeIds![0]);
     const b = fp.lineNodes.find((n) => n.id === light.segmentNodeIds![1]);
     if (!a || !b) return null;
+    const segment = fp.lineSegments.find(({ nodeIds, closed }) =>
+      nodeIds.some((id, i) => {
+        const next = nodeIds[i + 1] ?? (closed ? nodeIds[0] : undefined);
+        return (id === a.id && next === b.id) || (id === b.id && next === a.id);
+      }),
+    );
+    const normalOffset = (segment?.thickness ?? 0.15) / 2 + 0.05;
     const t = light.segmentT ?? 0;
     const px = a.x + (b.x - a.x) * t;
     const pz = a.z + (b.z - a.z) * t;
@@ -39,13 +44,14 @@ export function resolveLightTransform(
         light.heightOffset,
         pz + nz * normalOffset * faceDir,
       ],
-      rot: inward ? -angle : -angle + Math.PI,
+      rot: inward ? -angle + Math.PI : -angle,
     };
   }
 
   if (light.roomId && light.wall) {
     const room = fp.rooms.find((r) => r.id === light.roomId);
     if (!room) return null;
+    const normalOffset = (room.wallThickness ?? 0.15) / 2 + 0.05;
     if (light.wall === "north") {
       return {
         pos: [
@@ -89,7 +95,7 @@ export function resolveLightTransform(
   return { pos: [light.x ?? 0, light.heightOffset, light.z ?? 0], rot: 0 };
 }
 
-const MAX_SHADOW_LIGHTS = 8;
+const MAX_SHADOW_LIGHTS = 2;
 
 /**
  * GPU shadow budget — see notes at prior fix. Only the nearest
@@ -101,7 +107,7 @@ const MAX_SHADOW_LIGHTS = 8;
  */
 export function resolveShadowEligibleLightIds(fp: FloorPlanState): Set<string> {
   const eligible = (fp.lights ?? []).filter(
-    (l) => l.type !== "string_lights" && l.castShadow,
+    (l) => l.type !== "string_lights" && l.intensity > 0 && l.castShadow,
   );
   if (eligible.length <= MAX_SHADOW_LIGHTS) {
     return new Set(eligible.map((l) => l.id));
@@ -131,7 +137,7 @@ export function resolveShadowEligibleLightIdsAcrossFloors(
 
   for (const fp of floorStates) {
     const eligible = (fp.lights ?? []).filter(
-      (l) => l.type !== "string_lights" && l.castShadow,
+      (l) => l.type !== "string_lights" && l.intensity > 0 && l.castShadow,
     );
     if (eligible.length === 0) continue;
 

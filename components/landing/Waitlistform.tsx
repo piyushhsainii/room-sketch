@@ -52,7 +52,7 @@ export default function WaitlistForm({
         return (
             <div
                 id={id}
-                className={`font-mono text-[13px] text-blue ${align === "center" ? "text-center" : ""}`}
+                className={`text-[13px] text-neutral-700 ${align === "center" ? "text-center" : ""}`}
             >
                 {message}
             </div>
@@ -78,13 +78,13 @@ export default function WaitlistForm({
                     type="submit"
                     disabled={status === "loading"}
                     className="bg-ink text-white text-[14px] font-medium px-7 py-3 rounded-[7px] hover:bg-[#0E0E10] transition-colors disabled:opacity-60 whitespace-nowrap"
-                    style={{ backgroundColor: "#12213E" }}
+                    style={{ backgroundColor: "#171717" }}
                 >
                     {status === "loading" ? "Joining…" : "Join the waitlist"}
                 </button>
             </form>
             {status === "error" && message && (
-                <p className="font-mono text-[11px] text-red-600 mt-2">{message}</p>
+                <p className="text-[11px] text-red-600 mt-2">{message}</p>
             )}
         </div>
     );

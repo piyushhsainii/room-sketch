@@ -19,7 +19,7 @@ const _manager = new THREE.LoadingManager()
 _manager.onError = (url) => {
     _pending.delete(url)
     _failed.add(url)
-    console.error(`[FurnitureMesh] ❌ texture 404, falling back to solid color: ${url}`)
+    console.warn(`[FurnitureMesh] Texture unavailable, using the material fallback: ${url}`)
 }
 const _loader = new THREE.TextureLoader(_manager)
 
@@ -223,6 +223,10 @@ export function FurnitureMesh({
 
     const s = f.scale ?? 1
     const fp2 = getFurnitureFootprint(f.type, undefined);
+    const placeholderHeight = {
+        desk_chair: 0.85, bench: 0.45, stool_bar: 0.75, side_table: 0.55,
+        bookcase: 1.8, cabinet_bed: 0.75, coat_rack: 1.65, ceiling_fan: 0.18,
+    }[f.type as string]
     const [hovered, setHovered] = React.useState(false)
 
     const overrideMat = f.materialId
@@ -310,6 +314,12 @@ export function FurnitureMesh({
             onPointerOver={handleOver}
             onPointerOut={handleOut}
         >
+            {placeholderHeight !== undefined && (
+                <mesh position={[0, placeholderHeight * s / 2, 0]} castShadow receiveShadow>
+                    <boxGeometry args={[fp2.w * s, placeholderHeight * s, fp2.d * s]} />
+                    <meshStandardMaterial color={bodyColor} {...bodyMaterialProps} />
+                </mesh>
+            )}
             {f.type === 'sofa' && (
                 <group>
 

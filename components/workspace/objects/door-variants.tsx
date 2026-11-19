@@ -65,20 +65,21 @@ function DoorPull({ zSide, width, itemOpacity, itemTransparent }: {
 function DoorHinges({ width, height, hingeSign, itemOpacity, itemTransparent }: {
     width: number; height: number; hingeSign: 1 | -1; itemOpacity: number; itemTransparent: boolean
 }) {
-    const inset = Math.min(0.05, width * 0.05)
-    const hingeX = -hingeSign * (width / 2 - inset)
+    const hingeX = -hingeSign * width / 2
     const knuckleR = 0.009
-    const positions = [0.85, 0.5, 0.15].map(f => (f - 0.5) * height * 0.9)
+    const hingeHeight = Math.min(0.12, height * 0.13)
+    const endY = height / 2 - Math.min(0.22, height * 0.2)
+    const positions = height >= 1.5 ? [-endY, 0, endY] : [-endY, endY]
     return (
         <group>
             {positions.map((y, i) => (
-                <group key={i} position={[hingeX, y, 0]}>
-                    <mesh castShadow>
-                        <boxGeometry args={[0.01, 0.14, 0.07]} />
+                <group key={i} position={[hingeX, y, T / 2 + 0.003]}>
+                    <mesh position={[hingeSign * 0.017, 0, 0]}>
+                        <boxGeometry args={[0.034, hingeHeight, 0.006]} />
                         {m('#B9B9B4', { metalness: 0.6, roughness: 0.35 }, itemOpacity, itemTransparent)}
                     </mesh>
-                    <mesh rotation={[Math.PI / 2, 0, 0]} position={[-hingeSign * 0.008, 0, 0]} castShadow>
-                        <cylinderGeometry args={[knuckleR, knuckleR, 0.15, 10]} />
+                    <mesh>
+                        <cylinderGeometry args={[knuckleR, knuckleR, hingeHeight * 1.12, 8]} />
                         {m('#A8A8A2', { metalness: 0.7, roughness: 0.25 }, itemOpacity, itemTransparent)}
                     </mesh>
                 </group>
@@ -216,6 +217,7 @@ function DoorFace({ width, height, hingeSign, resolvedStyle, itemOpacity, itemTr
                 <DoorKnob zSide={1} hingeSign={hingeSign} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
                 <DoorKnob zSide={-1} hingeSign={hingeSign} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
             </group>
+            <DoorHinges width={width} height={height} hingeSign={hingeSign} itemOpacity={itemOpacity} itemTransparent={itemTransparent} />
         </group>
     )
 }
@@ -729,9 +731,10 @@ function SwingHinge({
     const groupRef = useRef<THREE.Group>(null)
     const currentAngle = useRef(closedRestAngle)
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const target = isOpen ? fullyOpenAngle : closedRestAngle
         const diff = target - currentAngle.current
+        if (frameloop === "demand" && Math.abs(diff) >= 0.001) invalidate()
         if (Math.abs(diff) < 0.001) currentAngle.current = target
         else currentAngle.current += diff * Math.min(1, delta * 8)
         if (groupRef.current) groupRef.current.rotation.y = -angle + currentAngle.current
@@ -783,9 +786,10 @@ function SlidingLeaf({
     const groupRef = useRef<THREE.Group>(null)
     const currentOffset = useRef(centerOffset)
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const target = isOpen ? centerOffset + openOffset : centerOffset
         const diff = target - currentOffset.current
+        if (frameloop === "demand" && Math.abs(diff) >= 0.001) invalidate()
         if (Math.abs(diff) < 0.001) currentOffset.current = target
         else currentOffset.current += diff * Math.min(1, delta * 8)
         if (groupRef.current) {
@@ -828,10 +832,11 @@ function FoldingDoor({
     const frac = useRef(0)
     const panelW = width / panelCount
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const target = isOpen ? 1 : 0
         const speed = 9
         const diff = target - frac.current
+        if (frameloop === "demand" && Math.abs(diff) >= 0.001) invalidate()
         frac.current = Math.abs(diff) < 0.001 ? target : frac.current + diff * Math.min(1, delta * speed)
         for (let i = 0; i < panelCount; i++) {
             const g = groupRefs.current[i]
@@ -888,10 +893,11 @@ function AnimatedGarageDoor({
     const slats = 5
     const slatH = Math.min(0.5, height * 0.4) / slats
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const target = isOpen ? 1 : 0
         const speed = 6
         const diff = target - frac.current
+        if (frameloop === "demand" && Math.abs(diff) >= 0.001) invalidate()
         frac.current = Math.abs(diff) < 0.001 ? target : frac.current + diff * Math.min(1, delta * speed)
         if (groupRef.current) {
             groupRef.current.position.y = frac.current * height * 0.92

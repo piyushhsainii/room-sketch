@@ -163,8 +163,9 @@ function SingleHungSashes({
     const groupRef = useRef<THREE.Group>(null)
     const target = isOpen ? (openAmount ?? 1) : 0
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const v = approach(frac, target, delta)
+        if (frameloop === "demand" && v !== target) invalidate()
         if (groupRef.current) groupRef.current.position.y = v * travel
     })
 
@@ -207,9 +208,10 @@ function DoubleHungSashes({
     const bottomRef = useRef<THREE.Group>(null)
     const target = isOpen ? (openAmount ?? 1) : 0
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const vTop = approach(fracTop, target, delta)
         const vBottom = approach(fracBottom, target, delta)
+        if (frameloop === "demand" && (vTop !== target || vBottom !== target)) invalidate()
         if (topRef.current) topRef.current.position.y = -vTop * travel * 0.5
         if (bottomRef.current) bottomRef.current.position.y = vBottom * travel * 0.5
     })
@@ -251,8 +253,9 @@ function CasementSash({
     const maxAngle = -Math.PI / 2.4
     const target = isOpen ? (openAmount ?? 1) : 0
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const v = approach(frac, target, delta)
+        if (frameloop === "demand" && v !== target) invalidate()
         if (groupRef.current) groupRef.current.rotation.y = v * maxAngle
     })
 
@@ -299,8 +302,9 @@ function AwningSash({
     const maxAngle = Math.PI / 2.6 // opens outward (positive X rotation = bottom edge swings out/down)
     const target = isOpen ? (openAmount ?? 1) : 0
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const v = approach(frac, target, delta)
+        if (frameloop === "demand" && v !== target) invalidate()
         if (groupRef.current) groupRef.current.rotation.x = v * maxAngle
     })
 
@@ -347,8 +351,9 @@ function SlidingSash({
     const frac = useRef(0)
     const target = isOpen ? (openAmount ?? 1) : 0
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         const v = approach(frac, target, delta)
+        if (frameloop === "demand" && v !== target) invalidate()
         if (meshRef.current) meshRef.current.position.x = restX + v * openOffset
     })
 

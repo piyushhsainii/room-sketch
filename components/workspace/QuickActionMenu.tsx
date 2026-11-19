@@ -184,24 +184,6 @@ export function canBendSegment(fp: FloorPlanState, segId: string): boolean {
     return !!seg && seg.nodeIds.length === 2
 }
 
-export function bendSegment(fp: FloorPlanState, segId: string, uid: () => string): FloorPlanState {
-    const seg = fp.lineSegments.find(s => s.id === segId)
-    if (!seg || seg.nodeIds.length !== 2) return fp
-    const [aId, bId] = seg.nodeIds
-    const a = fp.lineNodes.find(n => n.id === aId)
-    const b = fp.lineNodes.find(n => n.id === bId)
-    if (!a || !b) return fp
-
-    const midNode = { id: uid(), x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }
-    return {
-        ...fp,
-        lineNodes: [...fp.lineNodes, midNode],
-        lineSegments: fp.lineSegments.map(s =>
-            s.id === segId ? { ...s, nodeIds: [aId, midNode.id, bId] } : s
-        ),
-    }
-}
-
 /* ------------------------------------------------------------------ */
 /* The menu itself                                                     */
 /* ------------------------------------------------------------------ */

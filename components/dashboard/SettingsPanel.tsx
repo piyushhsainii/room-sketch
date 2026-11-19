@@ -1,31 +1,11 @@
 // PATH: components/settings/SettingsPanel.tsx
 "use client";
 
+import { dashboardTheme as CLAY } from "@/components/dashboard/dashboard-theme";
+
 import { PLAN_ORDER, PLANS } from "@/lib/plan";
 import { usePlan } from "@/lib/hooks/usePlan";
 import { useEffect, useState } from "react";
-
-const CLAY = {
-    canvas: "#E5E5E5",
-    surface: "#EAEAEA",
-    surfaceChip: "#F5F5F5",
-    textPrimary: "#1A1A1A",
-    textMuted: "#5A5A5A",
-    textPlaceholder: "#999999",
-    lightShadow: "rgba(255,255,255,0.75)",
-    darkShadow: "rgba(0,0,0,0.14)",
-    accentText: "#4C4FBF",
-    accentSoft: "rgba(99,102,241,0.14)",
-    successText: "#3F9C63",
-    dangerText: "#B3503F",
-    dangerSoft: "rgba(179,80,63,0.14)",
-    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
-};
-
-const clayRaised = (pressed = false) =>
-    pressed
-        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
-        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
 
 function EditIcon() {
     return (
@@ -61,9 +41,9 @@ function SegmentedControl<T extends string>({
 }) {
     return (
         <div style={{
-            display: "inline-flex", border: "none", borderRadius: 999, padding: 4,
+            display: "inline-flex", border: `1px solid ${CLAY.border}`, borderRadius: 999, padding: 4,
             background: CLAY.surface,
-            boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+            boxShadow: "none",
             gap: 2,
         }}>
             {options.map((opt) => {
@@ -75,12 +55,12 @@ function SegmentedControl<T extends string>({
                         onClick={() => onChange(opt.value)}
                         style={{
                             display: "flex", alignItems: "center", gap: 6,
-                            padding: "8px 14px", borderRadius: 999, border: "none",
+                            padding: "8px 14px", borderRadius: 12, border: `1px solid ${CLAY.border}`,
                             background: active ? CLAY.surfaceChip : "transparent",
                             color: active ? CLAY.accentText : CLAY.textMuted,
                             fontSize: 12.5, fontWeight: active ? 500 : 400, fontFamily: CLAY.font,
                             cursor: "pointer", whiteSpace: "nowrap",
-                            boxShadow: active ? "-2px -2px 5px rgba(255,255,255,0.7), 2px 2px 6px rgba(0,0,0,0.14)" : "none",
+                            boxShadow: "none",
                             transition: "background 160ms ease, box-shadow 160ms ease, color 160ms ease",
                         }}
                     >
@@ -121,13 +101,13 @@ function ClayButton({
             onMouseLeave={() => setHovered(false)}
             style={{
                 width: fullWidth ? "100%" : undefined,
-                height: 40, padding: "0 20px", borderRadius: 999, border: "none",
+                height: 40, padding: "0 20px", borderRadius: 12, border: `1px solid ${CLAY.border}`,
                 background: variant === "danger" ? CLAY.dangerSoft : CLAY.surface,
                 color, fontSize: 13, fontWeight: 500, fontFamily: CLAY.font,
                 cursor: disabled ? "default" : "pointer",
                 opacity: disabled ? 0.55 : 1,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: (hovered && !disabled) ? clayRaised(true) : clayRaised(false),
+                boxShadow: "none",
                 transition: "box-shadow 180ms ease, opacity 180ms ease",
             }}
         >
@@ -217,15 +197,15 @@ export default function SettingsPanel({
             </p>
 
             <section style={{
-                border: "none", borderRadius: 24, background: CLAY.surface, padding: 24, marginBottom: 24,
-                boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                border: `1px solid ${CLAY.border}`, borderRadius: 16, background: CLAY.surface, padding: 24, marginBottom: 24,
+                boxShadow: "none",
             }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
                     <div style={{ position: "relative", flexShrink: 0 }}>
                         <div style={{
                             width: 64, height: 64, borderRadius: "50%", overflow: "hidden",
                             background: CLAY.surfaceChip,
-                            boxShadow: "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.14)",
+                            border: `1px solid ${CLAY.border}`,
                             display: "flex", alignItems: "center", justifyContent: "center",
                         }}>
                             {avatarUrl ? (
@@ -242,10 +222,10 @@ export default function SettingsPanel({
                             onMouseEnter={() => setAvatarEditHovered(true)}
                             onMouseLeave={() => setAvatarEditHovered(false)}
                             style={{
-                                position: "absolute", bottom: -2, right: -2, width: 24, height: 24, borderRadius: "50%",
+                                position: "absolute", bottom: -2, right: -2, width: 24, height: 24, borderRadius: 12,
                                 background: CLAY.accentText, border: `2px solid ${CLAY.surface}`, display: "flex",
                                 alignItems: "center", justifyContent: "center", cursor: "pointer",
-                                boxShadow: avatarEditHovered ? clayRaised(true) : "-2px -2px 4px rgba(255,255,255,0.5), 2px 2px 5px rgba(0,0,0,0.2)",
+                                boxShadow: "none",
                                 transition: "box-shadow 180ms ease",
                             }}
                         >
@@ -260,10 +240,10 @@ export default function SettingsPanel({
                                 value={fullName}
                                 onChange={(e) => setFullName(e.target.value)}
                                 style={{
-                                    width: "100%", height: 40, borderRadius: 12, border: "none",
+                                    width: "100%", height: 40, borderRadius: 12, border: `1px solid ${CLAY.border}`,
                                     padding: "0 14px", fontSize: 13.5, color: CLAY.textPrimary, outline: "none",
                                     fontFamily: CLAY.font, background: CLAY.surface,
-                                    boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+                                    boxShadow: "none",
                                 }}
                             />
                         </div>
@@ -273,10 +253,10 @@ export default function SettingsPanel({
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 style={{
-                                    width: "100%", height: 40, borderRadius: 12, border: "none",
+                                    width: "100%", height: 40, borderRadius: 12, border: `1px solid ${CLAY.border}`,
                                     padding: "0 14px", fontSize: 13.5, color: CLAY.accentText, outline: "none",
                                     fontFamily: CLAY.font, background: CLAY.surface,
-                                    boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+                                    boxShadow: "none",
                                 }}
                             />
                         </div>
@@ -285,8 +265,8 @@ export default function SettingsPanel({
             </section>
 
             <section style={{
-                border: "none", borderRadius: 24, background: CLAY.surface, overflow: "hidden", marginBottom: 24,
-                boxShadow: clayRaised(false),
+                border: `1px solid ${CLAY.border}`, borderRadius: 16, background: CLAY.surface, overflow: "hidden", marginBottom: 24,
+                boxShadow: "none",
             }}>
                 <div style={{ padding: "16px 24px" }}>
                     <h3 style={{ margin: 0, fontSize: 15, fontWeight: 500, color: CLAY.textPrimary }}>Preferences</h3>
@@ -312,8 +292,8 @@ export default function SettingsPanel({
             </section>
 
             <section style={{
-                border: "none", borderRadius: 24, background: CLAY.surface, overflow: "hidden", marginBottom: 24,
-                boxShadow: clayRaised(false),
+                border: `1px solid ${CLAY.border}`, borderRadius: 16, background: CLAY.surface, overflow: "hidden", marginBottom: 24,
+                boxShadow: "none",
             }}>
                 <div style={{ padding: "16px 24px" }}>
                     <h3 style={{ margin: 0, fontSize: 15, fontWeight: 500, color: CLAY.textPrimary }}>Account &amp; Subscription</h3>
@@ -326,7 +306,7 @@ export default function SettingsPanel({
                             <span style={{
                                 background: CLAY.surfaceChip, color: CLAY.textPrimary, fontSize: 11, fontWeight: 500,
                                 padding: "4px 11px", borderRadius: 999, letterSpacing: "0.03em",
-                                boxShadow: "-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.14)",
+                                border: `1px solid ${CLAY.border}`,
                             }}>
                                 {planConfig.label.toUpperCase()}
                             </span>
@@ -406,7 +386,7 @@ export default function SettingsPanel({
                             <div style={{
                                 height: 10, borderRadius: 999, overflow: "hidden", marginBottom: 18,
                                 background: CLAY.surface,
-                                boxShadow: `inset 2px 2px 5px ${CLAY.darkShadow}, inset -2px -2px 5px ${CLAY.lightShadow}`,
+                                border: `1px solid ${CLAY.border}`,
                             }}>
                                 <div style={{
                                     width: `${Math.min(100, Math.round((plan.projectsUsed / plan.projectLimit) * 100))}%`,
@@ -427,7 +407,7 @@ export default function SettingsPanel({
                 </div>
 
                 {upgradeOpen && (
-                    <div style={{ boxShadow: `inset 0 1px 0 rgba(255,255,255,0.6), 0 -1px 0 rgba(0,0,0,0.05)`, padding: "20px 24px 24px" }}>
+                    <div style={{ boxShadow: "none", padding: "20px 24px 24px" }}>
                         <p style={{ margin: "0 0 14px", fontSize: 12.5, fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase", color: CLAY.textPlaceholder }}>
                             Choose a plan
                         </p>
@@ -439,9 +419,9 @@ export default function SettingsPanel({
                                     <div
                                         key={id}
                                         style={{
-                                            border: "none", borderRadius: 18, padding: 16,
+                                            border: `1px solid ${CLAY.border}`, borderRadius: 18, padding: 16,
                                             background: isCurrent ? CLAY.accentSoft : CLAY.surface,
-                                            boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+                                            boxShadow: "none",
                                         }}
                                     >
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
@@ -503,8 +483,8 @@ export default function SettingsPanel({
                     display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50,
                 }}>
                     <div style={{
-                        background: CLAY.canvas, borderRadius: 24, padding: 28, maxWidth: 380, width: "90%",
-                        boxShadow: "0 20px 50px rgba(0,0,0,0.3)", fontFamily: CLAY.font,
+                        background: CLAY.canvas, borderRadius: 16, padding: 28, maxWidth: 380, width: "90%",
+                        boxShadow: "none", fontFamily: CLAY.font,
                     }}>
                         <h3 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 500, color: CLAY.textPrimary }}>
                             Cancel your subscription?
@@ -541,7 +521,7 @@ function PreferenceRow({
         <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20,
             padding: "18px 0",
-            boxShadow: last ? "none" : `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`,
+            boxShadow: "none",
         }}>
             <div style={{ maxWidth: 380 }}>
                 <p style={{ margin: "0 0 3px", fontSize: 13.5, fontWeight: 500, color: CLAY.textPrimary }}>{title}</p>

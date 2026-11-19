@@ -1,34 +1,16 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { SceneConfig, THEME } from '../workspace/FloorPlanEditor'
+import type { SceneConfig } from '../workspace/lib/scene-config'
 import { FloorPlanState } from '../workspace/lib/constants'
 import { Scene3DHandle } from '../workspace/3DScene'
 import { CameraView, getBuiltInViews } from '../workspace/lib/camera'
 import { uid } from '@/lib/helpers'
 
-// ---- Claymorphism theme tokens (shared across the app) ----
-const CLAY = {
-    surface: '#EAEAEA',
-    surfaceChip: '#F5F5F5',
-    canvas: '#E5E5E5',
-    textPrimary: '#1A1A1A',
-    textMuted: '#5A5A5A',
-    textPlaceholder: '#999999',
-    lightShadow: 'rgba(255,255,255,0.75)',
-    darkShadow: 'rgba(0,0,0,0.14)',
-    accentText: '#4C4FBF',
-    accentSoft: 'rgba(99,102,241,0.14)',
-    dangerText: '#B3503F',
-    dangerSoft: 'rgba(179,80,63,0.14)',
-    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
-}
+import { Camera } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { editorMenuTheme, menuButton } from './editor-menu-theme'
+const CLAY = editorMenuTheme
 
-const clayRaised = (pressed = false) =>
-    pressed
-        ? `inset 3px 3px 7px ${CLAY.darkShadow}, inset -3px -3px 7px ${CLAY.lightShadow}`
-        : `-3px -3px 7px ${CLAY.lightShadow}, 3px 3px 8px ${CLAY.darkShadow}`
-
-const clayInset = () => `inset 2px 2px 5px ${CLAY.darkShadow}, inset -2px -2px 5px ${CLAY.lightShadow}`
 
 function SaveViewPopover({
     onConfirm,
@@ -63,13 +45,12 @@ function SaveViewPopover({
                     fontSize: 12, padding: '8px 10px', borderRadius: 10,
                     border: 'none', outline: 'none', background: CLAY.surface,
                     color: CLAY.textPrimary, fontFamily: CLAY.font,
-                    boxShadow: clayInset(),
                 }}
             />
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                 <button
                     onClick={onCancel}
-                    style={{ fontSize: 12, padding: '5px 10px', borderRadius: 999, border: 'none', background: 'transparent', cursor: 'pointer', color: CLAY.textMuted, fontFamily: CLAY.font }}
+                    style={{ fontSize: 12, padding: '5px 10px', borderRadius: 12, border: 'none', background: 'transparent', cursor: 'pointer', color: CLAY.textMuted, fontFamily: CLAY.font }}
                 >
                     Cancel
                 </button>
@@ -77,11 +58,10 @@ function SaveViewPopover({
                     onClick={submit}
                     disabled={!name.trim()}
                     style={{
-                        fontSize: 12, padding: '5px 12px', borderRadius: 999, border: 'none',
+                        fontSize: 12, padding: '5px 12px', borderRadius: 12, border: 'none',
                         background: name.trim() ? CLAY.surfaceChip : CLAY.surface,
                         color: name.trim() ? CLAY.accentText : CLAY.textPlaceholder,
                         fontWeight: 500, fontFamily: CLAY.font,
-                        boxShadow: name.trim() ? clayRaised(false) : 'none',
                         cursor: name.trim() ? 'pointer' : 'default'
                     }}
                 >
@@ -92,14 +72,6 @@ function SaveViewPopover({
     )
 }
 
-function CameraIconSvg() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-            <circle cx="12" cy="13" r="4" />
-        </svg>
-    )
-}
 
 export function CameraViewPickerV2({
     fp,
@@ -134,7 +106,6 @@ export function CameraViewPickerV2({
     const [naming, setNaming] = useState(false)
     const [savingState, setSavingState] = useState<'idle' | 'saving' | 'error'>('idle')
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
-    const [triggerHovered, setTriggerHovered] = useState(false)
     const [saveRowHovered, setSaveRowHovered] = useState(false)
     const triggerRef = useRef<HTMLButtonElement>(null)
     const panelRef = useRef<HTMLDivElement>(null)
@@ -229,24 +200,12 @@ export function CameraViewPickerV2({
                     setAnchorRect(triggerRef.current?.getBoundingClientRect() ?? null)
                     setOpen(o => !o); setNaming(false); setErrorMsg(null)
                 }}
-                onMouseEnter={() => setTriggerHovered(true)}
-                onMouseLeave={() => setTriggerHovered(false)}
-                style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: embedded ? '0 12px' : '8px 12px',
-                    height: embedded ? 32 : undefined,
-                    borderRadius: 999,
-                    border: 'none',
-                    background: open ? CLAY.accentSoft : (triggerHovered ? CLAY.surfaceChip : (embedded ? 'transparent' : CLAY.surface)),
-                    color: open ? CLAY.accentText : CLAY.textPrimary,
-                    boxShadow: open ? clayRaised(true) : (triggerHovered ? clayRaised(true) : (embedded ? 'none' : clayRaised(false))),
-                    cursor: 'pointer', fontSize: embedded ? 11.5 : 13, fontWeight: open ? 500 : 400,
-                    fontFamily: CLAY.font,
-                    transition: 'box-shadow 160ms ease, background 160ms ease, color 160ms ease',
-                }}
+                aria-expanded={open}
+                aria-label="Views"
+                className={cn(menuButton, "px-2.5 sm:px-3", open ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-100")}
             >
-                <CameraIconSvg />
-                Views
+                <Camera size={16} aria-hidden="true" />
+                <span className="hidden sm:inline">Views</span>
                 {savingState === 'saving' && <span style={{ fontSize: 10, color: CLAY.textMuted }}>saving…</span>}
             </button>
 
@@ -270,12 +229,11 @@ export function CameraViewPickerV2({
                                 ? { top: anchorRect.bottom + GAP }
                                 : { bottom: window.innerHeight - anchorRect.top + GAP }),
                             left: Math.max(8, Math.min(anchorRect.right - 200, window.innerWidth - 208)),
-                            background: CLAY.surface, border: 'none', borderRadius: 18, minWidth: 200,
+                            background: CLAY.surface, border: `1px solid ${CLAY.border}`, borderRadius: 16, minWidth: 200, boxShadow: CLAY.shadow,
                             maxHeight: Math.min(PANEL_EST_HEIGHT, (openDown ? spaceBelow : spaceAbove) - GAP - 8),
                             overflowY: 'auto',
                             zIndex: 9999,
-                            boxShadow: `-5px -5px 10px ${CLAY.lightShadow}, 5px 5px 12px ${CLAY.darkShadow}`,
-                            fontFamily: CLAY.font,
+                                                        fontFamily: CLAY.font,
                         }}
                     >
                         <div style={{ padding: 8 }}>
@@ -292,13 +250,13 @@ export function CameraViewPickerV2({
                                     key={v.id}
                                     onClick={() => { scene3DRef.current?.flyTo(v); setOpen(false) }}
                                     style={{
-                                        display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', fontSize: 12,
+                                        display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', minHeight: 40, fontSize: 14,
                                         border: 'none', background: 'transparent', cursor: 'pointer',
                                         color: CLAY.textPrimary, borderRadius: 10, fontFamily: CLAY.font,
                                         transition: 'background 160ms ease, box-shadow 160ms ease',
                                     }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = CLAY.surfaceChip; e.currentTarget.style.boxShadow = clayRaised(true) }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'none' }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = CLAY.surfaceChip }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                                 >
                                     {v.label}
                                 </button>
@@ -306,13 +264,13 @@ export function CameraViewPickerV2({
 
                             {(fp.savedViews ?? []).length > 0 && (
                                 <>
-                                    <div style={{ height: 1, boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`, margin: '6px 2px' }} />
+                                    <div style={{ height: 1, background: CLAY.border, margin: '6px 2px' }} />
                                     {fp.savedViews!.map(v => (
                                         <div key={v.id} style={{ display: 'flex', alignItems: 'center' }}>
                                             <button
                                                 onClick={() => { scene3DRef.current?.flyTo(v); setOpen(false) }}
                                                 style={{
-                                                    flex: 1, textAlign: 'left', padding: '8px 10px', fontSize: 12,
+                                                    flex: 1, textAlign: 'left', padding: '6px 12px', minHeight: 40, fontSize: 14,
                                                     border: 'none', background: 'transparent', cursor: 'pointer',
                                                     color: CLAY.textPrimary, borderRadius: 10, fontFamily: CLAY.font,
                                                 }}
@@ -326,7 +284,7 @@ export function CameraViewPickerV2({
                                                 title="Delete view"
                                                 style={{
                                                     padding: '5px 10px', fontSize: 11, border: 'none', background: 'transparent', cursor: 'pointer',
-                                                    color: CLAY.textPlaceholder, borderRadius: 999, fontFamily: CLAY.font,
+                                                    color: CLAY.textPlaceholder, borderRadius: 12, fontFamily: CLAY.font,
                                                 }}
                                                 onMouseEnter={e => { e.currentTarget.style.color = CLAY.dangerText }}
                                                 onMouseLeave={e => { e.currentTarget.style.color = CLAY.textPlaceholder }}
@@ -338,7 +296,7 @@ export function CameraViewPickerV2({
                                 </>
                             )}
 
-                            <div style={{ height: 1, boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`, margin: '6px 2px' }} />
+                            <div style={{ height: 1, background: CLAY.border, margin: '6px 2px' }} />
 
                             {naming ? (
                                 <SaveViewPopover
@@ -351,10 +309,9 @@ export function CameraViewPickerV2({
                                     onMouseEnter={() => setSaveRowHovered(true)}
                                     onMouseLeave={() => setSaveRowHovered(false)}
                                     style={{
-                                        display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', fontSize: 12,
+                                        display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', minHeight: 40, fontSize: 14,
                                         fontWeight: 500, color: CLAY.accentText, border: 'none',
                                         background: saveRowHovered ? CLAY.surfaceChip : 'transparent',
-                                        boxShadow: saveRowHovered ? clayRaised(true) : 'none',
                                         cursor: 'pointer', borderRadius: 10, fontFamily: CLAY.font,
                                         transition: 'background 160ms ease, box-shadow 160ms ease',
                                     }}

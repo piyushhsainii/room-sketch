@@ -37,9 +37,10 @@ export function BayPanel({
     const maxAngle = hingeSign * (Math.PI / 2.2)
     const target = isOpen ? (openAmount ?? 1) : 0
 
-    useFrame((_, delta) => {
+    useFrame(({ frameloop, invalidate }, delta) => {
         if (!isDoor) return
         const v = approach(frac, target, delta)
+        if (frameloop === "demand" && v !== target) invalidate()
         if (panelGroupRef.current) panelGroupRef.current.rotation.y = v * maxAngle
     })
 

@@ -3,15 +3,13 @@
 import { useState } from "react";
 import { isWaitlistMode } from "@/lib/flags";
 
-// ---- Claymorphism theme tokens (shared across the app) ----
 const CLAY = {
-  surface: "#EAEAEA",
-  surfaceChip: "#F5F5F5",
+  surface: "var(--landing-paper)",
+  surfaceChip: "var(--landing-inset)",
   textPrimary: "#1A1A1A",
-  textMuted: "#5A5A5A",
+  textMuted: "var(--landing-muted)",
   lightShadow: "rgba(255,255,255,0.75)",
-  darkShadow: "rgba(0,0,0,0.14)",
-  font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+  darkShadow: "rgba(0,0,0,0.08)",
 };
 
 const clayRaised = (pressed = false) =>
@@ -22,6 +20,7 @@ const clayRaised = (pressed = false) =>
 const LINKS = [
   { href: "#how-it-works", label: "How it works" },
   { href: "#capabilities", label: "Capabilities" },
+  { href: "/docs/mcp", label: "MCP guide" },
   ...(!isWaitlistMode ? [{ href: "#pricing", label: "Pricing" }] : []),
   ...(!isWaitlistMode ? [{ href: "/community", label: "Community" }] : []),
 ];
@@ -34,19 +33,19 @@ export default function Nav() {
   return (
     <>
       <nav
-        className="fixed z-[200] top-4 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 h-16 px-4 md:px-3 md:pl-6 flex items-center justify-between md:justify-start md:gap-10 rounded-full"
+        className="fixed z-[200] top-4 left-4 right-4 md:left-1/2 md:right-auto md:w-max md:-translate-x-1/2 h-16 px-4 md:px-3 md:pl-6 flex items-center justify-between md:justify-start md:gap-6 lg:gap-10 rounded-full"
         style={{
           background: CLAY.surface,
+          border: "1px solid var(--landing-line)",
           boxShadow: clayRaised(false),
-          fontFamily: CLAY.font,
         }}
       >
         <div className="flex items-center gap-2 shrink-0" style={{ fontSize: 19, letterSpacing: "normal", color: CLAY.textPrimary }}>
           <img src="/room-sketch-logo-removebg-preview.png" alt="" className="w-10 h-10 select-none mix-blend-multiply rounded-full hover:scale-110 transition-all duration-200" />
-          <img src="/room-sketch-text.jpg" alt="" className="w-24 select-none mix-blend-multiply rounded-full" />
+          <span className="select-none text-base font-semibold tracking-tight">roomsketch</span>
         </div>
 
-        <div className="hidden md:flex items-center gap-7">
+        <div className="hidden md:flex items-center gap-5 whitespace-nowrap lg:gap-7">
           {LINKS.map((link) => (
             <NavLink key={link.href} href={link.href}>{link.label}</NavLink>
           ))}
@@ -58,7 +57,6 @@ export default function Nav() {
           onMouseLeave={() => setCtaHovered(false)}
           className="hidden md:inline-flex items-center whitespace-nowrap ml-auto"
           style={{
-            fontFamily: CLAY.font,
             fontSize: 13, fontWeight: 500, letterSpacing: "0.02em",
             color: '#ffffff',
             background: '#000000',
@@ -101,7 +99,6 @@ export default function Nav() {
         style={{
           background: CLAY.surface,
           boxShadow: clayRaised(false),
-          fontFamily: CLAY.font,
         }}
       >
         <div className="flex flex-col py-3">
@@ -111,7 +108,7 @@ export default function Nav() {
               href={link.href}
               onClick={() => setOpen(false)}
               className="px-6 py-3 transition-colors"
-              style={{ fontFamily: CLAY.font, fontSize: 14, fontWeight: 400, color: CLAY.textMuted }}
+              style={{ fontSize: 14, fontWeight: 400, color: CLAY.textMuted }}
               onMouseEnter={e => (e.currentTarget.style.color = CLAY.textPrimary)}
               onMouseLeave={e => (e.currentTarget.style.color = CLAY.textMuted)}
             >
@@ -125,7 +122,6 @@ export default function Nav() {
             onMouseLeave={() => setMobileCtaHovered(false)}
             className="mx-4 mt-2 text-center"
             style={{
-              fontFamily: CLAY.font,
               fontSize: 13, fontWeight: 500, letterSpacing: "0.02em",
               color: CLAY.textPrimary,
               background: CLAY.surfaceChip,
@@ -150,7 +146,6 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        fontFamily: CLAY.font,
         fontSize: 14, fontWeight: 400, letterSpacing: "normal",
         color: hovered ? CLAY.textPrimary : CLAY.textMuted,
         transition: "color 160ms ease",

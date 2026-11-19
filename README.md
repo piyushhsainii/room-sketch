@@ -13,6 +13,10 @@ RoomSketch is a browser-based floor plan editor with a live, synced 3D preview �
 - **Duplicate & undo** — mirror or duplicate rooms/furniture groups; every edit is undoable
 - **Share links** — send a client a link to open the model on any device, no plugin required
 
+## MCP integration
+
+RoomSketch includes a hosted MCP endpoint for Codex and Claude Code. See [mcp/README.md](mcp/README.md) for setup, migration, access tokens, supported tools, and testing. The account connection page is `/mcp`; MCP defaults off until configured.
+
 ## Tech stack
 
 - [Next.js](https://nextjs.org/) (App Router)

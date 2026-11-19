@@ -7,7 +7,7 @@ import { DoorStyle, EditorOpening, EditorRoom, FloorMaterial, PlacedWallDecor, W
 import { DoorVariant3D } from "./objects/door-variants";
 import { Railing3D } from "./objects/railing-3d";
 import * as THREE from 'three'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { makeClickVsDragHandlers } from "@/lib/helpers";
 
 function wallFaceAttach(wallName: 'north' | 'south' | 'east' | 'west'): { interior: number; exterior: number; ends: number[] } {
@@ -186,19 +186,30 @@ function Room3D({
         for (const poly of cutouts ?? []) {
             if (poly.length < 3) continue
             const hole = new THREE.Path()
-            // convert world coords to this shape's local space (centered on cx, cz)
-            hole.moveTo(poly[0]!.x - cx, poly[0]!.z - cz)
-            for (let i = 1; i < poly.length; i++) hole.lineTo(poly[i]!.x - cx, poly[i]!.z - cz)
+            // The mesh's -90° X rotation maps shape Y to negative world Z.
+            hole.moveTo(poly[0]!.x - cx, cz - poly[0]!.z)
+            for (let i = 1; i < poly.length; i++) hole.lineTo(poly[i]!.x - cx, cz - poly[i]!.z)
             hole.closePath()
             s.holes.push(hole)
         }
         return s
     }, [W, D, T, cx, cz, cutouts])
 
+    const floorGeometry = useMemo(() => {
+        const geometry = new THREE.ShapeGeometry(floorShape)
+        const positions = geometry.getAttribute('position')
+        const uv = geometry.getAttribute('uv')
+        for (let i = 0; i < positions.count; i++) {
+            uv.setXY(i, (positions.getX(i) + W / 2) / W, (positions.getY(i) + D / 2) / D)
+        }
+        return geometry
+    }, [floorShape, W, D])
+    useEffect(() => () => floorGeometry.dispose(), [floorGeometry])
+
     return (
         <group>
             {/* Floor */}
-            <mesh position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow
+            <mesh userData={{ walkSurface: true }} position={[cx, 0.002, cz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow
                 onPointerDown={interactive ? (e) => { floorDownPos.current = { x: e.clientX, y: e.clientY } } : undefined}
                 onPointerUp={interactive ? (e) => {
                     const d = floorDownPos.current
@@ -212,8 +223,8 @@ function Room3D({
                 onPointerOver={interactive ? (e) => { e.stopPropagation(); document.body.style.cursor = 'pointer' } : undefined}
                 onPointerOut={interactive ? () => { document.body.style.cursor = 'auto' } : undefined}
             >
-                <shapeGeometry args={[floorShape]} />
-                <FloorMat mat={floorMat} opacity={opacity} transparent={transparent} />
+                <primitive object={floorGeometry} attach="geometry" />
+                <FloorMat mat={floorMat} width={W} depth={D} opacity={opacity} transparent={transparent} />
             </mesh>
 
             {/* NEW — wallType === 'open': skip all wall/opening geometry for this
@@ -517,13 +528,15 @@ function Room3D({
                 // NEW — flipping the face also flips the direction the item should
                 // face, otherwise a painting mounted on the outer face would render
                 // backwards (front pressed against the wall).
-                const angle = (isH ? 0 : Math.PI / 2) + (inward ? 0 : Math.PI)
+                const faceAngle = d.wall === 'north' ? 0 : d.wall === 'south' ? Math.PI : d.wall === 'west' ? -Math.PI / 2 : Math.PI / 2
+                const angle = faceAngle + (inward ? 0 : Math.PI)
                 let dx: number, dz: number
-                const off = inward ? 1 : -1
-                if (d.wall === 'north') { dx = room.x + d.position; dz = room.z + T / 2 * off }
-                else if (d.wall === 'south') { dx = room.x + d.position; dz = room.z + D - T / 2 * off }
-                else if (d.wall === 'west') { dx = room.x + T / 2 * off; dz = room.z + d.position }
-                else { dx = room.x + W - T / 2 * off; dz = room.z + d.position }
+                // Mount on the wall face, rather than burying the plaque at its centre.
+                const offset = inward ? T + 0.02 : -0.02
+                if (d.wall === 'north') { dx = room.x + d.position; dz = room.z + offset }
+                else if (d.wall === 'south') { dx = room.x + d.position; dz = room.z + D - offset }
+                else if (d.wall === 'west') { dx = room.x + offset; dz = room.z + d.position }
+                else { dx = room.x + W - offset; dz = room.z + d.position }
                 return (
                     <group
                         key={d.id}

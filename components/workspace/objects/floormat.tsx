@@ -1,7 +1,7 @@
 import * as THREE from 'three'
-import { Suspense, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { FloorMaterial, FLOOR_MAT_DEFS, MaterialDef } from '../lib/constants'
-import { useFrame, useLoader } from '@react-three/fiber'
+import { useTextureMaterialProps } from '../texture/textureLoader'
 
 // ── Procedural fallback for solids / anything without a real texture ──────
 // Kept string-matching only as a *visual* fallback for materials that
@@ -73,17 +73,6 @@ function createFloorTexture(mat: FloorMaterial, def: MaterialDef): THREE.CanvasT
     return tex
 }
 
-function LoadingFloorMaterial({ opacity = 1, transparent = false }: { opacity?: number; transparent?: boolean }) {
-    const ref = useRef<THREE.MeshStandardMaterial>(null)
-    useFrame(({ clock }) => {
-        if (ref.current) {
-            const t = (Math.sin(clock.elapsedTime * 3) + 1) / 2
-            ref.current.color.setScalar(0.75 + t * 0.1)
-        }
-    })
-    return <meshStandardMaterial ref={ref} roughness={0.9} opacity={opacity} transparent={transparent} />
-}
-
 function ProceduralFloorMat({
     mat, def, width, depth, opacity = 1, transparent = false,
 }: { mat: FloorMaterial; def: MaterialDef; width: number; depth: number; opacity?: number; transparent?: boolean }) {
@@ -93,46 +82,31 @@ function ProceduralFloorMat({
         return tex
     }, [mat, width, depth, def.repeatScale, def.color])
 
-    return <meshStandardMaterial attach="material" color={def.color} roughness={def.roughness} metalness={def.metalness} map={texture || undefined} opacity={opacity} transparent={transparent} />
+    return <meshStandardMaterial attach="material" side={THREE.DoubleSide} forceSinglePass color={def.color} roughness={def.roughness} metalness={def.metalness} map={texture || undefined} opacity={opacity} transparent={transparent} />
 }
 function RealTextureFloorMat({
     width, depth, def, opacity = 1, transparent = false,
 }: { width: number; depth: number; def: MaterialDef; opacity?: number; transparent?: boolean }) {
-    const urls = [def.textureUrl!, def.normalMapUrl, def.roughnessMapUrl].filter(Boolean) as string[]
-    const loaded = useLoader(THREE.TextureLoader, urls)
-
-    let i = 0
-    const colorMap = loaded[i++]
-    const normalMap = def.normalMapUrl ? loaded[i++] : undefined
-    const roughnessMap = def.roughnessMapUrl ? loaded[i++] : undefined
-
-    const maps = useMemo(() => {
-        const prep = (t: THREE.Texture) => {
-            const c = t.clone()
-            c.wrapS = c.wrapT = THREE.RepeatWrapping
-            c.repeat.set(width * def.repeatScale, depth * def.repeatScale)
-            c.needsUpdate = true
-            c.generateMipmaps = true
-            c.minFilter = THREE.LinearMipmapLinearFilter
-            c.magFilter = THREE.LinearFilter
-            c.anisotropy = 8
-            return c
-        }
-        const result: any = { map: prep(colorMap) }
-        if (normalMap) result.normalMap = prep(normalMap)
-        if (roughnessMap) result.roughnessMap = prep(roughnessMap)
-        return result
-    }, [colorMap, normalMap, roughnessMap, width, depth, def])
+    const { textures } = useTextureMaterialProps({
+        map: def.textureUrl,
+        normalMap: def.normalMapUrl,
+        roughnessMap: def.roughnessMapUrl,
+    }, width * def.repeatScale, depth * def.repeatScale)
 
     return (
         <meshStandardMaterial
+            key={Object.keys(textures).join(",")}
             attach="material"
-            color="#FFFFFF"
-            roughness={def.roughnessMapUrl ? 1 : def.roughness}
+            side={THREE.DoubleSide}
+            forceSinglePass
+            color={textures.map ? "#FFFFFF" : def.color}
+            roughness={textures.map && textures.roughnessMap ? 1 : def.roughness}
             metalness={def.metalness}
             opacity={opacity}
             transparent={transparent}
-            {...maps}
+            map={textures.map ?? null}
+            normalMap={textures.map ? textures.normalMap ?? null : null}
+            roughnessMap={textures.map ? textures.roughnessMap ?? null : null}
         />
     )
 }
@@ -146,15 +120,13 @@ export function FloorMat({
 
     if (def.textureUrl) {
         return (
-            <Suspense fallback={<LoadingFloorMaterial opacity={opacity} transparent={finalTransparent} />}>
-                <RealTextureFloorMat width={width} depth={depth} def={def} opacity={opacity} transparent={finalTransparent} />
-            </Suspense>
+            <RealTextureFloorMat width={width} depth={depth} def={def} opacity={opacity} transparent={finalTransparent} />
         )
     }
 
     const isSolid = mat === 'plain' || mat.startsWith('solid-')
     if (isSolid) {
-        return <meshStandardMaterial attach="material" color={def.color} roughness={def.roughness} metalness={def.metalness} opacity={opacity} transparent={finalTransparent} />
+        return <meshStandardMaterial attach="material" side={THREE.DoubleSide} forceSinglePass color={def.color} roughness={def.roughness} metalness={def.metalness} opacity={opacity} transparent={finalTransparent} />
     }
 
     return <ProceduralFloorMat mat={mat} def={def} width={width} depth={depth} opacity={opacity} transparent={finalTransparent} />

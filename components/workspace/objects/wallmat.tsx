@@ -1,7 +1,7 @@
 import * as THREE from 'three'
-import { Suspense, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { WALL_MAT_DEFS, WallMaterial, } from '../lib/constants'
-import { useFrame, useLoader } from '@react-three/fiber'
+import { useTextureMaterialProps } from '../texture/textureLoader'
 import { MaterialDef, } from '../texture/materials-registry'
 
 interface WallMatProps {
@@ -98,22 +98,12 @@ export function createProceduralTexture(mat: WallMaterial): THREE.CanvasTexture 
     return tex
 }
 
-function LoadingMaterial({ opacity = 1, transparent = false, attach = 'material' }: { opacity?: number; transparent?: boolean; attach?: string }) {
-    const ref = useRef<THREE.MeshStandardMaterial>(null)
-    useFrame(({ clock }) => {
-        if (ref.current) {
-            const t = (Math.sin(clock.elapsedTime * 3) + 1) / 2
-            ref.current.color.setScalar(0.75 + t * 0.1)
-        }
-    })
-    return <meshStandardMaterial ref={ref} attach={attach} roughness={0.9} opacity={opacity} transparent={transparent} />
-}
-
 export function RealTextureWallMat({
     width,
     height,
-    depth,
     def,
+    fallbackColor,
+    fallbackRoughness,
     opacity = 1,
     transparent = false,
     polygonOffset = false,
@@ -123,8 +113,9 @@ export function RealTextureWallMat({
 }: {
     width: number
     height: number
-    depth: number
     def: MaterialDef
+    fallbackColor: string
+    fallbackRoughness: number
     opacity?: number
     transparent?: boolean
     polygonOffset?: boolean
@@ -132,49 +123,27 @@ export function RealTextureWallMat({
     polygonOffsetUnits?: number
     attach?: string
 }) {
-    const urls = [def.textureUrl!, def.normalMapUrl, def.roughnessMapUrl].filter(Boolean) as string[]
-    const loaded = useLoader(THREE.TextureLoader, urls)
-
-    // Map results back by which URLs were actually present — don't assume fixed
-    // array positions, since `.filter(Boolean)` shifts indices when a map is absent.
-    let i = 0
-    const colorMap = loaded[i++]
-    const normalMap = def.normalMapUrl ? loaded[i++] : undefined
-    const roughnessMap = def.roughnessMapUrl ? loaded[i++] : undefined
-
-    const maps = useMemo(() => {
-        const prep = (t: THREE.Texture) => {
-            const c = t.clone()
-            c.wrapS = c.wrapT = THREE.RepeatWrapping
-            c.repeat.set(
-                Math.max(1, width * def.repeatScale),
-                Math.max(1, height * def.repeatScale)
-            )
-            c.needsUpdate = true
-            c.generateMipmaps = true
-            c.minFilter = THREE.LinearMipmapLinearFilter
-            c.magFilter = THREE.LinearFilter
-            c.anisotropy = 8
-            return c
-        }
-        const result: any = { map: prep(colorMap) }
-        if (normalMap) result.normalMap = prep(normalMap)
-        if (roughnessMap) result.roughnessMap = prep(roughnessMap)
-        return result
-    }, [colorMap, normalMap, roughnessMap, width, height, def])
+    const { textures } = useTextureMaterialProps({
+        map: def.textureUrl,
+        normalMap: def.normalMapUrl,
+        roughnessMap: def.roughnessMapUrl,
+    }, Math.max(1, width * def.repeatScale), Math.max(1, height * def.repeatScale))
 
     return (
         <meshStandardMaterial
+            key={Object.keys(textures).join(",")}
             attach={attach}
-            color="#FFFFFF"
-            roughness={def.roughnessMapUrl ? 1 : def.roughness}
+            color={textures.map ? "#FFFFFF" : fallbackColor}
+            roughness={textures.map && textures.roughnessMap ? 1 : fallbackRoughness}
             metalness={def.metalness}
             opacity={opacity}
             transparent={transparent}
             polygonOffset={polygonOffset}
             polygonOffsetFactor={polygonOffsetFactor}
             polygonOffsetUnits={polygonOffsetUnits}
-            {...maps}
+            map={textures.map ?? null}
+            normalMap={textures.map ? textures.normalMap ?? null : null}
+            roughnessMap={textures.map ? textures.roughnessMap ?? null : null}
         />
     )
 }
@@ -290,11 +259,9 @@ export function WallMat({
 
     if (def.textureUrl) {
         return (
-            <Suspense fallback={<LoadingMaterial opacity={opacity} transparent={finalTransparent} attach={attach} />}>
-                <RealTextureWallMat width={repeatW} height={repeatH} depth={depth} def={def} opacity={opacity} transparent={finalTransparent}
-                    polygonOffset={polygonOffset} polygonOffsetFactor={polygonOffsetFactor} polygonOffsetUnits={polygonOffsetUnits}
-                    attach={attach} />
-            </Suspense>
+            <RealTextureWallMat width={repeatW} height={repeatH} def={def} fallbackColor={finalColor} fallbackRoughness={finalRoughness} opacity={opacity} transparent={finalTransparent}
+                polygonOffset={polygonOffset} polygonOffsetFactor={polygonOffsetFactor} polygonOffsetUnits={polygonOffsetUnits}
+                attach={attach} />
         )
     }
 

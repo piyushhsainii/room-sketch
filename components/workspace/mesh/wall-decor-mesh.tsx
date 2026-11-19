@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { useEffect, useMemo } from 'react'
 import { PlacedWallDecor } from "../lib/constants"
 
 function m(color: string, extra: Partial<THREE.MeshStandardMaterialParameters>, itemOpacity: number, itemTransparent: boolean) {
@@ -18,6 +19,8 @@ export function WallDecorMesh({ decor, angle, basePos, opacity = 1, transparent 
     const w = rawWidth * scale
     const itemOpacity = opacity
     const itemTransparent = transparent || opacity < 1
+
+    if (decor.text) return <WallSign decor={decor} basePos={basePos} rotation={groupRot} width={w} opacity={itemOpacity} />
 
     switch (decor.type) {
         case 'led_strip': {
@@ -154,4 +157,28 @@ export function WallDecorMesh({ decor, angle, basePos, opacity = 1, transparent 
             )
         }
     }
+}
+
+function WallSign({ decor, basePos, rotation, width, opacity }: {
+    decor: PlacedWallDecor; basePos: [number, number, number]; rotation: [number, number, number]; width: number; opacity: number
+}) {
+    const texture = useMemo(() => {
+        const canvas = document.createElement('canvas')
+        canvas.width = 1024; canvas.height = 320
+        const context = canvas.getContext('2d')!
+        context.fillStyle = decor.backgroundColor ?? '#24483f'; context.fillRect(0, 0, 1024, 320)
+        context.fillStyle = '#c9aa75'; context.fillRect(60, 65, 8, 190)
+        context.fillStyle = decor.textColor ?? '#f6f2e9'
+        context.font = '600 76px Inter, Arial, sans-serif'
+        context.fillText((decor.text ?? '').slice(0, 40), 105, 155, 850)
+        context.font = '28px Inter, Arial, sans-serif'
+        context.fillText((decor.subtitle ?? '').slice(0, 80), 108, 215, 840)
+        const map = new THREE.CanvasTexture(canvas); map.colorSpace = THREE.SRGBColorSpace
+        return map
+    }, [decor.text, decor.subtitle, decor.backgroundColor, decor.textColor])
+    useEffect(() => () => texture.dispose(), [texture])
+    return <group position={basePos} rotation={rotation}>
+        <mesh castShadow><boxGeometry args={[width + 0.04, width * 0.3125 + 0.04, 0.035]} /><meshStandardMaterial color="#b89b68" metalness={0.65} roughness={0.36} transparent={opacity < 1} opacity={opacity} /></mesh>
+        <mesh position={[0, 0, 0.019]}><planeGeometry args={[width, width * 0.3125]} /><meshStandardMaterial map={texture} roughness={0.8} transparent={opacity < 1} opacity={opacity} /></mesh>
+    </group>
 }

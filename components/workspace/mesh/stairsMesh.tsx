@@ -75,7 +75,7 @@ function renderTread({
     const sizeZ = riserAxis === 'z' ? treadDepth : width
 
     const nodes: React.ReactNode[] = [
-        <mesh key={key} position={position} castShadow receiveShadow>
+        <mesh key={key} position={position} userData={{ walkSurface: true }} castShadow receiveShadow>
             <boxGeometry args={[sizeX, Math.max(0.005, treadThickness), sizeZ]} />
             <TreadMaterial def={treadMaterial} />
         </mesh>,
@@ -108,12 +108,12 @@ function renderTread({
 }
 
 function TreadMaterial({ def }: { def?: ResolvedTreadMaterial }) {
-    const useTextured = !!def?.textures?.map && def.status === 'loaded'
+    const useTextured = !!def?.textures?.map
 
     if (useTextured) {
         return (
             <meshStandardMaterial
-                key={def!.textureUrl}
+                key={Object.keys(def!.textures!).join(",")}
                 map={def!.textures!.map}
                 normalMap={def!.textures!.normalMap}
                 roughnessMap={def!.textures!.roughnessMap}
@@ -634,7 +634,7 @@ function LStairs({
                 })
             )}
 
-            <mesh position={[landingX, halfH - landingThickness / 2, landingZ]} castShadow receiveShadow>
+            <mesh userData={{ walkSurface: true }} position={[landingX, halfH - landingThickness / 2, landingZ]} castShadow receiveShadow>
                 <boxGeometry args={[flightWidth, landingThickness, flightWidth]} />
                 <TreadMaterial def={treadMaterial} />
             </mesh>
@@ -723,7 +723,7 @@ function UStairs({
                 })
             )}
 
-            <mesh position={[0, halfH - treadH1 * 0.4, d / 2 - landingD / 2]} castShadow receiveShadow>
+            <mesh userData={{ walkSurface: true }} position={[0, halfH - treadH1 * 0.4, d / 2 - landingD / 2]} castShadow receiveShadow>
                 <boxGeometry args={[w * 0.9, treadH1 * 0.9, landingD * 0.9]} />
                 <TreadMaterial def={treadMaterial} />
             </mesh>
@@ -882,7 +882,7 @@ function SpiralStairs({
                 const angle = i * angleStep
                 const y = treadH * i
                 return (
-                    <mesh key={i} position={[0, y, 0]} rotation={[0, -angle, 0]} castShadow receiveShadow geometry={treadGeo}>
+                    <mesh key={i} position={[0, y, 0]} rotation={[0, -angle, 0]} castShadow receiveShadow geometry={treadGeo} userData={{ walkSurface: true }}>
                         <TreadMaterial def={treadMaterial} />
                     </mesh>
                 )
@@ -948,6 +948,7 @@ function RampStairs({
             <mesh
                 position={[0, h / 2, 0]}
                 rotation={[-angle, 0, 0]}
+                userData={{ walkSurface: true }}
                 castShadow
                 receiveShadow
             >

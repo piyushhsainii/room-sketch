@@ -10,7 +10,7 @@ import {
     LineNode,
     MaterialDomain,
 } from './lib/constants'
-import { SceneConfig, RoomSceneConfig } from './FloorPlanEditor'
+import type { SceneConfig, RoomSceneConfig } from './lib/scene-config'
 import { deriveClosedPolygons } from '@/lib/helpers'
 import { ScrollableList } from '../ui/ScrollableList'
 import { getMaterialsByCategory, labelize, MaterialCategory } from './texture/materials-registry'

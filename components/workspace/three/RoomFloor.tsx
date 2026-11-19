@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo } from 'react'
 import * as THREE from 'three'
-import { useTexture } from '@react-three/drei'
+import { useTextureMaterialProps } from '../texture/textureLoader'
 
 import { getRoomBounds } from '@/lib/workspace/sceneBuilder'
 import type { SceneRoom } from '@/types/workspace'
@@ -127,9 +127,9 @@ const TEXTURE_URLS = {
     roughnessMap: '/textures/Marble022_1K-JPG_Roughness.jpg',
   },
   tile: {
-    map: '/textures/Tiles101_1K-JPG_Color.jpg',
-    normalMap: '/textures/Tiles101_1K-JPG_NormalGL.jpg',
-    roughnessMap: '/textures/Tiles101_Roughness.jpg',
+    map: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_Color.jpg',
+    normalMap: '/textures/tiles/Tiles101_1K-JPG/Tiles101_1K-JPG_NormalGL.jpg',
+    roughnessMap: '/textures/tiles/Tiles101_1K-JPG/Tiles101_Roughness.jpg',
   },
   carpet: {
     map: '/textures/Fabric049_1K-JPG_Color.jpg',
@@ -195,27 +195,15 @@ function FloorMaterialPBR({ material, roughness, metalness, repeat }: {
   metalness: number
   repeat: number
 }) {
-  // @ts-ignore
-  const urls = TEXTURE_URLS[material]
-  const textures = useTexture({
-    map: urls.map,
-    normalMap: urls.normalMap,
-    roughnessMap: urls.roughnessMap,
-  })
-
-  useMemo(() => {
-    const maps = [textures.map, textures.normalMap, textures.roughnessMap]
-    maps.forEach((t) => {
-      if (t) {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping
-        t.repeat.set(repeat, repeat)
-        t.needsUpdate = true
-      }
-    })
-  }, [textures, repeat])
+  const urls = TEXTURE_URLS[material as keyof typeof TEXTURE_URLS]
+  const { textures } = useTextureMaterialProps(urls ?? null, repeat, repeat)
+  if (!textures.map) {
+    return <FloorMaterialFallback material={material} roughness={roughness} metalness={metalness} />
+  }
 
   return (
     <meshStandardMaterial
+      key={Object.keys(textures).join(",")}
       map={textures.map}
       normalMap={textures.normalMap}
       roughnessMap={textures.roughnessMap}

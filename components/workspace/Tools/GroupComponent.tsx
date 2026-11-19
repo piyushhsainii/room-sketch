@@ -106,8 +106,8 @@ export function GroupButton({
     // programmatic setTool, etc.), not just clicks that land outside this
     // component's DOM, which the outside-mousedown listener alone can't catch.
     useEffect(() => {
-        if (trigger === "click" && open && !isActive) setOpen(false)
-    }, [isActive])
+        if (trigger === "click" && (group.menuOnly || !isActive)) setOpen(false)
+    }, [activeTool, group.menuOnly, isActive, setOpen, trigger])
 
     const setAnchorNode = (el: HTMLDivElement | null) => {
         anchorProps.ref.current = el
@@ -129,12 +129,14 @@ export function GroupButton({
         >
             <Tooltip label={currentLeaf.label} shortcut={currentLeaf.key}>
                 <button
+                    aria-label={currentLeaf.label}
+                    aria-expanded={hasFlyout ? open : undefined}
                     className="tool-btn"
                     onMouseEnter={() => setHover(true)}
                     onMouseDown={() => setPressed(true)}
                     onMouseUp={() => setPressed(false)}
                     onClick={() => {
-                        onSelect(currentLeaf.id)
+                        if (!group.menuOnly) onSelect(currentLeaf.id)
                         if (trigger === "click") toggleOpen()
                     }}
                     style={{

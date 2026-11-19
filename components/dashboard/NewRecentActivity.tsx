@@ -1,28 +1,13 @@
 // PATH: components/dashboard/RecentActivity.tsx
 "use client";
 
+import { dashboardTheme as CLAY } from "@/components/dashboard/dashboard-theme";
+
 import { Clock } from "lucide-react";
 import { ProjectCard, ProjectCardSkeleton } from "./ProjectsGrid";
 import type { ActiveFeature } from "@/components/sidebar/Sidebar";
 import { useState } from "react";
 import { useGatedCreate } from "@/lib/hooks/useGatedCreate";
-
-const CLAY = {
-    canvas: "#E5E5E5",
-    surface: "#EAEAEA",
-    surfaceChip: "#F5F5F5",
-    textPrimary: "#1A1A1A",
-    textMuted: "#5A5A5A",
-    textPlaceholder: "#999999",
-    lightShadow: "rgba(255,255,255,0.75)",
-    darkShadow: "rgba(0,0,0,0.14)",
-    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
-}
-
-const clayRaised = (pressed = false) =>
-    pressed
-        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
-        : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`
 
 function CompassIcon() {
     return (
@@ -57,7 +42,7 @@ export default function RecentActivity({
     return (
         <div style={{ marginTop: 40 }} className="max-w-[1600px]">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <div className="flex items-center gap-1 ml-4">
+                <div className="flex items-center gap-2">
                     <Clock size={15} />
                     <h3 style={{ margin: 0, fontSize: 16, color: "rgba(15,15,15,0.9)" }} className="tracking-tight">
                         Recent Activity
@@ -78,7 +63,7 @@ export default function RecentActivity({
 
             {
                 !error && loading && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 20 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(270px, 100%), 1fr))", gap: 20 }}>
                         {Array.from({ length: 5 }).map((_, i) => <ProjectCardSkeleton key={i} />)}
                     </div>
                 )
@@ -87,10 +72,10 @@ export default function RecentActivity({
             {
                 !error && !loading && projects.length === 0 && (
                     <div style={{
-                        borderRadius: 24,
+                        borderRadius: 16,
                         background: CLAY.surface,
-                        border: "none",
-                        boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                        border: `1px solid ${CLAY.border}`,
+                        boxShadow: "none",
                         padding: "56px 24px",
                         display: "flex",
                         flexDirection: "column",
@@ -100,8 +85,8 @@ export default function RecentActivity({
                     }}>
                         <div style={{
                             width: 60, height: 60, borderRadius: "50%", background: CLAY.surfaceChip,
-                            border: "none",
-                            boxShadow: "-4px -4px 9px rgba(255,255,255,0.75), 4px 4px 10px rgba(0,0,0,0.14)",
+                            border: `1px solid ${CLAY.border}`,
+                            boxShadow: "none",
                             display: "flex",
                             alignItems: "center", justifyContent: "center", marginBottom: 18,
                         }}>
@@ -128,7 +113,7 @@ export default function RecentActivity({
                             <div style={{
                                 display: "flex", alignItems: "center", justifyContent: "space-between",
                                 background: CLAY.surface,
-                                boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+                                border: `1px solid ${CLAY.border}`,
                                 borderRadius: 14, padding: "10px 16px", marginBottom: 16,
                                 fontFamily: CLAY.font,
                             }}>
@@ -191,11 +176,11 @@ function CreateNewProjectButton({ onClick }: { onClick: () => void }) {
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-                height: 40, padding: "0 20px", borderRadius: 999, border: "none",
+                height: 40, padding: "0 20px", borderRadius: 12, border: `1px solid ${CLAY.border}`,
                 background: CLAY.surface, color: CLAY.textPrimary, fontSize: 13, fontWeight: 500,
                 cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
                 fontFamily: CLAY.font,
-                boxShadow: hovered ? clayRaised(true) : clayRaised(false),
+                boxShadow: "none",
                 transform: hovered ? "translateY(-1px)" : "translateY(0)",
                 transition: "box-shadow 180ms ease, transform 180ms ease",
             }}
@@ -217,11 +202,11 @@ function BrowseTemplatesButton({ onClick }: { onClick: () => void }) {
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
-                height: 40, padding: "0 20px", borderRadius: 999, border: "none",
+                height: 40, padding: "0 20px", borderRadius: 12, border: `1px solid ${CLAY.border}`,
                 background: CLAY.surface, color: CLAY.textMuted, fontSize: 13, fontWeight: 500,
                 cursor: "pointer",
                 fontFamily: CLAY.font,
-                boxShadow: hovered ? clayRaised(true) : clayRaised(false),
+                boxShadow: "none",
                 transform: hovered ? "translateY(-1px)" : "translateY(0)",
                 transition: "box-shadow 180ms ease, transform 180ms ease",
             }}

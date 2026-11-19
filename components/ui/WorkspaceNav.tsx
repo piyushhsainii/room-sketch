@@ -11,7 +11,11 @@ import { exportSVG } from '../workspace/lib/export/exportsvg';
 import FloorSwitcher from './FloorSwitcherUI';
 import { Floor } from '../workspace/lib/floor-data';
 import { ExportMenuCard, ExportMenuSection, FormatIcon } from './MenuCard';
+import { ChevronDown, Maximize, Minimize, Share2, Download, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { editorMenuTheme, menuButton, menuRow, menuSurface } from './editor-menu-theme';
 import { Scene3DHandle } from '../workspace/3DScene';
+import { SaveAuthError, SavePromptError } from '@/lib/workspace/save-auth-error';
 
 
 interface WorkspaceNavProps {
@@ -26,10 +30,13 @@ interface WorkspaceNavProps {
     isSaving?: boolean;
     isSaved?: boolean;
     onClose?: () => void;
+    onDiscardDraft?: () => void;
+    saveAccess?: 'checking' | 'guest' | 'signed-in';
+    onSignInToSave?: () => void;
     onSave?: (fp: FloorPlanState, sceneConfig: any) => void | Promise<void>;
     projectId?: string
     sceneRootRef?: React.RefObject<any>
-    lastSavedSnapshot?: { fp: FloorPlanState; sceneConfig: any } | null
+    isDirty?: boolean
 
     floors: Floor[]
     activeFloorId: string
@@ -76,73 +83,19 @@ const MODEL_EXPORT_FORMATS: { format: ModelExportFormat; label: string; sub: str
     { format: 'svg', label: 'SVG', sub: '2D vector' },
 ]
 
-// Cheap structural-equality check for the dirty flag. fp/sceneConfig are
-// plain JSON-able state in this app (see FloorPlanState usage elsewhere),
-// so JSON.stringify is sufficient and avoids pulling in a deep-equal dep
-// for what's a periodic, non-hot-path comparison.
-function snapshotsEqual(a: { fp: FloorPlanState; sceneConfig: any } | null | undefined, fp: FloorPlanState, sceneConfig: any) {
-    if (!a) return false
-    try {
-        return JSON.stringify(a.fp) === JSON.stringify(fp) && JSON.stringify(a.sceneConfig) === JSON.stringify(sceneConfig)
-    } catch {
-        return false
-    }
-}
-
 // ---- Claymorphism theme tokens (shared across the app) ----
-const CLAY = {
-    canvas: "#E5E5E5",
-    surface: "#EAEAEA",
-    surfaceChip: "#F5F5F5",
-    textPrimary: "#1A1A1A",
-    textMuted: "#5A5A5A",
-    textPlaceholder: "#999999",
-    lightShadow: "rgba(255,255,255,0.75)",
-    darkShadow: "rgba(0,0,0,0.14)",
-    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
-}
+const CLAY = editorMenuTheme
 
-const clayRaised = (pressed = false) =>
-    pressed
-        ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
-        : `-4px -4px 9px ${CLAY.lightShadow}, 4px 4px 10px ${CLAY.darkShadow}`
-
-/* ClayPillButton — shared small clay button used across the nav bar so every
-   icon button (Fullscreen, Share, Export, Close, Reset zoom, Clear) has the
-   same raised/inset hover language and the same crisp dark icon treatment. */
-function ClayPillButton({
-    onClick,
-    children,
-    disabled,
-    danger,
-    title,
-}: {
+function EditorButton({ onClick, children, disabled, danger, title }: {
     onClick?: () => void
     children: React.ReactNode
     disabled?: boolean
     danger?: boolean
     title?: string
 }) {
-    const [hovered, setHovered] = useState(false)
     return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            title={title}
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-            style={{
-                height: 32, padding: '0 13px', borderRadius: 999, border: 'none',
-                background: CLAY.surface,
-                color: danger ? '#B3503F' : CLAY.textPrimary,
-                fontSize: 11.5, fontWeight: 500, fontFamily: CLAY.font,
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                opacity: disabled ? 0.55 : 1,
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                boxShadow: hovered && !disabled ? clayRaised(true) : clayRaised(false),
-                transition: 'box-shadow 160ms ease',
-            }}
-        >
+        <button type="button" onClick={onClick} disabled={disabled} title={title}
+            className={cn(menuButton, 'border border-neutral-200 bg-white hover:bg-neutral-100', danger ? 'text-red-800' : 'text-neutral-800')}>
             {children}
         </button>
     )
@@ -182,38 +135,25 @@ function ConfirmDialog({
             }}
             onMouseDown={e => { if (e.target === e.currentTarget && !busy) onCancel() }}
         >
-            <div
+            <div className={menuSurface} role="dialog" aria-modal="true" aria-label={title}
                 style={{
-                    width: 360, background: CLAY.surface, borderRadius: 20,
-                    padding: '22px 22px 18px', fontFamily: CLAY.font,
-                    boxShadow: `0 24px 48px rgba(0,0,0,0.28), -6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
+                    width: 'min(420px, calc(100vw - 32px))', padding: 24, fontFamily: CLAY.font,
                     animation: 'wsnavMenuIn 140ms ease-out',
                 }}
             >
-                <div style={{ fontSize: 15, fontWeight: 600, color: CLAY.textPrimary, marginBottom: 8 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, color: CLAY.textPrimary, marginBottom: 8 }}>
                     {title}
                 </div>
-                <div style={{ fontSize: 12.5, color: CLAY.textMuted, lineHeight: 1.5, marginBottom: 18 }}>
+                <div style={{ fontSize: 14, color: CLAY.textMuted, lineHeight: 1.5, marginBottom: 18 }}>
                     {message}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
-                    <ClayPillButton onClick={onCancel} disabled={busy}>Cancel</ClayPillButton>
+                    <EditorButton onClick={onCancel} disabled={busy}>Cancel</EditorButton>
                     {secondaryLabel && onSecondary && (
-                        <ClayPillButton onClick={onSecondary} disabled={busy}>{secondaryLabel}</ClayPillButton>
+                        <EditorButton onClick={onSecondary} disabled={busy}>{secondaryLabel}</EditorButton>
                     )}
-                    <button
-                        onClick={onConfirm}
-                        disabled={busy}
-                        style={{
-                            height: 32, padding: '0 14px', borderRadius: 999, border: 'none',
-                            background: danger ? '#B3503F' : 'linear-gradient(145deg, #E6D5AC, #D8C7A1)',
-                            color: danger ? '#fff' : '#3A2E1F',
-                            fontSize: 11.5, fontWeight: 600, fontFamily: CLAY.font,
-                            cursor: busy ? 'not-allowed' : 'pointer',
-                            opacity: busy ? 0.7 : 1,
-                            boxShadow: '0 3px 8px -2px rgba(0,0,0,0.18)',
-                        }}
-                    >
+                    <button type="button" onClick={onConfirm} disabled={busy}
+                        className={cn(menuButton, "text-white focus-visible:outline-offset-2", danger ? "bg-red-800 hover:bg-red-900" : "bg-neutral-900 hover:bg-neutral-700")}>
                         {confirmLabel}
                     </button>
                 </div>
@@ -234,10 +174,13 @@ const WorkspaceNav = ({
     isSaving = false,
     isSaved = false,
     onClose,
+    onDiscardDraft,
+    saveAccess = 'signed-in',
+    onSignInToSave,
     onSave,
     projectId,
     sceneRootRef,
-    lastSavedSnapshot,
+    isDirty = true,
     floors,
     activeFloorId,
     viewMode,
@@ -261,7 +204,7 @@ const WorkspaceNav = ({
     const router = useRouter()
 
     const [pendingAction, setPendingAction] = useState<'save' | 'exit' | 'export' | 'modelExport' | null>(null)
-    const [saveError, setSaveError] = useState<string | null>(null)
+    const [saveError, setSaveError] = useState<{ message: string; needsSignIn: boolean } | null>(null)
 
     // ── Unified Export menu (was two separate buttons: "Export Plan" and
     // "Export Models"). One trigger now, one dropdown, sectioned by output
@@ -312,10 +255,6 @@ const WorkspaceNav = ({
         })
     }, [onSetShowUnderlay])
 
-    const isDirty = lastSavedSnapshot === undefined
-        ? true
-        : !snapshotsEqual(lastSavedSnapshot, fp, sceneConfig)
-
     useEffect(() => { ensureMenuAnimationStyle() }, [])
 
     useEffect(() => {
@@ -347,6 +286,13 @@ const WorkspaceNav = ({
         await Promise.resolve(onSave?.(fp, sceneConfig))
     }
 
+    const reportSaveError = (error: unknown) => {
+        if (error instanceof SavePromptError) return
+        const needsSignIn = error instanceof SaveAuthError
+        if (!needsSignIn) console.error('[WorkspaceNav] save failed:', error)
+        setSaveError({ message: error instanceof Error ? error.message : 'Save failed. Try again.', needsSignIn })
+    }
+
     // NEW — every save entry point now short-circuits when nothing changed.
     // "Save & Exit" still exits immediately (no point blocking navigation),
     // and "Save & Export" still opens the export dialog immediately — only
@@ -359,8 +305,7 @@ const WorkspaceNav = ({
         try {
             await runSave()
         } catch (err) {
-            console.error('[WorkspaceNav] save failed:', err)
-            setSaveError('Save failed. Try again.')
+            reportSaveError(err)
         } finally {
             setPendingAction(null)
         }
@@ -378,8 +323,7 @@ const WorkspaceNav = ({
             await runSave()
             onClose?.()
         } catch (err) {
-            console.error('[WorkspaceNav] save before exit failed:', err)
-            setSaveError('Save failed — did not exit. Try again.')
+            reportSaveError(err)
         } finally {
             setPendingAction(null)
         }
@@ -400,8 +344,7 @@ const WorkspaceNav = ({
             await runSave()
             setExportMenuOpen(true)
         } catch (err) {
-            console.error('[WorkspaceNav] save before export failed:', err)
-            setSaveError('Save failed — export not opened. Try again.')
+            reportSaveError(err)
         } finally {
             setPendingAction(null)
         }
@@ -453,13 +396,18 @@ const WorkspaceNav = ({
         setConfirmClearOpen(false)
     }
 
+    const closeWorkspace = () => {
+        if (onClose) onClose()
+        else router.push(saveAccess === 'guest' ? '/' : '/dashboard')
+    }
+
     // NEW — Close only interrupts with a dialog when there are unsaved
     // changes; otherwise it closes immediately like before.
     const handleCloseRequest = () => {
         if (isDirty) {
             setConfirmCloseOpen(true)
         } else {
-            router.push('/dashboard')
+            closeWorkspace()
         }
     }
 
@@ -469,20 +417,20 @@ const WorkspaceNav = ({
         try {
             await runSave()
             setConfirmCloseOpen(false)
-            router.push('/dashboard')
+            closeWorkspace()
         } catch (err) {
-            console.error('[WorkspaceNav] save before close failed:', err)
-            setSaveError('Save failed — did not close. Try again.')
+            reportSaveError(err)
             setConfirmCloseOpen(false)
         } finally {
             setCloseBusy(null)
         }
     }
 
-    const handleDiscardAndClose = async () => {
+    const handleDiscardAndClose = () => {
         setCloseBusy('discard')
+        onDiscardDraft?.()
         setConfirmCloseOpen(false)
-        router.push('/dashboard')
+        closeWorkspace()
         setCloseBusy(null)
     }
 
@@ -500,22 +448,11 @@ const WorkspaceNav = ({
             className="ra-workspace-topbar"
             style={{
                 height: 60, flexShrink: 0, background: CLAY.canvas,
-                borderBottom: 'none',
-                boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.06)`,
+                borderBottom: `1px solid ${CLAY.border}`,
                 display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12,
                 fontFamily: CLAY.font,
             }}
         >
-            {/* Crisp, high-contrast icon enforcement for every icon in this bar,
-                plus a hidden-but-functional scrollbar in case the bar overflows
-                on narrow viewports. */}
-            <style>{`
-                .ra-workspace-topbar::-webkit-scrollbar { display: none; }
-                .ra-workspace-topbar svg {
-                    stroke: ${CLAY.textPrimary} !important;
-                    filter: drop-shadow(0 1px 0.5px rgba(255,255,255,0.5));
-                }
-            `}</style>
 
             <FloorSwitcher
                 floors={floors}
@@ -534,32 +471,25 @@ const WorkspaceNav = ({
             <input type="number" min={2} max={6} step={0.1} value={fp.roomHeight}
                 onChange={e => setFp((p: any) => ({ ...p, roomHeight: parseFloat(e.target.value) || 2.7 }))}
                 style={{
-                    width: 56, height: 32, borderRadius: 10, border: 'none',
-                    background: CLAY.surface, color: CLAY.textPrimary, fontSize: 12, textAlign: 'center', outline: 'none',
-                    fontFamily: CLAY.font,
-                    boxShadow: `inset 2px 2px 6px ${CLAY.darkShadow}, inset -2px -2px 6px ${CLAY.lightShadow}`,
+                    width: 56, height: 40, borderRadius: 12, border: `1px solid ${CLAY.border}`,
+                    background: CLAY.surface, color: CLAY.textPrimary, fontSize: 14, textAlign: 'center',
                 }} />
             <span style={{ fontSize: 11, color: CLAY.textPlaceholder }}>m</span>
             <div style={{ width: 1, height: 22, background: 'rgba(0,0,0,0.08)' }} />
             <span style={{ fontSize: 11, color: CLAY.textMuted }}>{Math.round(zoom * 100)}%</span>
-            <ClayPillButton onClick={() => setZoom(1)}>Reset zoom</ClayPillButton>
-            <ClayPillButton onClick={handleClearRequest}>Clear</ClayPillButton>
+            <EditorButton onClick={() => setZoom(1)}>Reset zoom</EditorButton>
+            <EditorButton onClick={handleClearRequest}>Clear</EditorButton>
             <div style={{ width: 1, height: 22, background: 'rgba(0,0,0,0.08)' }} />
-            <ClayPillButton onClick={() => void toggleFullscreen()}>
-                {isFullscreen
-                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3" /></svg>
-                    : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>}
+            <EditorButton onClick={() => void toggleFullscreen()}>
+                {isFullscreen ? <Minimize size={16} aria-hidden="true" /> : <Maximize size={16} aria-hidden="true" />}
                 {isFullscreen ? 'Exit' : 'Fullscreen'}
-            </ClayPillButton>
-            {onClose && <ClayPillButton onClick={handleCloseRequest} danger>✕ Close</ClayPillButton>}
+            </EditorButton>
+            {onClose && <EditorButton onClick={handleCloseRequest} danger><X size={16} aria-hidden="true" />Close</EditorButton>}
             {projectId && (
-                <ClayPillButton onClick={() => setShareDialogOpen(true)}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2">
-                        <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
-                        <line x1="8.6" y1="10.6" x2="15.4" y2="6.4" /><line x1="8.6" y1="13.4" x2="15.4" y2="17.6" />
-                    </svg>
+                <EditorButton onClick={() => setShareDialogOpen(true)}>
+                    <Share2 size={16} aria-hidden="true" />
                     Share
-                </ClayPillButton>
+                </EditorButton>
             )}
             {/* CHANGED — single "Export" trigger replaces the old separate
                 "Export Plan" and "Export Models" buttons. The dropdown below
@@ -567,30 +497,25 @@ const WorkspaceNav = ({
                 the user to guess which button has the format they want. */}
             {projectId && (
                 <div ref={exportMenuRef} style={{ position: 'relative', display: 'inline-flex' }}>
-                    <ClayPillButton
+                    <EditorButton
                         onClick={handleOpenExportMenu}
                         disabled={isBusy || modelExportBusy !== null}
                     >
                         {(pendingAction === 'export' || modelExportBusy) && <Spinner dark />}
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2">
-                            <path d="M12 15V3M12 15l-4-4M12 15l4-4" />
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        </svg>
+                        <Download size={16} aria-hidden="true" />
                         {pendingAction === 'export' ? 'Saving…' : modelExportBusy ? modelExportBusy : 'Export'}
-                    </ClayPillButton>
+                    </EditorButton>
                 </div>
             )}
             {exportMenuOpen && exportMenuAnchorRect && typeof document !== 'undefined' && createPortal(
                 <div
                     ref={exportMenuPortalRef}
+                    className={menuSurface}
                     style={{
                         position: 'fixed',
                         top: exportMenuAnchorRect.bottom + 8,
-                        left: exportMenuAnchorRect.right - 260,
+                        left: Math.max(8, exportMenuAnchorRect.right - 260),
                         width: 260,
-                        background: CLAY.surface, borderRadius: 20,
-                        border: 'none',
-                        boxShadow: `0 20px 40px rgba(0,0,0,0.16), -6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`,
                         overflow: 'hidden', zIndex: 5000,
                         fontFamily: CLAY.font,
                         animation: 'wsnavMenuIn 140ms ease-out',
@@ -629,29 +554,20 @@ const WorkspaceNav = ({
                 </div>,
                 document.body
             )}
-            {onSave && (
+            {saveAccess === 'guest' && onSignInToSave && (
+                <button type="button" onClick={onSignInToSave}
+                    className={cn(menuButton, "bg-neutral-900 text-white hover:bg-neutral-700 focus-visible:outline-white")}>
+                    Sign in to save
+                </button>
+            )}
+            {onSave && saveAccess === 'signed-in' && (
                 <div ref={saveMenuRef} style={{ position: 'relative', display: 'inline-flex' }}>
                     <button
                         onClick={handleSave}
                         disabled={isBusy || (!isDirty && isSaved)}
                         title={!isDirty && isSaved ? 'No changes to save' : undefined}
-                        style={{
-                            height: 34,
-                            padding: '0 16px', borderRadius: '999px 0 0 999px', border: 'none',
-                            background: isBusy
-                                ? CLAY.surfaceChip
-                                : (isSaved && !isDirty)
-                                    ? 'linear-gradient(145deg, #8fe3c0, #5fcf9e)'
-                                    : 'linear-gradient(145deg, #E6D5AC, #D8C7A1)',
-                            color: '#3A2E1F', fontSize: 12, fontWeight: 500,
-                            fontFamily: CLAY.font,
-                            cursor: (isBusy || (!isDirty && isSaved)) ? 'not-allowed' : 'pointer',
-                            opacity: (!isDirty && isSaved) ? 0.9 : 1,
-                            boxShadow: '0 3px 8px -2px rgba(0,0,0,0.18), inset 0 1px 1px rgba(255,255,255,0.4)',
-                            transition: 'background 200ms',
-                            display: 'inline-flex', alignItems: 'center', gap: 6,
-                        }}>
-                        {isBusy && <Spinner dark />}
+                        className={cn(menuButton, "rounded-l-xl rounded-r-none bg-neutral-900 text-white hover:bg-neutral-700 focus-visible:outline-white")}>
+                        {isBusy && <Spinner />}
                         {saveButtonLabel}
                     </button>
                     <button
@@ -660,36 +576,21 @@ const WorkspaceNav = ({
                             setSaveMenuOpen(o => !o)
                         }}
                         disabled={isBusy}
-                        aria-label="More save options"
-                        style={{
-                            height: 34, width: 28, borderRadius: '0 999px 999px 0', border: 'none',
-                            borderLeft: '1px solid rgba(58,46,31,0.18)',
-                            background: isBusy
-                                ? CLAY.surfaceChip
-                                : (isSaved && !isDirty)
-                                    ? 'linear-gradient(145deg, #8fe3c0, #5fcf9e)'
-                                    : 'linear-gradient(145deg, #E6D5AC, #D8C7A1)',
-                            color: '#3A2E1F', cursor: isBusy ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 3px 8px -2px rgba(0,0,0,0.18), inset 0 1px 1px rgba(255,255,255,0.4)',
-                        }}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#3A2E1F" strokeWidth="2.5">
-                            <path d="M6 9l6 6 6-6" />
-                        </svg>
+                        aria-label="More save options" aria-expanded={saveMenuOpen}
+                        className={cn(menuButton, "rounded-l-none rounded-r-xl border-l border-white/25 bg-neutral-900 px-2.5 text-white hover:bg-neutral-700 focus-visible:outline-white")}>
+                        <ChevronDown size={16} aria-hidden="true" />
                     </button>
                 </div>
             )}
-            {saveMenuOpen && saveMenuAnchorRect && typeof document !== 'undefined' && createPortal(
+            {saveAccess === 'signed-in' && saveMenuOpen && saveMenuAnchorRect && typeof document !== 'undefined' && createPortal(
                 <div
                     ref={saveMenuPortalRef}
+                    className={menuSurface}
                     style={{
                         position: 'fixed',
                         top: saveMenuAnchorRect.bottom + 6,
-                        left: saveMenuAnchorRect.right - 190,
+                        left: Math.max(8, saveMenuAnchorRect.right - 190),
                         minWidth: 190,
-                        background: CLAY.surface, borderRadius: 16,
-                        border: 'none',
-                        boxShadow: `0 16px 32px rgba(0,0,0,0.16), -5px -5px 10px ${CLAY.lightShadow}, 5px 5px 12px ${CLAY.darkShadow}`,
                         overflow: 'hidden', zIndex: 5000,
                         fontFamily: CLAY.font,
                         animation: 'wsnavMenuIn 140ms ease-out',
@@ -737,13 +638,16 @@ const WorkspaceNav = ({
             {confirmCloseOpen && typeof document !== 'undefined' && createPortal(
                 <ConfirmDialog
                     title="Unsaved changes"
-                    message="You have unsaved changes on this floor plan. Save before closing, or discard them?"
-                    confirmLabel={closeBusy === 'save' ? 'Saving…' : 'Save & close'}
+                    message={saveAccess === 'signed-in' ? "You have unsaved changes on this floor plan. Save before closing, or discard them?" : "Sign in to save this draft to your account, or discard your changes."}
+                    confirmLabel={saveAccess === 'signed-in' ? (closeBusy === 'save' ? 'Saving…' : 'Save & close') : 'Sign in to save'}
                     secondaryLabel={closeBusy === 'discard' ? 'Closing…' : 'Discard & close'}
                     busy={closeBusy !== null}
                     onCancel={() => setConfirmCloseOpen(false)}
                     onSecondary={handleDiscardAndClose}
-                    onConfirm={handleConfirmSaveAndClose}
+                    onConfirm={saveAccess === 'signed-in' ? handleConfirmSaveAndClose : () => {
+                        setConfirmCloseOpen(false)
+                        onSignInToSave?.()
+                    }}
                 />,
                 document.body
             )}
@@ -760,14 +664,20 @@ const WorkspaceNav = ({
                 </div>
             )}
             {saveError && (
-                <div style={{
+                <div role="alert" style={{
                     position: 'fixed', top: 70, right: 16, zIndex: 9999,
                     background: '#B3503F', color: '#fff', fontSize: 11.5,
-                    padding: '8px 14px', borderRadius: 999, display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 14px', borderRadius: 16, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10,
+                    maxWidth: 'min(460px, calc(100vw - 32px))',
                     fontFamily: CLAY.font,
                     boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
                 }}>
-                    {saveError}
+                    <span>{saveError.message}</span>
+                    {saveError.needsSignIn && (
+                        <a href="/login" target="_blank" rel="noopener noreferrer" className="rounded-full bg-white px-3 py-1 font-medium text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+                            Sign in (new tab)
+                        </a>
+                    )}
                     <button onClick={() => setSaveError(null)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }} aria-label="Dismiss">✕</button>
                 </div>
             )}
@@ -811,16 +721,8 @@ function MenuItem({ label, sub, onClick, disabled, delay }: { label: string; sub
         <button
             onClick={onClick}
             disabled={disabled}
-            style={{
-                display: 'block', width: '100%', textAlign: 'left',
-                padding: '9px 14px', border: 'none', background: 'transparent',
-                fontSize: 12.5, color: '#111827', cursor: disabled ? 'not-allowed' : 'pointer',
-                opacity: disabled ? 0.5 : 1,
-                animation: `wsnavMenuItemIn 160ms ease-out both`,
-                animationDelay: `${delay}ms`,
-            }}
-            onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = '#F3F4F6' }}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            className={cn(menuRow, "block w-full text-left text-neutral-700 hover:bg-neutral-100 disabled:opacity-50")}
+            style={{ animation: "wsnavMenuItemIn 160ms ease-out both", animationDelay: `${delay}ms` }}
         >
             <div style={{ fontWeight: 600 }}>{label}</div>
             {sub && <div style={{ fontSize: 10.5, color: THEME.textMuted, marginTop: 1 }}>{sub}</div>}

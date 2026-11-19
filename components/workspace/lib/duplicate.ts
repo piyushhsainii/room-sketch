@@ -23,7 +23,7 @@ import {
   LineSegment,
   FloorPlanState,
 } from "./constants";
-import { SceneConfig, RoomSceneConfig } from "../FloorPlanEditor";
+import type { SceneConfig, RoomSceneConfig } from "../lib/scene-config"
 import { deriveClosedPolygons } from "@/lib/helpers";
 import { PlacedLight } from "../lights-constant";
 import { PlacedFurniture } from "./furniture-constants";

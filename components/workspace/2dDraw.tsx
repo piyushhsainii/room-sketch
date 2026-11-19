@@ -195,7 +195,7 @@ const DOT_LIGHT = '#EAB308'
 const DOT_OUTDOOR = '#94A3B8'
 const DOT_DIMENSION = '#818CF8'
 // top of file, near other constants
-const FLOOR_FILL_DEFAULT = 'rgba(30,27,24,0.6)'
+const FLOOR_FILL_DEFAULT = 'rgba(120,113,108,0.08)'
 const FLOOR_FILL_HOVER = 'rgba(99,102,241,0.07)'
 const FLOOR_FILL_SELECTED = 'rgba(99,102,241,0.12)'
 

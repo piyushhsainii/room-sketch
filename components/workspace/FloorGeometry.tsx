@@ -5,11 +5,11 @@ import { StairsMesh } from "./mesh/stairsMesh"
 import { FurnitureMesh } from "./mesh/furnitureMesh"
 import { OutdoorObjectMesh } from "./mesh/outdoor-object-mesh"
 import type { FloorPlanState } from "./lib/constants"
-import type { SceneConfig } from "./FloorPlanEditor"
+import type { SceneConfig } from "./lib/scene-config"
 import type { RefObject } from "react"
-import { FloorCap } from "./FloorCap"
 import { LightsLayer } from "./lib/lights/LightsLayer"
 import { FurnitureRenderer } from "./FurnitureRenderer"
+import { CutoutGuard3D } from "./objects/CutoutGuard"
 
 type FloorGeometryProps = {
     fp: FloorPlanState
@@ -21,24 +21,18 @@ type FloorGeometryProps = {
     onToggleDoorOpen?: (openingId: string) => void
     opacity: number
     overlappingIds?: Set<string>
-    renderCap?: boolean
-    floorAboveFp?: FloorPlanState
     shadowEligibleIds?: Set<string>
-    floorAboveId?: string,
     cutoutDrawInProgress: boolean
 }
 
 function FloorGeometryImpl({
     fp, cfg, exportRootRef, interactive, selectedId, onSelect, onToggleDoorOpen,
-    opacity, overlappingIds, renderCap, floorAboveFp, shadowEligibleIds, floorAboveId, cutoutDrawInProgress
+    opacity, overlappingIds, shadowEligibleIds, cutoutDrawInProgress
 }: FloorGeometryProps) {
     const transparent = opacity < 1
 
     return (
         <>
-            {renderCap && floorAboveFp && (
-                <FloorCap fp={fp} height={fp.roomHeight} floorAbove={floorAboveFp} floorAboveId={floorAboveId} />
-            )}
             <group ref={exportRootRef}>
                 {fp.rooms.map(room => {
                     const roomCfg = cfg.rooms.find(r => r.roomId === room.id)
@@ -74,6 +68,7 @@ function FloorGeometryImpl({
                 })}
                 <LightsLayer
                     fp={fp}
+                    shadowEligibleIds={shadowEligibleIds}
                     interactive={interactive}
                     selectedId={selectedId}
                     onSelect={onSelect}
@@ -108,6 +103,12 @@ function FloorGeometryImpl({
                     transparent={transparent}
                     cutoutDrawInProgress={cutoutDrawInProgress}
                 />
+                {(fp.closedShapes ?? []).filter(shape => shape.cutout?.guard?.enabled &&
+                    !fp.lineSegments.some(segment => segment.nodeIds.some(id => shape.nodeIds.includes(id))))
+                    .map(shape => <CutoutGuard3D key={shape.id} shape={shape} nodesById={new Map(fp.lineNodes.map(node => [node.id, node]))}
+                        wallMaterial={cfg.globalWallMaterial ?? 'paint'} wallColor="#292e30" wallRoughness={cfg.wallRoughness}
+                        height={fp.roomHeight} opacity={opacity} transparent={transparent} interactive={interactive}
+                        selectedId={selectedId} onSelect={id => onSelect?.(id)} />)}
             </group>
             {/* {cfg.showFurniture !== false && (fp.furniture ?? []).map(f => (
                 <group key={f.id}>

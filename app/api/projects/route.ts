@@ -1,8 +1,12 @@
 // PATH: app/api/projects/route.ts
-import { floorPlanStateToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
+import { projectFloorPlanToSceneJSON } from "@/lib/workspace/floorPlanConvertor";
 import { sceneConfigToWorkspaceConfig } from "@/lib/workspace/sceneConfigToWorkspaceConfig";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { ProjectFloorPlan } from "@/components/workspace/lib/floor-data";
+import type { FloorPlanState } from "@/components/workspace/lib/constants";
+import type { SceneConfig } from "@/components/workspace/lib/scene-config"
+import { migrateToMultiFloor } from "@/components/workspace/lib/migrateToMultiFloor";
 import { guardProjectSlot } from "@/lib/entitlements";
 
 export async function GET() {
@@ -72,7 +76,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const name = (body.name as string) || "New Project";
   const state = body.state as
-    | { floorPlanState: any; sceneConfig: any }
+    | { floorPlanState?: FloorPlanState; projectFloorPlan?: ProjectFloorPlan; sceneConfig: SceneConfig }
     | undefined;
   const thumbnailUrl = body.thumbnail_url as string | undefined;
 
@@ -82,13 +86,15 @@ export async function POST(req: NextRequest) {
     floorplan_url: "",
   };
 
-  if (state?.floorPlanState && state?.sceneConfig) {
-    const sceneJSON = floorPlanStateToSceneJSON(
-      state.floorPlanState,
-      state.sceneConfig,
-    );
+  if (state?.sceneConfig && (state.projectFloorPlan || state.floorPlanState)) {
+    const projectFloorPlan = state.projectFloorPlan ?? migrateToMultiFloor(state.floorPlanState!);
+    const sceneJSON = projectFloorPlanToSceneJSON(projectFloorPlan, state.sceneConfig);
     const workspaceConfig = sceneConfigToWorkspaceConfig(state.sceneConfig);
-    insertPayload.floorplan_editor_state = state;
+    insertPayload.floorplan_editor_state = {
+      projectFloorPlan,
+      sceneConfig: state.sceneConfig,
+      revision: crypto.randomUUID(),
+    };
     insertPayload.scene_json = sceneJSON;
     insertPayload.workspace_config = workspaceConfig;
     insertPayload.workspace_enabled = true;

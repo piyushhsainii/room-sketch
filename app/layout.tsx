@@ -91,13 +91,6 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://api.fontshare.com" />
-        <link
-          rel="stylesheet"
-          href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap"
-        />
-      </head>
       <body
         className="antialiased"
         style={{ fontFamily: "'General Sans', system-ui, -apple-system, sans-serif" }}

@@ -167,16 +167,15 @@ export default function ComparisonStrip() {
 
             <style jsx>{`
         .cmp {
-          --canvas: #e5e5e5;
-          --surface: #eaeaea;
+          --canvas: var(--landing-canvas);
+          --surface: var(--landing-paper);
           --ink: #1a1a1a;
-          --muted: #666;
-          --meta: #999;
+          --muted: var(--landing-muted);
+          --meta: var(--landing-muted);
           --shadow-light: rgba(255, 255, 255, 0.7);
           --shadow-dark: rgba(0, 0, 0, 0.12);
           background: var(--canvas);
           padding: 96px 0;
-          font-family: "Quicksand", "Nunito", sans-serif;
         }
         .cmp-wrap {
           max-width: 1100px;
@@ -204,7 +203,7 @@ export default function ComparisonStrip() {
           margin-bottom: 14px;
           padding: 6px 16px;
           border-radius: 999px;
-          background: linear-gradient(135deg, rgba(163, 224, 193, 0.28), rgba(168, 178, 230, 0.28)), var(--surface);
+          background: var(--surface);
           box-shadow: -4px -4px 10px var(--shadow-light), 4px 4px 12px var(--shadow-dark);
         }
         .cmp-head h2 {
@@ -212,7 +211,7 @@ export default function ComparisonStrip() {
           font-weight: 500;
           color: var(--ink);
           margin: 4px 0 12px;
-          letter-spacing: -0.02em;
+          letter-spacing: -0.035em;
         }
         .cmp-head p {
           font-size: 15px;
@@ -225,7 +224,8 @@ export default function ComparisonStrip() {
           overflow-x: auto;
           border-radius: 30px;
           background: var(--surface);
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+          border: 1px solid var(--landing-line);
+          box-shadow: var(--landing-shadow);
         }
         .cmp-table {
           min-width: 720px;
@@ -294,13 +294,13 @@ export default function ComparisonStrip() {
           box-shadow: -3px -3px 6px var(--shadow-light), 3px 3px 8px var(--shadow-dark);
         }
         .cmp-yes {
-          color: #3fa88a;
+          color: var(--landing-ink);
         }
         .cmp-no {
-          color: #c65b4e;
+          color: var(--landing-muted);
         }
         .cmp-partial {
-          color: #999;
+          color: var(--landing-muted);
         }
 
         @media (max-width: 720px) {

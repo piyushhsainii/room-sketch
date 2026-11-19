@@ -85,7 +85,12 @@ export type FlatPlan2D = {
   }[];
 };
 
-export function deriveFlatPlan2D(fp: FloorPlanState): FlatPlan2D {
+type FlatPlanGeometry = Pick<FloorPlanState,
+  "lineNodes" | "lineSegments" | "rooms" | "roomHeight" | "openings" |
+  "closedShapes" | "annotations" | "wallDecor" | "lights"
+>;
+
+export function deriveFlatPlan2D(fp: FlatPlanGeometry): FlatPlan2D {
   const closedPolygons = deriveClosedPolygons(fp.lineNodes, fp.lineSegments);
   const nodeMap = new Map(fp.lineNodes.map((n) => [n.id, n]));
 

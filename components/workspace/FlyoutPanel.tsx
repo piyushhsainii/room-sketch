@@ -30,6 +30,7 @@ export function FlyoutPanel({
     return (
         <div
             {...flyoutTriggerProps}
+            inert={!open}
             style={{
                 position: 'fixed',
                 top: anchorRect.top,

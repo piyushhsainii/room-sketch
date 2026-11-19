@@ -1,8 +1,9 @@
 "use client";
 
+import { dashboardTheme as CLAY } from "@/components/dashboard/dashboard-theme";
+
 import { useEffect, useRef, useState } from "react";
 import { Sidebar, type ActiveFeature } from "@/components/sidebar/Sidebar";
-import AuthDialog from "@/components/ui/AuthDialog";
 import QuickStart from "@/components/dashboard/QuickStart";
 
 import { useRouter } from "next/navigation";
@@ -15,19 +16,6 @@ import SettingsPanel from "./SettingsPanel";
 import CollectionsPanel from "./CollectionsPanel";
 import { PlanId } from "@/lib/plan";
 
-// ---- Claymorphism theme tokens (shared across dashboard components) ----
-const CLAY = {
-  canvas: "#E5E5E5",
-  surface: "#EAEAEA",
-  surfaceChip: "#F5F5F5",
-  textPrimary: "#1A1A1A",
-  textMuted: "#5A5A5A",
-  textPlaceholder: "#999999",
-  lightShadow: "rgba(255,255,255,0.75)",
-  darkShadow: "rgba(0,0,0,0.14)",
-  font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
-};
-
 type InitialUser = { email: string };
 
 interface DashboardClientProps {
@@ -37,12 +25,10 @@ interface DashboardClientProps {
 
 export default function DashboardClient({ initialUser, initialPlan }: DashboardClientProps) {
   const [projects, setProjects] = useState<any>([]);
-  const [activeProjectId, setActiveProjectId] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [userEmail, setUserEmail] = useState<string>(initialUser.email);
-  const [plan, setPlan] = useState<PlanId>(initialPlan);
+  const userEmail = initialUser.email;
+  const plan = initialPlan;
 
-  const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [activeFeature, setActiveFeature] = useState<ActiveFeature>("3d_viewer");
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectsError, setProjectsError] = useState<string | null>(null);
@@ -50,14 +36,15 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
   const quickStartRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  async function refreshProjects(selectProjectId?: string) {
+  async function refreshProjects() {
     setProjectsLoading(true);
     setProjectsError(null);
     try {
       const res = await fetch("/api/projects", { method: "GET" });
       if (res.status === 401) {
         setProjects([]);
-        setActiveProjectId(null);
+        invalidateCache();
+        router.refresh();
         return;
       }
       if (!res.ok) {
@@ -67,10 +54,6 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
       const body = await res.json();
       setProjects(body.projects);
       setCache({ projects: body.projects, me: { authed: true, email: userEmail, plan } });
-      if (selectProjectId) {
-        setActiveProjectId(selectProjectId);
-        return;
-      }
     } catch {
       setProjectsError("Failed to load projects.");
     } finally {
@@ -80,7 +63,7 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
 
   useEffect(() => {
     const cached = getCache();
-    if (cached && !isStale() && cached.me.email === userEmail) {
+    if (cached && !isStale() && cached.me.authed && cached.me.email === userEmail) {
       setProjects(cached.projects);
       setProjectsLoading(false);
       return;
@@ -89,21 +72,8 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function refreshMe() {
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        window.location.reload();
-        return;
-      }
-      setUserEmail(user.email ?? "");
-      await refreshProjects();
-    } catch {
-      /* ignore */
-    }
+  function handleSignIn() {
+    router.push("/login?redirectTo=/dashboard");
   }
 
   async function handleSignOut() {
@@ -135,21 +105,8 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
     }
   }
 
-  async function handleNewProject() {
-    try {
-      const res = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New Project" }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        invalidateCache();
-        router.push(`/projects/${data.project?.id ?? data.id}`);
-      }
-    } catch (err) {
-      console.error("Failed to create project", err);
-    }
+  function handleNewProject() {
+    router.push("/projects/new");
   }
 
   async function handleArchiveProject(projectId: string) {
@@ -191,21 +148,8 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
     }
   }
 
-  async function handleCreateFromTemplate(template: WorkspaceTemplate) {
-    try {
-      const res = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: template.label, initialState: template.config }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        invalidateCache();
-        router.push(`/projects/${data.project?.id ?? data.id}`);
-      }
-    } catch (err) {
-      console.error("Failed to create project from template", err);
-    }
+  function handleCreateFromTemplate(template: WorkspaceTemplate) {
+    router.push(`/projects/new?${new URLSearchParams({ template: template.id })}`);
   }
 
   function renderContent() {
@@ -219,10 +163,12 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
             onSortChange={setSortMode}
             onNewProject={handleNewProject}
           />
-          <QuickStart
-            onCreateFromTemplate={handleCreateFromTemplate}
-            onBlankCanvas={handleNewProject}
-          />
+          <div ref={quickStartRef}>
+            <QuickStart
+              onCreateFromTemplate={handleCreateFromTemplate}
+              onBlankCanvas={handleNewProject}
+            />
+          </div>
           <RecentActivity
             projects={projects}
             loading={projectsLoading}
@@ -267,10 +213,23 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
     >
       <style>{`
         .ra-sidebar-wrap {
-          flex-shrink: 0;
+          position: fixed;
+          top: 0;
+          bottom: 0;
+          left: 0;
+          width: 220px;
+          z-index: 20;
         }
         .ra-main {
           margin-left: 220px;
+          padding: 0;
+        }
+        .ra-app .ra-sidebar {
+          transform: none;
+        }
+        .ra-app button:focus-visible, .ra-app a:focus-visible {
+          outline: 2px solid #171717;
+          outline-offset: 3px;
         }
         .ra-mobile-topbar {
           display: none;
@@ -317,7 +276,7 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
             setSidebarOpen(false);
           }}
           onSignOut={handleSignOut}
-          onSignIn={() => setAuthDialogOpen(true)}
+          onSignIn={handleSignIn}
         />
       </div>
 
@@ -352,7 +311,8 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
             gap: 12,
             padding: "14px 16px",
             background: CLAY.surface,
-            boxShadow: `inset 0 -1px 0 rgba(255,255,255,0.6), 0 1px 0 rgba(0,0,0,0.05)`,
+            borderBottom: `1px solid ${CLAY.border}`,
+            border: `1px solid ${CLAY.border}`,
             position: "sticky",
             top: 0,
             zIndex: 15,
@@ -363,9 +323,9 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
             aria-label="Open menu"
             onClick={() => setSidebarOpen(true)}
             style={{
-              width: 36, height: 36, borderRadius: "50%", border: "none",
+              width: 36, height: 36, borderRadius: "50%", border: `1px solid ${CLAY.border}`,
               background: CLAY.surfaceChip,
-              boxShadow: "-3px -3px 7px rgba(255,255,255,0.75), 3px 3px 8px rgba(0,0,0,0.16)",
+              boxShadow: "none",
               display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", color: CLAY.textPrimary, flexShrink: 0,
             }}
@@ -394,13 +354,6 @@ export default function DashboardClient({ initialUser, initialPlan }: DashboardC
         </div>
       </div>
 
-      <AuthDialog
-        open={authDialogOpen}
-        onClose={() => {
-          setAuthDialogOpen(false);
-          void refreshMe();
-        }}
-      />
     </div>
   );
 }

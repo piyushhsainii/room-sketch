@@ -1,8 +1,9 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react"
 import { Environment, OrbitControls, Sky } from "@react-three/drei"
 import { DEFAULT_SCENE_CONFIG, DEFAULT_FP, FloorPlanState } from "./lib/constants"
-import { WalkModeControls } from "./WalkModeControls"
-import { SceneConfig } from "./FloorPlanEditor"
+import { WalkModeControls, type WalkPose } from "./WalkModeControls"
+import type { RefObject } from "react"
+import type { SceneConfig } from "./lib/scene-config"
 import { CameraView } from "./lib/camera"
 import { useThree } from "@react-three/fiber"
 import { computeTopDownView, getFloorContentBounds, useClickVsDrag } from "@/lib/helpers"
@@ -10,6 +11,9 @@ import * as THREE from "three"
 import { sunIntensity, sunLightColor, sunPosition, sunVectorFromAngles } from "./lib/sunPosition"
 import { Floor } from "./lib/floor-data"
 import { FloorGeometry } from "./FloorGeometry"
+import { getPreviewFloors } from "./lib/floor-view"
+import { getStairConnections, withStairOpenings } from "./lib/stair-connections"
+import { StairsMesh } from "./mesh/stairsMesh"
 import { resolveShadowEligibleLightIdsAcrossFloors } from "./lib/lights/resolveLightPosition"
 
 // Neutral clay-gray backdrop instead of stark white — keeps the model from
@@ -35,6 +39,8 @@ type Scene3DProps = {
     showUnderlay: boolean
     sceneConfig?: SceneConfig
     walkMode?: boolean
+    walkPoseRef?: RefObject<WalkPose | null>
+    onExitWalk?: () => void
     interactiveMode?: boolean
     selectedId?: string | null
     onSelect?: (id: string | null) => void
@@ -52,6 +58,8 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         showUnderlay,
         sceneConfig,
         walkMode = false,
+        walkPoseRef,
+        onExitWalk,
         interactiveMode = false,
         selectedId,
         onSelect,
@@ -69,6 +77,12 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     const activeFloor = floors.find(f => f.id === activeFloorId)
     const activeFp: FloorPlanState = liveFp ?? activeFloor?.state ?? DEFAULT_FP
     const activeElevation = activeFloor?.elevation ?? 0
+    const floorsToRender = useMemo(() => walkMode ? floors.filter(floor => floor.visible || floor.id === activeFloorId) : getPreviewFloors(floors, activeFloor, viewMode), [floors, activeFloor, activeFloorId, viewMode, walkMode])
+    const stairConnections = useMemo(() => getStairConnections(floors.map(floor => floor.id === activeFloorId ? { ...floor, state: activeFp } : floor)), [floors, activeFloorId, activeFp])
+    const previewStates = useMemo(() => new Map(floorsToRender.map(floor => [floor.id,
+        withStairOpenings(floor.id === activeFloorId ? activeFp : floor.state, stairConnections, floor.id)])), [floorsToRender, activeFloorId, activeFp, stairConnections])
+    const incomingStairs = stairConnections.filter(connection => connection.destination.id === activeFloorId &&
+        !floorsToRender.some(floor => floor.id === connection.source.id))
 
     useImperativeHandle(ref, () => ({
         flyTo: (view: CameraView) => {
@@ -147,14 +161,11 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         const controls = controlsRef.current
         if (!controls) return
 
-        const isStacked = viewMode !== 'single'
-        const relevantFloors = isStacked ? floors.filter(f => f.visible) : (activeFloor ? [activeFloor] : [])
-
         let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
         let minElev = 0, maxElev = 0
         let hasContent = false
 
-        for (const f of relevantFloors) {
+        for (const f of floorsToRender) {
             const src = f.id === activeFloorId ? activeFp : f.state
             const b = getFloorContentBounds(src)
             if (b) {
@@ -196,7 +207,7 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
         raf = requestAnimationFrame(tick)
         return () => cancelAnimationFrame(raf)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeFloorId, viewMode])
+    }, [activeFloorId, viewMode, walkMode])
 
     const sunTimeOfDay = cfg.sunTimeOfDay ?? 12
     const sunCompassHeading = cfg.sunCompassHeading ?? 180
@@ -220,28 +231,8 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     const sunDirZ = -Math.cos(sunElRad) * Math.cos(sunAzRad)
     const isNight = !sunEnabled || sunTimeOfDay < 6 || sunTimeOfDay > 19.5
 
-    let floorsToRender: { floor: Floor; opacity: number; renderCap?: boolean }[] = []
-
-    if (viewMode === 'single') {
-        floorsToRender = activeFloor ? [{ floor: activeFloor, opacity: 1 }] : []
-    } else if (viewMode === 'stacked') {
-        floorsToRender = floors
-            .filter(f => f.visible && (f.id === activeFloorId || (activeFloor && f.order < activeFloor.order)))
-            .map(f => ({
-                floor: f,
-                opacity: 1,
-                renderCap: activeFloor ? f.order < activeFloor.order : false,
-            }))
-    } else {
-        // stacked-full — everything, full opacity, regardless of active floor's position
-        floorsToRender = floors.filter(f => f.visible).map(f => ({
-            floor: f,
-            opacity: 1,
-            renderCap: activeFloor ? f.order < activeFloor.order : false,
-        }))
-    }
     const lowestGroupY = floorsToRender.length > 0
-        ? Math.min(...floorsToRender.map(({ floor }) => floor.elevation - activeElevation))
+        ? Math.min(...floorsToRender.map(floor => floor.elevation - activeElevation), ...incomingStairs.map(connection => connection.source.elevation - activeElevation))
         : 0
     const groundPlaneY = lowestGroupY - 0.02
 
@@ -252,8 +243,8 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
     const stageRadius = Math.max(sunSpan * 0.85, 6)
 
     const shadowEligibleIds = useMemo(
-        () => resolveShadowEligibleLightIdsAcrossFloors(floorsToRender.map(f => f.floor.state)),
-        [floorsToRender]
+        () => resolveShadowEligibleLightIdsAcrossFloors(floorsToRender.map(f => f.id === activeFloorId ? activeFp : f.state)),
+        [floorsToRender, activeFloorId, activeFp]
     )
     const envPreset = useMemo(() => (sunEnabled ? "sunset" : "apartment"), [sunEnabled])
     const shadowExtent = Math.max(sunSpan * 1.15, 4)
@@ -351,38 +342,30 @@ const Scene3D = forwardRef<Scene3DHandle, Scene3DProps>(function Scene3D(
                 />
             )}
 
-            {floorsToRender.map(({ floor, opacity, renderCap }) => {
-                const floorAbove = renderCap
-                    ? floors.filter(f => f.visible && f.order > floor.order).sort((a, b) => a.order - b.order)[0]
-                    : undefined
-
-                const floorAboveFp = floorAbove
-                    ? (floorAbove.id === activeFloorId ? activeFp : floorAbove.state)
-                    : undefined
-
-                return (
-                    <group key={floor.id} position={[0, floor.elevation - activeElevation, 0]}>
-                        <FloorGeometry
-                            fp={floor.id === activeFloorId ? activeFp : floor.state}
-                            cfg={cfg}
-                            exportRootRef={floor.id === activeFloorId ? exportRootRef : undefined}
-                            interactive={interactiveMode && floor.id === activeFloorId}
-                            selectedId={floor.id === activeFloorId ? selectedId : null}
-                            onSelect={floor.id === activeFloorId ? onSelect : undefined}
-                            onToggleDoorOpen={floor.id === activeFloorId ? onToggleDoorOpen : undefined}
-                            opacity={opacity}
-                            renderCap={renderCap}
-                            floorAboveFp={floorAboveFp}
-                            floorAboveId={floorAbove?.id}
-                            overlappingIds={overlappingIds}
-                            shadowEligibleIds={shadowEligibleIds}
-                            cutoutDrawInProgress={floor.id === activeFloorId ? cutoutDrawInProgress : false}
-                        />
-                    </group>
-                )
-            })}
+            {floorsToRender.map(floor => (
+                <group key={floor.id} position={[0, floor.elevation - activeElevation, 0]}>
+                    <FloorGeometry
+                        fp={previewStates.get(floor.id)!}
+                        cfg={cfg}
+                        exportRootRef={floor.id === activeFloorId ? exportRootRef : undefined}
+                        interactive={interactiveMode && floor.id === activeFloorId}
+                        selectedId={floor.id === activeFloorId ? selectedId : null}
+                        onSelect={floor.id === activeFloorId ? onSelect : undefined}
+                        onToggleDoorOpen={floor.id === activeFloorId ? onToggleDoorOpen : undefined}
+                        opacity={1}
+                        overlappingIds={overlappingIds}
+                        shadowEligibleIds={shadowEligibleIds}
+                        cutoutDrawInProgress={floor.id === activeFloorId ? cutoutDrawInProgress : false}
+                    />
+                </group>
+            ))}
+            {cfg.showFurniture !== false && incomingStairs.map(({ source, destination, stair }) => (
+                <group key={'incoming:' + source.id + ':' + stair.id} position={[0, source.elevation - activeElevation, 0]}>
+                    <StairsMesh s={{ ...stair, rise: destination.elevation - source.elevation }} roomHeight={source.state.roomHeight} />
+                </group>
+            ))}
             {walkMode ? (
-                <WalkModeControls />
+                <WalkModeControls key={activeFloorId} fp={activeFp} surfacesKey={floorsToRender} pose={walkPoseRef} onExit={onExitWalk} />
             ) : (
                 <OrbitControls
                     ref={controlsRef}
@@ -420,6 +403,8 @@ function scene3DPropsAreEqual(prev: Scene3DProps, next: Scene3DProps) {
         prev.showUnderlay === next.showUnderlay &&
         prev.sceneConfig === next.sceneConfig &&
         prev.walkMode === next.walkMode &&
+        prev.walkPoseRef === next.walkPoseRef &&
+        prev.onExitWalk === next.onExitWalk &&
         prev.interactiveMode === next.interactiveMode &&
         prev.selectedId === next.selectedId &&
         prev.overlappingIds === next.overlappingIds &&

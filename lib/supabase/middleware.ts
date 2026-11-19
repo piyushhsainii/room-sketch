@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -33,7 +34,9 @@ export async function updateSession(request: NextRequest) {
   // Do not add logic between createServerClient and this call.
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
 
-  return { supabaseResponse, user };
+  const unavailable = Boolean(error && (isAuthRetryableFetchError(error) || (error.status ?? 0) >= 500));
+  return { supabaseResponse, user: error ? null : user, unavailable };
 }

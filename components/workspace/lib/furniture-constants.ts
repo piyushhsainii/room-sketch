@@ -68,6 +68,9 @@ export type PlacedFurniture = {
   targetWidth?: number;
   targetDepth?: number;
   heightScale?: number;
+  targetHeight?: number;
+  finishPalette?: { wood: string; upholstery: string; metal: string };
+  workstation?: boolean;
   rotationOffset?: number;
   /** Escape hatch: force procedural fallback rendering even if a GLTF model
    *  is registered for this type (debugging / while a new asset is broken). */

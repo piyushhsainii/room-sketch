@@ -1,7 +1,8 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
 import { FloorPlanState } from './lib/constants'
 import { CameraView, getBuiltInViews } from './lib/camera'
-import { THEME, type SceneConfig } from './FloorPlanEditor'
+import { THEME } from './FloorPlanEditor'
+import type { SceneConfig } from './lib/scene-config'
 import { Scene3DHandle } from './3DScene'
 import { uid } from '@/lib/helpers'
 import { CameraIcon } from 'lucide-react'
@@ -119,7 +120,7 @@ export function CameraViewPicker({
     setFp: (updater: (prev: FloorPlanState) => FloorPlanState) => void
     sceneConfig: SceneConfig
     pushHistory: () => void
-    onSave: (fp: FloorPlanState, sceneConfig: SceneConfig) => void
+    onSave: (fp: FloorPlanState, sceneConfig: SceneConfig) => Promise<void>
     scene3DRef: React.RefObject<Scene3DHandle | null>
 
 }) {
@@ -138,18 +139,14 @@ export function CameraViewPicker({
         if (!current) { setNaming(false); return }
 
         const newView: CameraView = { id: uid(), label: name, ...current }
-        let nextFp: FloorPlanState | null = null
-
+        const nextFp = { ...fp, savedViews: [...(fp.savedViews ?? []), newView] }
         pushHistory()
-        setFp(prev => {
-            nextFp = { ...prev, savedViews: [...(prev.savedViews ?? []), newView] }
-            return nextFp
-        })
+        setFp(() => nextFp)
 
         setSavingState('saving')
         setErrorMsg(null)
         try {
-            await onSave(nextFp!, sceneConfig)
+            await onSave(nextFp, sceneConfig)
             setSavingState('idle')
             setNaming(false)
             // panel stays open so the user can immediately add/remove another
@@ -162,20 +159,15 @@ export function CameraViewPicker({
     }
 
     const deleteView = async (id: string) => {
-        let removed: CameraView | undefined
-        let nextFp: FloorPlanState | null = null
-
+        const removed = (fp.savedViews ?? []).find(v => v.id === id)
+        const nextFp = { ...fp, savedViews: (fp.savedViews ?? []).filter(v => v.id !== id) }
         pushHistory()
-        setFp(prev => {
-            removed = (prev.savedViews ?? []).find(v => v.id === id)
-            nextFp = { ...prev, savedViews: (prev.savedViews ?? []).filter(v => v.id !== id) }
-            return nextFp
-        })
+        setFp(() => nextFp)
 
         setSavingState('saving')
         setErrorMsg(null)
         try {
-            await onSave(nextFp!, sceneConfig)
+            await onSave(nextFp, sceneConfig)
             setSavingState('idle')
         } catch {
             // rollback the delete

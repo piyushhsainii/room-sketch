@@ -1,28 +1,14 @@
 // PATH: components/sidebar/Sidebar.tsx
 "use client";
 
+import { dashboardTheme as CLAY } from "@/components/dashboard/dashboard-theme";
+
 import { APP } from "@/constants/content";
 import { PlanId } from "@/lib/plan";
 import { usePlan } from "@/lib/hooks/usePlan";
 import React from "react";
-
-// ---- Claymorphism theme tokens (shared with ProjectCard / CollectionsPanel) ----
-const CLAY = {
-  canvas: "#E5E5E5",
-  surface: "#EAEAEA",
-  surfaceChip: "#F5F5F5",
-  textPrimary: "#1A1A1A",
-  textMuted: "#5A5A5A",
-  textPlaceholder: "#999999",
-  lightShadow: "rgba(255,255,255,0.75)",
-  darkShadow: "rgba(0,0,0,0.14)",
-  font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
-};
-
-const clayRaised = (pressed = false) =>
-  pressed
-    ? `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`
-    : `-6px -6px 12px ${CLAY.lightShadow}, 6px 6px 14px ${CLAY.darkShadow}`;
+import Link from "next/link";
+import { BookOpen, Plug } from "lucide-react";
 
 export type ActiveFeature = "3d_viewer" | "collections" | "community" | "settings";
 
@@ -97,9 +83,9 @@ export function Sidebar({
       data-open={open ? "true" : "false"}
       style={{
         width: 220,
-        background: CLAY.canvas,
-        border: "none",
-        boxShadow: "inset -8px 0 16px -12px rgba(0,0,0,0.12)",
+        background: CLAY.surface,
+        borderRight: `1px solid ${CLAY.border}`,
+        boxShadow: "none",
         display: "flex",
         flexDirection: "column",
         height: "100%",
@@ -111,8 +97,8 @@ export function Sidebar({
       {/* Logo */}
       <div style={{ padding: "20px 18px 18px" }}>
         <span style={{ fontSize: 15, fontWeight: 500, color: CLAY.textPrimary, letterSpacing: "normal", display: "flex", alignItems: "center", gap: 6 }}>
-          <img src="/room-sketch-logo-removebg-preview.png" alt="" className="w-12 rounded-full select-none" />
-          <img src="/room-sketch-text.jpg" alt="" className="w-24 rounded-full select-none" />
+          <img src="/room-sketch-logo-removebg-preview.png" alt="" className="h-9 w-9 select-none" />
+          <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.04em" }}>roomsketch</span>
         </span>
       </div>
 
@@ -136,6 +122,12 @@ export function Sidebar({
         ))}
       </nav>
 
+      <div style={{ padding: '24px 18px 8px', fontSize: 10, fontWeight: 500, color: CLAY.textPlaceholder, textTransform: 'uppercase', letterSpacing: '.1em' }}>Guides & connections</div>
+      <nav aria-label="Guides and connections" style={{ padding: '0 12px', display: 'grid', gap: 6 }}>
+        <Link href="/docs/mcp" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, color: CLAY.textMuted, fontSize: 13, textDecoration: 'none' }}><BookOpen size={15} />MCP documentation</Link>
+        <Link href="/mcp" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, color: CLAY.textMuted, fontSize: 13, textDecoration: 'none' }}><Plug size={15} />Connect assistant</Link>
+      </nav>
+
       <div style={{ flex: 1 }} />
 
       {/* Footer */}
@@ -145,7 +137,7 @@ export function Sidebar({
             {effectivePlan === "free" && (
               <div style={{
                 background: CLAY.surface,
-                boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                border: `1px solid ${CLAY.border}`,
                 borderRadius: 16,
                 padding: "12px 14px",
                 marginBottom: 12,
@@ -160,12 +152,12 @@ export function Sidebar({
                   color: CLAY.textPrimary,
                   letterSpacing: "0.04em",
                   marginBottom: 8,
-                  boxShadow: "-2px -2px 5px rgba(255,255,255,0.75), 2px 2px 6px rgba(0,0,0,0.12)",
+                  border: `1px solid ${CLAY.border}`,
                 }}>
                   FREE PLAN{livePlan?.projectLimit != null ? ` · ${livePlan.projectsUsed}/${livePlan.projectLimit} PROJECTS` : ""}
                 </span>
                 <div style={{ fontSize: 11, fontWeight: 400, lineHeight: 1.4, color: CLAY.textMuted, marginBottom: 6 }}>
-                  Unlock HD exports and unlimited projects.
+                  Upgrade for more projects and exports.
                 </div>
                 <button
                   type="button"
@@ -183,7 +175,7 @@ export function Sidebar({
                 alignItems: "center",
                 justifyContent: "space-between",
                 background: CLAY.surface,
-                boxShadow: `inset 3px 3px 8px ${CLAY.darkShadow}, inset -3px -3px 8px ${CLAY.lightShadow}`,
+                border: `1px solid ${CLAY.border}`,
                 borderRadius: 16,
                 padding: "10px 14px",
                 marginBottom: 12,
@@ -196,7 +188,7 @@ export function Sidebar({
                   background: CLAY.surfaceChip,
                   color: "#3D9A5C",
                   letterSpacing: "0.04em",
-                  boxShadow: "-2px -2px 5px rgba(255,255,255,0.75), 2px 2px 6px rgba(0,0,0,0.12)",
+                  border: `1px solid ${CLAY.border}`,
                 }}>
                   ✦ PRO
                 </span>
@@ -227,17 +219,13 @@ function SidebarNavItem({ label, icon, isActive, onClick }: { label: string; ico
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: "flex", alignItems: "center", gap: 10, width: "100%", height: 36,
-        padding: "0 12px", borderRadius: 12, border: "none",
-        background: isActive ? CLAY.surface : "transparent",
+        display: "flex", alignItems: "center", gap: 10, width: "100%", height: 40,
+        padding: "0 12px", borderRadius: 12, border: `1px solid ${CLAY.border}`,
+        background: isActive || hovered ? CLAY.surfaceChip : "transparent",
         color: isActive ? CLAY.textPrimary : CLAY.textMuted,
         fontSize: 13, fontWeight: isActive ? 500 : 400, cursor: "pointer",
         fontFamily: CLAY.font,
-        boxShadow: isActive
-          ? clayRaised(true)
-          : hovered
-            ? clayRaised(false)
-            : "none",
+        boxShadow: "none",
         transition: "box-shadow 180ms ease, background 180ms ease, color 140ms ease",
         textAlign: "left",
       }}
@@ -258,9 +246,9 @@ function SidebarSignOutButton({ onClick, label }: { onClick: () => void; label: 
       onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex", alignItems: "center", gap: 8, width: "100%", height: 32,
-        border: "none", background: hovered ? CLAY.surface : "transparent",
+        border: `1px solid ${CLAY.border}`, background: hovered ? CLAY.surface : "transparent",
         borderRadius: 10,
-        boxShadow: hovered ? clayRaised(true) : "none",
+        boxShadow: "none",
         color: CLAY.textMuted,
         fontSize: 12.5, fontWeight: 400, cursor: "pointer", padding: "0 8px",
         fontFamily: CLAY.font,

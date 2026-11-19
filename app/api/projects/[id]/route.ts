@@ -26,9 +26,14 @@ export async function GET(
   // authenticated user could fetch any project by ID, not just their own.
   // .eq("user_id", user.id) is the fix; keep it even if RLS is also
   // enabled on `projects`, as belt-and-braces.
+  const fields = req.nextUrl.searchParams.get("view") === "editor"
+    ? "id, floorplan_url, floorplan_editor_state"
+    : req.nextUrl.searchParams.get("view") === "share"
+    ? "id, share_token, share_enabled, published"
+    : "*";
   const { data, error } = await supabase
     .from("projects")
-    .select("*")
+    .select(fields)
     .eq("id", id)
     .eq("user_id", user.id)
     .single();

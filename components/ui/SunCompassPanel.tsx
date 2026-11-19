@@ -1,4 +1,5 @@
-import { SceneConfig, THEME } from '../workspace/FloorPlanEditor'
+import { THEME } from '../workspace/FloorPlanEditor'
+import type { SceneConfig } from '../workspace/lib/scene-config'
 
 const PANEL = {
     bg: '#1C1C1F',

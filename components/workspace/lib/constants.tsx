@@ -1,4 +1,4 @@
-import { SceneConfig } from "../FloorPlanEditor"
+import type { SceneConfig } from "../lib/scene-config"
 import { PlacedLight } from "../lights-constant"
 import { MaterialCategory } from "../texture/materials-registry"
 import { UniversalMaterial } from "../texture/universalMaterials"
@@ -265,7 +265,7 @@ export const MATERIAL_REGISTRY: Record<string, MaterialDef> = {
     'fabric-1': { color: '#C4B8A8', roughness: 0.96, metalness: 0, repeatScale: 1, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/Fabric049_1K-JPG_Color.jpg', normalMapUrl: '/textures/Fabric049_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/Fabric049_1K-JPG_Roughness.jpg' },
     'fabric-fine-weave': { color: '#C4B8A8', roughness: 0.96, metalness: 0, repeatScale: 10, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/fabric/Fabric061_1K-JPG/Fabric061_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Fabric061_1K-JPG/Fabric061_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Fabric061_1K-JPG/Fabric061_1K-JPG_Roughness.jpg' },
     'carpet-plush': { color: '#B8ACA0', roughness: 0.98, metalness: 0, repeatScale: 12, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/fabric/Carpet001_1K-JPG/Carpet001_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Carpet001_1K-JPG/Carpet001_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Carpet001_1K-JPG/Carpet001_1K-JPG_Roughness.jpg' },
-    'carpet-woven': { color: '#A89A88', roughness: 0.95, metalness: 0, repeatScale: 12, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/fabric/Carpet015_1K-JPG/Carpet015_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Carpet015_1K-JPG/Carpet015_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Carpet015_1K-JPG/Carpet015_1K-JPG_Roughness.jpg' },
+    'carpet-woven': { color: '#A89A88', roughness: 0.95, metalness: 0, repeatScale: 2, category: 'fabric', domains: ['floor', 'stairs', 'wall', 'door'], textureUrl: '/textures/fabric/Fabric028_1K-JPG/Fabric028_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Fabric028_1K-JPG/Fabric028_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Fabric028_1K-JPG/Fabric028_1K-JPG_Roughness.jpg' },
     'fabric-panel-blue': { color: '#8A9AB0', roughness: 0.9, metalness: 0, repeatScale: 4, category: 'fabric', domains: ['wall', 'floor', 'furniture'], textureUrl: '/textures/fabric/Fabric045_1K-JPG/Fabric045_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Fabric045_1K-JPG/Fabric045_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Fabric045_1K-JPG/Fabric045_1K-JPG_Roughness.jpg' },
     'fabric-panel-tan': { color: '#C9B8A0', roughness: 0.92, metalness: 0, repeatScale: 4, category: 'fabric', domains: ['wall', 'floor', 'furniture'], textureUrl: '/textures/fabric/Fabric028_1K-JPG/Fabric028_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Fabric028_1K-JPG/Fabric028_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Fabric028_1K-JPG/Fabric028_1K-JPG_Roughness.jpg' },
     'fabric-panel-018': { color: '#B8A898', roughness: 0.9, metalness: 0, repeatScale: 4, category: 'fabric', domains: ['wall', 'floor', 'furniture'], textureUrl: '/textures/fabric/Fabric018_1K-JPG/Fabric018_1K-JPG_Color.jpg', normalMapUrl: '/textures/fabric/Fabric018_1K-JPG/Fabric018_1K-JPG_NormalGL.jpg', roughnessMapUrl: '/textures/fabric/Fabric018_1K-JPG/Fabric018_1K-JPG_Roughness.jpg' },
@@ -365,6 +365,7 @@ export type DoorStyle =
     | 'panel_white'
 
 export type FloorPlanState = {
+    tracingImage?: import('./practical-features').TracingImage
     rooms: EditorRoom[]; openings: EditorOpening[]; roomHeight: number
     lineNodes: LineNode[]; lineSegments: LineSegment[]; closedShapes: ClosedShape[]
     annotations: Annotation[]
@@ -404,6 +405,7 @@ export const STAIRS_LABELS: Record<StairsType, string> = {
 }
 
 export type EditorRoom = {
+    dimensionLock?: import('./practical-features').RoomDimensionLock
     id: string
     x: number
     z: number
@@ -515,6 +517,7 @@ export interface ToolGroup {
     id: string
     label: string       // shown as flyout header
     leaves: ToolLeaf[]
+    menuOnly?: boolean
     flyoutWidth?: number                                    // px width for the flyout panel; omit to use the default
     renderFlyout?: (props: { onSelect: (id: EditorTool) => void; close: () => void }) => React.ReactNode  // custom flyout content, e.g. furniture/presets panels
 }
@@ -1239,8 +1242,8 @@ export function isFurnitureNew(entry: FurnitureCatalogEntry, windowDays = 30): b
 export interface MaterialCatalogEntry {
     id: string
     label: string
-    thumbnail: string // e.g. '/textures/fabric049/Fabric049_1K-JPG_Color.jpg'
-    basePath: string  // folder prefix, e.g. '/textures/fabric049/Fabric049_1K-JPG'
+    thumbnail: string // e.g. '/textures/Fabric049_1K-JPG_Color.jpg'
+    basePath: string  // folder prefix, e.g. '/textures/Fabric049_1K-JPG'
     category: 'fabric' | 'wood' | 'stone' | 'metal' | 'concrete' | 'other'
     isNew?: boolean
     newSince?: string
@@ -1250,8 +1253,8 @@ export const MATERIAL_CATALOG: MaterialCatalogEntry[] = [
     {
         id: 'fabric049',
         label: 'Woven Fabric',
-        thumbnail: '/textures/fabric049/Fabric049_1K-JPG_Color.jpg',
-        basePath: '/textures/fabric049/Fabric049_1K-JPG',
+        thumbnail: '/textures/Fabric049_1K-JPG_Color.jpg',
+        basePath: '/textures/Fabric049_1K-JPG',
         category: 'fabric',
         isNew: true,
         newSince: '2026-07-10',
@@ -1259,8 +1262,8 @@ export const MATERIAL_CATALOG: MaterialCatalogEntry[] = [
     {
         id: 'concrete025',
         label: 'Concrete',
-        thumbnail: '/textures/concrete025/Concrete025.png',
-        basePath: '/textures/concrete025/Concrete025',
+        thumbnail: '/textures/Concrete025.png',
+        basePath: '/textures/Concrete025_1K-JPG',
         category: 'concrete',
     },
 ]
@@ -1300,6 +1303,10 @@ export type PlacedWallDecor = {
     rotation?: number
     scale: number
     facingInward?: boolean
+    text?: string
+    subtitle?: string
+    backgroundColor?: string
+    textColor?: string
 }
 
 export const WALL_DECOR_LABELS: Record<WallDecorType, string> = {

@@ -141,21 +141,8 @@ function bulbLocalPosition(type: LightFixtureType): [number, number, number] {
     }
 }
 
-/*
- * Keep real-time shadows deliberately small.
- *
- * IMPORTANT:
- * The best performance comes from setting castShadow=false on normal placed
- * lights and letting the environment/scene lighting handle most shadows.
- *
- * If individual fixture shadowing is required, this cap prevents a scene with
- * dozens of lights from creating dozens of expensive shadow maps.
- */
-const MAX_SHADOW_CASTING_LIGHTS = 2
-let activeShadowCasters = 0
-
 const SHELF_EMISSIVE_INTENSITY = 4.0
-const SHELF_SPOT_DISTANCE = 4.0
+const SHELF_SPOT_DISTANCE = 6
 const SHELF_SPOT_ANGLE = 0.95
 const SHELF_SPOT_PENUMBRA = 0.8
 
@@ -184,31 +171,8 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
     const groupRef = useRef<THREE.Group>(null)
     const itemTransparent = transparent || opacity < 1
 
-    const holdsShadowSlotRef = useRef(false)
-    const wantsShadow = forceCastShadow !== undefined ? forceCastShadow : !!light.castShadow
-
-    useEffect(() => {
-        if (
-            wantsShadow &&
-            !holdsShadowSlotRef.current &&
-            activeShadowCasters < MAX_SHADOW_CASTING_LIGHTS
-        ) {
-            activeShadowCasters += 1
-            holdsShadowSlotRef.current = true
-        } else if (!wantsShadow && holdsShadowSlotRef.current) {
-            activeShadowCasters -= 1
-            holdsShadowSlotRef.current = false
-        }
-
-        return () => {
-            if (holdsShadowSlotRef.current) {
-                activeShadowCasters -= 1
-                holdsShadowSlotRef.current = false
-            }
-        }
-    }, [wantsShadow])
-
-    const effectiveCastShadow = wantsShadow && holdsShadowSlotRef.current
+    const effectiveCastShadow = forceCastShadow ?? false
+    const intensity = Math.max(0, light.intensity)
 
     /*
      * Opacity changes do not normally need a shader recompile.
@@ -286,7 +250,6 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
      */
     if (light.type === 'shelf_strip') {
         const w = Math.max(0.1, (light.width ?? 1) * scale)
-        const facing = light.facingInward === false ? -1 : 1
 
         return (
             <group
@@ -296,12 +259,12 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
                 {...clickHandlers}
             >
                 {/* Physical LED diffuser */}
-                <mesh position={[0, 0, 0.018 * facing]}>
+                <mesh position={[0, 0, 0.018]}>
                     <boxGeometry args={[w * 0.96, 0.032, 0.018]} />
                     <meshStandardMaterial
                         color={light.color}
                         emissive={light.color}
-                        emissiveIntensity={SHELF_EMISSIVE_INTENSITY}
+                        emissiveIntensity={intensity > 0 ? SHELF_EMISSIVE_INTENSITY : 0}
                         roughness={0.5}
                         metalness={0}
                         toneMapped={false}
@@ -322,19 +285,21 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
                  */}
                 <primitive
                     object={targetRef.current}
-                    position={[0, -0.15, 2.8 * facing]}
+                    position={[0, -1.1, 2.8]}
                 />
 
                 <spotLight
-                    position={[0, -0.025, 0.055 * facing]}
+                    position={[0, -0.025, 0.055]}
                     target={targetRef.current}
                     color={light.color}
-                    intensity={Math.max(0, light.intensity) * 2.8}
+                    intensity={intensity * 12}
                     angle={SHELF_SPOT_ANGLE}
                     penumbra={SHELF_SPOT_PENUMBRA}
                     distance={SHELF_SPOT_DISTANCE}
                     decay={2}
-                    castShadow={false}
+                    castShadow={effectiveCastShadow}
+                    shadow-mapSize={[256, 256]}
+                    shadow-bias={-0.0005}
                 />
 
                 {selected && (
@@ -379,7 +344,7 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
                         <meshStandardMaterial
                             color={light.color}
                             emissive={light.color}
-                            emissiveIntensity={2.5}
+                            emissiveIntensity={intensity > 0 ? 2.5 : 0}
                             roughness={0.25}
                             metalness={0.1}
                             toneMapped={false}
@@ -395,7 +360,7 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
                         position={bulbPos}
                         target={targetRef.current}
                         color={light.color}
-                        intensity={light.intensity}
+                        intensity={intensity * 8}
                         angle={0.4}
                         penumbra={0.4}
                         distance={8}
@@ -457,7 +422,7 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
                     color={light.color}
                     emissive={light.color}
                     emissiveIntensity={
-                        light.type === 'ceiling_recessed' ? 3.5 : 2.2
+                        intensity === 0 ? 0 : light.type === 'ceiling_recessed' ? 3.5 : 2.2
                     }
                     roughness={0.25}
                     metalness={0.1}
@@ -469,10 +434,9 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
                 position={bulbPos}
                 color={light.color}
                 intensity={
-                    light.intensity *
-                    (light.type === 'ceiling_recessed' ? 2.2 : 1.8)
+                    intensity * (light.type === 'ceiling_recessed' ? 10 : 7)
                 }
-                decay={1}
+                decay={2}
                 castShadow={effectiveCastShadow}
                 shadow-mapSize={[256, 256]}
                 shadow-bias={-0.0005}
@@ -486,9 +450,9 @@ export const LightFixtureMesh = memo(function LightFixtureMesh({
                             : light.type === 'track_lighting'
                                 ? 10
                                 : light.type === 'ceiling_recessed'
-                                    ? 3
+                                    ? 6
                                     : light.type === 'wall_sconce'
-                                        ? 2.5
+                                        ? 5
                                         : 10
                 }
             />

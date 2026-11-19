@@ -1,5 +1,6 @@
 import { applyShapeExteriorMaterial, deriveClosedPolygons, segmentsForShape, snapFurniture, snapM, uid } from "@/lib/helpers"
-import { RoomSceneConfig, SceneConfig, THEME } from "./FloorPlanEditor"
+import { THEME } from "./FloorPlanEditor"
+import type { RoomSceneConfig, SceneConfig } from "./lib/scene-config"
 import { ClosedShape, EditorOpening, EditorRoom, FloorMaterial, FloorPlanState, LineNode, LineSegment, MATERIAL_REGISTRY, OPENING_VARIANT_LABELS, STAIRS_LABELS, supportsFurnitureTexture, WALL_DECOR_LABELS, WallMaterial } from "./lib/constants"
 import { getMaterialsFor } from "./texture/universalMaterials"
 import { MaterialTexturePicker } from "./texture/MaterialPicker"
@@ -1941,6 +1942,14 @@ export function PropsPanel({ fp, selectedId, onChange, onDelete, sceneConfig, on
 
             {wallDecor && (
                 <Card>
+                    {wallDecor.text !== undefined && <>
+                        <PropField label="Sign text"><input aria-label="Sign text" value={wallDecor.text} maxLength={40}
+                            onChange={event => onChange({ ...fp, wallDecor: fp.wallDecor.map(item => item.id === wallDecor.id ? { ...item, text: event.target.value } : item) })}
+                            style={{ width: '100%', padding: 8, border: '1px solid #ddd', borderRadius: 8 }} /></PropField>
+                        <PropField label="Sign subtitle"><input aria-label="Sign subtitle" value={wallDecor.subtitle ?? ''} maxLength={80}
+                            onChange={event => onChange({ ...fp, wallDecor: fp.wallDecor.map(item => item.id === wallDecor.id ? { ...item, subtitle: event.target.value } : item) })}
+                            style={{ width: '100%', padding: 8, border: '1px solid #ddd', borderRadius: 8 }} /></PropField>
+                    </>}
                     <PropField label="Type">
                         <span style={{ fontSize: 12.5, color: COLOR.accent, fontWeight: 600 }}>
                             {WALL_DECOR_LABELS[wallDecor.type]}

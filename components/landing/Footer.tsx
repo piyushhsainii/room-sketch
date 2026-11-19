@@ -2,22 +2,20 @@
 
 import { useState } from "react";
 
-// ---- Claymorphism theme tokens (shared across the app) ----
 const CLAY = {
-  canvas: "#E5E5E5",
-  surface: "#EAEAEA",
+  canvas: "var(--landing-canvas)",
+  surface: "var(--landing-paper)",
   textPrimary: "#1A1A1A",
-  textMuted: "#5A5A5A",
+  textMuted: "var(--landing-muted)",
   lightShadow: "rgba(255,255,255,0.75)",
-  darkShadow: "rgba(0,0,0,0.14)",
-  accentText: "#4C4FBF",
-  font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+  darkShadow: "rgba(0,0,0,0.08)",
+  accentText: "var(--landing-muted)",
 };
 
 const FOOTER_LINKS = [
   { label: "Product", href: "#features" },
   { label: "Pricing", href: "#pricing" },
-  { label: "Docs", href: "#" },
+  { label: "MCP docs", href: "/docs/mcp" },
   { label: "Privacy", href: "#" },
   { label: "Terms", href: "#" },
   { label: "Contact", href: "mailto:hello@roomsketch.com" },
@@ -39,7 +37,6 @@ export default function Footer() {
         fontSize: 12.5,
         fontWeight: 300,
         color: CLAY.textMuted,
-        fontFamily: CLAY.font,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, color: CLAY.textPrimary, fontWeight: 500 }}>
@@ -60,7 +57,7 @@ export default function Footer() {
         ))}
       </div>
 
-      <span style={{ fontSize: 10.5, color: CLAY.accentText, letterSpacing: "0.04em", fontFamily: CLAY.font }}>
+      <span style={{ fontSize: 10.5, color: CLAY.accentText, letterSpacing: "0.04em" }}>
         Floor plan → live 3D
       </span>
     </footer>
@@ -77,7 +74,6 @@ function FooterLink({ href, children }: { href: string; children: React.ReactNod
       style={{
         color: hovered ? CLAY.textPrimary : CLAY.textMuted,
         textDecoration: "none",
-        fontFamily: CLAY.font,
         transition: "color 160ms ease",
       }}
     >

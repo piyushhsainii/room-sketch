@@ -21,17 +21,17 @@ and prior chat messages can be stale. Re-view after editing to confirm.
 - `Scene3D` takes `activeFp={fp}` (live), substituted in only for the
   active floor — required so live edits show in 3D before a floor switch.
 - `viewMode`: `single` (active only, `showUnderlay` fades floor below),
-  `stacked` (~0.35 opacity non-active), `stacked-full` (full opacity +
-  `FloorCap` on floors below active).
+  `stacked` (visible floors through the active level), `stacked-full`
+  (all visible floors).
 
 ---
 
 ## File map — one-liners
 
 - `FloorPlanEditor.tsx` — state owner, mouse handlers, `scheduleRedraw`, layout.
-- `3DScene.tsx` (Scene3D) — loops floors[], elevation/opacity/cap, global camera/lighting.
+- `3DScene.tsx` (Scene3D) — positions preview floors by elevation and manages global camera and lighting.
 - `FloorGeometry.tsx` — per-floor 3D geometry, one instance per rendered floor.
-- `FloorCap.tsx` — ceiling-cap plane for floors below active (stacked views only).
+- `lib/floor-view.ts` — shared floor visibility for 2D and 3D previews.
 - `Tools/2dDraw.tsx` (`draw2D`) — imperative canvas render; does NOT clear canvas itself.
 - `Tools/constants.ts` — types, tool defs, ICONS, DEFAULT_FP, MATERIAL_REGISTRY.
 - `Tools/PropsPanel.tsx` — per-entity property editing, incl. wall material side-picker.

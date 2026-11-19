@@ -1,6 +1,4 @@
-import { Suspense, useMemo } from 'react'
-import * as THREE from 'three'
-import { useTexture } from '@react-three/drei'
+import { useTextureMaterialProps } from '../texture/textureLoader'
 import { MATERIAL_REGISTRY } from '../lib/constants' // adjust path to wherever MATERIAL_REGISTRY actually lives
 
 export type DoorMaterial = 'wood_oak' | 'wood_dark' | 'wood_white' | 'glass_frosted' | 'glass_clear' | 'metal_steel' | 'panel_white'
@@ -57,60 +55,25 @@ function resolveDoorMaterial(style: string): ResolvedDoorMat {
         roughnessMapUrl: def.roughnessMapUrl,
     }
 }
-function DoorMatTextured({ resolved }: { resolved: ResolvedDoorMat }) {
-    // resolved.textureUrl is guaranteed present when this component is used
-    // (see DoorMatPBR's branch below) — useTexture still needs concrete URLs.
-    const textures = useTexture({
-        map: resolved.textureUrl!,
-        normalMap: resolved.normalMapUrl ?? resolved.textureUrl!,
-        roughnessMap: resolved.roughnessMapUrl ?? resolved.textureUrl!,
-    })
-    useMemo(() => {
-        Object.values(textures).forEach((t) => {
-            if (t instanceof THREE.Texture) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 2.2); t.needsUpdate = true }
-        })
-    }, [textures])
-    return (
-        <meshStandardMaterial
-            map={textures.map}
-            normalMap={resolved.normalMapUrl ? textures.normalMap : undefined}
-            roughnessMap={resolved.roughnessMapUrl ? textures.roughnessMap : undefined}
-            color={resolved.color}
-            roughness={resolved.roughness}
-            metalness={resolved.metalness}
-        />
-    )
-}
-
-function DoorMatPBR({ style }: { style: string }) {
+export function DoorMat({ style }: { style: string }) {
     const resolved = resolveDoorMaterial(style)
-    if (resolved.textureUrl) {
-        return <DoorMatTextured resolved={resolved} />
-    }
+    const { textures } = useTextureMaterialProps({
+        map: resolved.textureUrl,
+        normalMap: resolved.normalMapUrl,
+        roughnessMap: resolved.roughnessMapUrl,
+    }, 1, 2.2)
+
     return (
         <meshStandardMaterial
+            key={Object.keys(textures).join(",")}
+            map={textures.map ?? null}
+            normalMap={textures.map ? textures.normalMap ?? null : null}
+            roughnessMap={textures.map ? textures.roughnessMap ?? null : null}
             color={resolved.color}
             roughness={resolved.roughness}
             metalness={resolved.metalness}
             transparent={resolved.transparent}
             opacity={resolved.opacity}
         />
-    )
-}
-
-export function DoorMat({ style }: { style: string }) {
-    const resolved = resolveDoorMaterial(style)
-    return (
-        <Suspense fallback={
-            <meshStandardMaterial
-                color={resolved.color}
-                roughness={resolved.roughness}
-                metalness={resolved.metalness}
-                transparent={resolved.transparent}
-                opacity={resolved.opacity}
-            />
-        }>
-            <DoorMatPBR style={style} />
-        </Suspense>
     )
 }

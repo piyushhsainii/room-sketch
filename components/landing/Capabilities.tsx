@@ -1,4 +1,5 @@
-"use client";
+import Link from "next/link";
+import { ArrowRight, Camera, Footprints, Layers, Link2, Palette, Users } from "lucide-react";
 
 interface Item {
   code: string;
@@ -12,42 +13,42 @@ const ITEMS: Item[] = [
   {
     code: "A-101",
     title: "Floor plan → live 3D",
-    desc: "Node-based drawing with real-metre coordinates — rooms, walls, doors, windows, stairs, per-segment wall types (solid, railing, open). Every edit renders instantly in a synced 3D split view, no re-modeling step.",
+    desc: "Draw rooms, walls, doors, windows, and stairs to scale in metres. The live 3D view follows each edit, so you can refine the layout and check the result without rebuilding the model.",
     tags: ["Node editor", "Real units", "Real-time 3D sync"],
     image: "/preview-assets/floor2d-live-model.png",
   },
   {
     code: "A-150",
     title: "Snapshot exports",
-    desc: "Capture any floor or room as a 2D or 3D image from any camera angle — top-down for plans, eye-level for presentation, anything in between.",
+    desc: "Capture any floor or room as a 2D or 3D image. Use a top-down view to review the layout, an angled view to show how rooms connect, or an eye-level shot to present the space.",
     tags: ["2D + 3D export", "Any angle", "Per floor/room"],
     image: "/preview-assets/floor2d-live-model2.png",
   },
   {
     code: "A-401",
     title: "Materials",
-    desc: "50+ materials across walls, floors, doors and furniture in one registry — swap a finish per room, per wall face, and see it update instantly.",
+    desc: "Choose from more than 50 materials for walls, floors, doors, and furniture. Swap a finish for an individual room or wall face, then see how it looks next to the surrounding materials in 3D.",
     tags: ["50+ materials", "Per-room control", "Pro"],
     image: "/preview-assets/floor2d-live-model3.png",
   },
   {
     code: "A-301",
     title: "Walkthrough",
-    desc: "First-person Walk Mode moves a client through the space at eye level, not from above — see it exactly as they would standing in the room.",
+    desc: "Walk through your model at eye level and see the space as a visitor would. Check sightlines from a doorway, how furniture fits, and what you see as you move between rooms.",
     tags: ["Walk Mode", "Pro"],
     image: "/preview-assets/floor2d-live-model4.png",
   },
   {
     code: "A-501",
     title: "Live shareable link",
-    desc: "Send a link and anyone can explore your active floor's 3D model in the browser — orbit, zoom, walk through, no account or install needed.",
+    desc: "Send a link to the active floor so clients or collaborators can open it straight in their browser. They can orbit, zoom, or walk through the model at their own pace without setting up an account.",
     tags: ["Interactive 3D", "No sign-up", "Active floor"],
     image: "/preview-assets/floor2d-live-model5.png",
   },
   {
     code: "A-601",
     title: "Community spotlight",
-    desc: "Standout designs get picked for the community showcase — a chance to get your floor plan seen and featured.",
+    desc: "Explore floor plans in the community showcase to see how others approach layouts and finishes. Standout projects can be featured so others can explore the design and its 3D model.",
     tags: ["Featured designs", "Community showcase"],
     image: "/preview-assets/floor2d-live-model6.png",
   },
@@ -57,101 +58,57 @@ export default function Capabilities() {
   return (
     <section
       id="capabilities"
-      className="py-24 px-6 md:px-10"
-      style={{ background: "#E5E5E5", fontFamily: "'Quicksand','Nunito',sans-serif" }}
+      className="capabilities"
+      aria-labelledby="capabilities-title"
     >
-      <div className="max-w-[1100px] mx-auto">
-        <div className="reveal mb-4">
-          <h2
-            className="text-[1.9rem] md:text-[2.6rem] tracking-[-0.02em] leading-[1.1] mb-3"
-            style={{ color: "#1A1A1A", fontWeight: 500 }}
-          >
-            Every sheet you need, <em className="italic" style={{ fontWeight: 500 }}>in one editor.</em>
-          </h2>
-          <p className="text-[14px] font-normal max-w-[440px] leading-[1.7]" style={{ color: "#666" }}>
-            Like a real drawing set, each part of RoomSketch is numbered and cross-referenced —
-            plan, model, finishes, walkthrough, revisions.
-          </p>
-        </div>
+      <div className="capabilities-heading">
+        <h2 id="capabilities-title">
+          Every sheet you need, in one editor.
+        </h2>
+        <p>
+          Like a real drawing set, each part of RoomSketch is numbered and cross-referenced —
+          plan, model, finishes, walkthrough, revisions.
+        </p>
+      </div>
 
-        <div
-          className="rounded-[30px] mt-12 overflow-hidden"
-          style={{ background: "#EAEAEA", boxShadow: "0 20px 40px rgba(0,0,0,0.10)" }}
-        >
-          {ITEMS.map((item, i) => (
-            <Row key={item.code} item={item} last={i === ITEMS.length - 1} />
-          ))}
-        </div>
+      <div className="capabilities-grid">
+        {ITEMS.map((item, i) => (
+          <Row key={item.code} item={item} index={i} />
+        ))}
       </div>
     </section>
   );
 }
 
-function Row({ item, last }: { item: Item; last: boolean }) {
+const ICONS = [Layers, Camera, Palette, Footprints, Link2, Users];
+const LABELS = ["Plan & model", "Presentation", "Finishes", "Walk Mode", "Collaboration", "Community"];
+
+function Row({ item, index }: { item: Item; index: number }) {
+  const Icon = ICONS[index];
   return (
-    <div
-      className="reveal relative flex flex-col md:flex-row items-stretch gap-6 md:gap-8 px-6 md:px-8 py-7"
-      style={!last ? { borderBottom: "1px solid #00000010" } : undefined}
-    >
-      {/* Image preview card — 50% width, tall enough to actually read */}
-      <div
-        className="w-full md:w-1/2 h-56 md:h-72 rounded-[20px] overflow-hidden shrink-0"
-        style={{
-          background: "#F5F5F5",
-          boxShadow:
-            "-6px -6px 12px rgba(255,255,255,0.75), 6px 6px 16px rgba(0,0,0,0.12)",
-        }}
-      >
-        <img
-          src={item.image}
-          alt={item.title}
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      </div>
-
-      <div className="w-full md:w-1/2 flex flex-col justify-center min-w-0">
-        <div className="flex items-center justify-between gap-4 mb-2">
-          <div className="flex items-center gap-3">
-            <span className="text-[18px] md:text-[20px] leading-tight" style={{ color: "#1A1A1A", fontWeight: 500 }}>
-              {item.title}
-            </span>
-            <span className="text-[10px] tracking-wide" style={{ color: "#999" }}>
-              {item.code}
-            </span>
-          </div>
-          <ChevronIcon />
+    <article className="capability-row" data-reversed={index % 2 === 1}>
+      <div className="capability-copy">
+        <div className="capability-eyebrow">
+          <Icon size={14} strokeWidth={1.7} aria-hidden="true" />
+          <span>{LABELS[index]}</span>
         </div>
-
-        <p className="text-[14px] font-normal leading-[1.7] mb-4" style={{ color: "#666" }}>
-          {item.desc}
-        </p>
-
-        <div className="flex flex-wrap gap-2">
-          {item.tags.map((t, i) => (
-            <span
-              key={i}
-              className="text-[10.5px] rounded-full px-3 py-[5px]"
-              style={{
-                color: "#556",
-                background: "#EAEAEA",
-                boxShadow:
-                  "-3px -3px 6px rgba(255,255,255,0.7), 3px 3px 8px rgba(0,0,0,0.10)",
-              }}
-            >
-              {t}
-            </span>
+        <h3>{item.title}</h3>
+        <p>{item.desc}</p>
+        <Link className="capability-link" href={index === 5 ? "/community" : "/projects/new"}>
+          {index === 5 ? "Explore the community" : "Start designing"}
+          <ArrowRight size={13} aria-hidden="true" />
+        </Link>
+      </div>
+      <div className="capability-visual">
+        <div className="capability-image">
+          <img src={item.image} alt={item.title} loading="lazy" decoding="async" width={2555} height={1113} />
+        </div>
+        <ul className="capability-tags" aria-label={`${item.title} features`}>
+          {item.tags.map((t) => (
+            <li key={t}>{t}</li>
           ))}
-        </div>
+        </ul>
       </div>
-    </div>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 mt-1">
-      <path d="M6 3.5L10.5 8L6 12.5" stroke="#888" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    </article>
   );
 }

@@ -1,3 +1,4 @@
+import { inter } from "./fonts/inter";
 import BenchStrip from "@/components/landing/BenchStrip";
 import Capabilities from "@/components/landing/Capabilities";
 import ComparisonStrip from "@/components/landing/ComparisonStrip";
@@ -10,22 +11,25 @@ import Nav from "@/components/landing/Nav";
 import Pricing from "@/components/landing/Pricing";
 import ScrollReveal from "@/components/landing/ScrollReveal";
 import VideoShowcase from "@/components/landing/VideoShowcase";
+import "./landing.css";
 
 export default function Home() {
   return (
-    <main>
-      <ScrollReveal />
-      <Nav />
-      <Hero2 />
-      <BenchStrip />
-      <VideoShowcase />
-      <HowItWorks />
-      <Capabilities />
-      <ComparisonStrip />
-      <Pricing />
-      <Faq />
-      <FinalCta />
-      <Footer />
+    <main className={`landing ${inter.variable}`}>
+      <div className="landing-content">
+        <ScrollReveal />
+        <Nav />
+        <Hero2 />
+        <BenchStrip />
+        <VideoShowcase />
+        <HowItWorks />
+        <Capabilities />
+        <ComparisonStrip />
+        <Pricing />
+        <Faq />
+        <FinalCta />
+        <Footer />
+      </div>
     </main>
   );
 }

@@ -43,18 +43,16 @@ const FAQS: FaqItem[] = [
         : []),
 ];
 
-// ---- Claymorphism theme tokens (shared across the app) ----
 const CLAY = {
-    canvas: "#E5E5E5",
-    surface: "#EAEAEA",
-    surfaceChip: "#F5F5F5",
+    canvas: "var(--landing-canvas)",
+    surface: "var(--landing-paper)",
+    surfaceChip: "var(--landing-inset)",
     textPrimary: "#1A1A1A",
-    textMuted: "#5A5A5A",
+    textMuted: "var(--landing-muted)",
     textPlaceholder: "#999999",
     lightShadow: "rgba(255,255,255,0.75)",
-    darkShadow: "rgba(0,0,0,0.14)",
-    accentText: "#4C4FBF",
-    font: "var(--font-clay, 'General Sans'), system-ui, -apple-system, sans-serif",
+    darkShadow: "rgba(0,0,0,0.08)",
+    accentText: "var(--landing-muted)",
 };
 
 const clayRaised = (pressed = false) =>
@@ -72,16 +70,14 @@ export default function Faq() {
     return (
         <section
             id="faq"
-            style={{ padding: "96px 24px", background: CLAY.canvas, fontFamily: CLAY.font }}
+            style={{ padding: "96px 24px", background: CLAY.canvas }}
         >
             <div style={{ maxWidth: 760, margin: "0 auto" }}>
                 <div style={{ marginBottom: 48, textAlign: "center" }}>
                     <h2
                         style={{
-                            fontFamily: CLAY.font,
                             fontSize: "clamp(1.9rem, 2.6rem, 2.6rem)",
                             fontWeight: 500,
-                            letterSpacing: "-0.01em",
                             color: CLAY.textPrimary,
                             lineHeight: 1.1,
                             margin: 0,
@@ -102,6 +98,7 @@ export default function Faq() {
                                 onMouseLeave={() => setHoveredIndex(null)}
                                 style={{
                                     borderRadius: 18,
+                                    border: "1px solid var(--landing-line)",
                                     background: CLAY.surface,
                                     boxShadow: isOpen
                                         ? clayRaised(true)
@@ -125,7 +122,6 @@ export default function Faq() {
                                 >
                                     <span
                                         style={{
-                                            fontFamily: CLAY.font,
                                             fontSize: "1.05rem",
                                             fontWeight: 500,
                                             letterSpacing: "normal",
@@ -154,7 +150,6 @@ export default function Faq() {
                                 <div
                                     style={{
                                         display: "grid",
-                                        fontFamily: CLAY.font,
                                         letterSpacing: "normal",
                                         overflow: "hidden",
                                         transition: "grid-template-rows 300ms ease-out",

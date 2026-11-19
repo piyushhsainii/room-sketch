@@ -103,16 +103,15 @@ export default function Pricing() {
     <section
       id="pricing"
       className="py-24 px-6 md:px-10"
-      style={{ background: "#E5E5E5", fontFamily: "'Quicksand','Nunito',sans-serif" }}
+      style={{ background: "var(--landing-canvas, #f1f1f0)" }}
     >
       <div className="max-w-[1100px] mx-auto">
         <div className="reveal mb-10">
           <span
             className="inline-block text-[11px] font-medium uppercase tracking-[0.1em] mb-4 px-4 py-[6px] rounded-full"
             style={{
-              color: "#556",
-              background:
-                "linear-gradient(135deg, rgba(163,224,193,0.28), rgba(168,178,230,0.28)), #EAEAEA",
+              color: "#525252",
+              background: "var(--landing-paper, #fff)",
               boxShadow: "-4px -4px 10px rgba(255,255,255,0.7), 4px 4px 12px rgba(0,0,0,0.10)",
             }}
           >
@@ -135,7 +134,7 @@ export default function Pricing() {
 
             <div
               className="rounded-[30px] p-2 md:p-3 grid md:grid-cols-3 gap-2"
-              style={{ background: "#EAEAEA", boxShadow: "0 20px 40px rgba(0,0,0,0.10)" }}
+              style={{ background: "var(--landing-paper, #fff)", boxShadow: "0 20px 40px rgba(0,0,0,0.10)" }}
             >
               {PLAN_ORDER.map((planId) => {
                 const plan = PLANS[planId];
@@ -172,7 +171,7 @@ function ComingSoonPanel() {
   return (
     <div
       className="reveal rounded-[30px] px-8 py-16 md:py-20 flex flex-col items-center text-center"
-      style={{ background: "#EAEAEA", boxShadow: "0 20px 40px rgba(0,0,0,0.10)" }}
+      style={{ background: "var(--landing-paper, #fff)", boxShadow: "0 20px 40px rgba(0,0,0,0.10)" }}
     >
       <div
         className="w-16 h-16 rounded-full flex items-center justify-center mb-6"
@@ -212,7 +211,7 @@ function BillingToggle({
       <div
         className="relative grid grid-cols-2 items-center p-1.5 rounded-full"
         style={{
-          background: "#EAEAEA",
+          background: "var(--landing-paper, #fff)",
           boxShadow: "inset -3px -3px 7px rgba(255,255,255,0.6), inset 3px 3px 8px rgba(0,0,0,0.10)",
         }}
       >
@@ -243,8 +242,8 @@ function BillingToggle({
           <span
             className="text-[9.5px] px-1.5 py-[2px] rounded-full"
             style={{
-              color: "#3D9A5C",
-              background: "rgba(61,154,92,0.12)",
+              color: "#303030",
+              background: "#e5e5e5",
             }}
           >
             Save 20%
@@ -292,30 +291,31 @@ function PriceCard({
     <div
       className="reveal rounded-[24px] p-7"
       style={{
-        background: featured ? "#F1F1F1" : "#EAEAEA",
+        background: "var(--landing-paper, #fff)",
+        border: featured ? "1px solid #737373" : "1px solid #d9d9d7",
         boxShadow: featured
           ? "-6px -6px 14px rgba(255,255,255,0.85), 6px 6px 16px rgba(0,0,0,0.14)"
           : "-5px -5px 12px rgba(255,255,255,0.7), 5px 5px 14px rgba(0,0,0,0.10)",
       }}
     >
-      <div className="text-[11px] font-medium uppercase tracking-[0.1em] mb-3" style={{ color: "#8892A6" }}>
+      <div className="text-[11px] font-medium uppercase tracking-[0.1em] mb-3" style={{ color: "#525252" }}>
         {plan}
       </div>
 
       <div className="flex items-baseline gap-2 mb-1">
         <div className="text-[2.6rem] tracking-[-0.02em] leading-none" style={{ color: "#1A1A1A", fontWeight: 500 }}>
           {isFree ? "$0" : `$${displayPrice}`}
-          {!isFree && <span className="text-[1rem] font-normal" style={{ color: "#999" }}>/mo</span>}
+          {!isFree && <span className="text-[1rem] font-normal" style={{ color: "#666" }}>/mo</span>}
         </div>
         {showStrike && (
-          <span className="text-[12px] line-through" style={{ color: "#AAA" }}>
+          <span className="text-[12px] line-through" style={{ color: "#737373" }}>
             ${basePrice}
           </span>
         )}
       </div>
 
       {!isFree ? (
-        <div className="text-[10.5px] mb-4" style={{ color: "#999" }}>
+        <div className="text-[10.5px] mb-4" style={{ color: "#666" }}>
           {cycle === "yearly" ? `Billed $${Math.round(displayPrice * 12)}/yr` : "Billed monthly"}
         </div>
       ) : (
@@ -325,14 +325,14 @@ function PriceCard({
       <span
         className="inline-block mb-5 text-[10px] px-3 py-[5px] rounded-full"
         style={{
-          color: "#556",
-          background: "#EAEAEA",
+          color: "#525252",
+          background: "var(--landing-paper, #fff)",
           boxShadow: "-3px -3px 6px rgba(255,255,255,0.7), 3px 3px 8px rgba(0,0,0,0.10)",
         }}
       >
         {tag}
       </span>
-      <div className="text-[12.5px] font-normal mb-5" style={{ color: "#777" }}>
+      <div className="text-sm leading-relaxed mb-5" style={{ color: "#525252" }}>
         {tagline}
       </div>
 
@@ -355,7 +355,7 @@ function PriceCard({
             className="inline-block w-3.5 h-3.5 rounded-full animate-spin"
             style={{
               border: "2px solid rgba(0,0,0,0.15)",
-              borderTopColor: "#556",
+              borderTopColor: "#525252",
             }}
           />
         )}
@@ -377,14 +377,14 @@ function PriceCard({
             key={i}
             className="flex items-center gap-2.5 text-[12.5px] font-normal py-[9px]"
             style={{
-              color: on ? "#444" : "#AAA",
+              color: on ? "#444" : "#737373",
               borderBottom: i === feats.length - 1 ? "none" : "1px solid rgba(0,0,0,0.06)",
             }}
           >
             <span
               className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[9px]"
               style={{
-                color: on ? "#3D9A5C" : "#BBB",
+                color: on ? "#303030" : "#BBB",
                 background: "#F5F5F5",
                 boxShadow: "-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.10)",
               }}
@@ -406,11 +406,11 @@ function CustomPriceCard() {
     <div
       className="reveal rounded-[24px] p-7"
       style={{
-        background: "#EAEAEA",
+        background: "var(--landing-paper, #fff)",
         boxShadow: "-5px -5px 12px rgba(255,255,255,0.7), 5px 5px 14px rgba(0,0,0,0.10)",
       }}
     >
-      <div className="text-[11px] font-medium uppercase tracking-[0.1em] mb-3" style={{ color: "#8892A6" }}>
+      <div className="text-[11px] font-medium uppercase tracking-[0.1em] mb-3" style={{ color: "#525252" }}>
         {CUSTOM_PLAN.label}
       </div>
 
@@ -424,14 +424,14 @@ function CustomPriceCard() {
       <span
         className="inline-block mb-5 text-[10px] px-3 py-[5px] rounded-full"
         style={{
-          color: "#556",
-          background: "#EAEAEA",
+          color: "#525252",
+          background: "var(--landing-paper, #fff)",
           boxShadow: "-3px -3px 6px rgba(255,255,255,0.7), 3px 3px 8px rgba(0,0,0,0.10)",
         }}
       >
         {CUSTOM_PLAN.tag}
       </span>
-      <div className="text-[12.5px] font-normal mb-5" style={{ color: "#777" }}>
+      <div className="text-sm leading-relaxed mb-5" style={{ color: "#525252" }}>
         {CUSTOM_PLAN.tagline}
       </div>
 
@@ -455,14 +455,14 @@ function CustomPriceCard() {
             key={i}
             className="flex items-center gap-2.5 text-[12.5px] font-normal py-[9px]"
             style={{
-              color: on ? "#444" : "#AAA",
+              color: on ? "#444" : "#737373",
               borderBottom: i === CUSTOM_PLAN.displayFeatures.length - 1 ? "none" : "1px solid rgba(0,0,0,0.06)",
             }}
           >
             <span
               className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[9px]"
               style={{
-                color: on ? "#3D9A5C" : "#BBB",
+                color: on ? "#303030" : "#BBB",
                 background: "#F5F5F5",
                 boxShadow: "-2px -2px 4px rgba(255,255,255,0.7), 2px 2px 5px rgba(0,0,0,0.10)",
               }}

@@ -3,97 +3,92 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function VideoShowcase() {
-    const sectionRef = useRef<HTMLElement>(null);
+    const frameRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
-    const [focus, setFocus] = useState(0); // 0 = unfocused, 1 = fully focused
+    const [focused, setFocused] = useState(false);
 
     useEffect(() => {
-        const section = sectionRef.current;
-        if (!section) return;
+        const frame = frameRef.current;
+        const video = videoRef.current;
+        if (!frame || !video) return;
 
-        const handleScroll = () => {
-            const rect = section.getBoundingClientRect();
-            const vh = window.innerHeight;
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        let inFocus = false;
+        let autoplay = false;
 
-            const sectionCenter = rect.top + rect.height / 2;
-            const viewportCenter = vh / 2;
-            const distance = Math.abs(sectionCenter - viewportCenter);
-            const maxDistance = vh / 2 + rect.height / 2;
+        const syncPlayback = () => {
+            const shouldPlay = inFocus && !reducedMotion.matches && !document.hidden;
+            if (autoplay === shouldPlay) return;
 
-            const proximity = 1 - Math.min(distance / maxDistance, 1);
-
-            // Stiffen the curve: hold near-full focus across the middle of the
-            // scroll range and only fall off sharply near the edges, instead of
-            // a soft linear fade the whole way.
-            const stiff = proximity < 0.6 ? proximity / 0.6 * 0.15 : 0.15 + ((proximity - 0.6) / 0.4) * 0.85;
-
-            setFocus(Math.max(0, Math.min(1, stiff)));
+            autoplay = shouldPlay;
+            if (shouldPlay) {
+                void video.play().catch(() => {
+                    // Native controls remain available if the browser blocks autoplay.
+                });
+            } else {
+                video.pause();
+            }
         };
 
-        handleScroll();
-        window.addEventListener("scroll", handleScroll, { passive: true });
-        window.addEventListener("resize", handleScroll);
+        const observer = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting && !video.hasAttribute("poster")) {
+                video.poster = "/walk-mode-poster.webp";
+            }
+
+            // Use separate thresholds so small scrolls near the edge do not toggle playback.
+            inFocus = entry.isIntersecting && entry.intersectionRatio >= (inFocus ? 0.45 : 0.75);
+            setFocused(inFocus);
+            syncPlayback();
+        }, {
+            rootMargin: "-96px 0px -16px",
+            threshold: [0, 0.45, 0.75],
+        });
+
+        observer.observe(frame);
+        document.addEventListener("visibilitychange", syncPlayback);
+        reducedMotion.addEventListener("change", syncPlayback);
         return () => {
-            window.removeEventListener("scroll", handleScroll);
-            window.removeEventListener("resize", handleScroll);
+            observer.disconnect();
+            document.removeEventListener("visibilitychange", syncPlayback);
+            reducedMotion.removeEventListener("change", syncPlayback);
+            video.pause();
         };
     }, []);
 
-    // Play/pause based on visibility so it's not burning cycles off-screen.
-    useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
-        if (focus > 0.35) {
-            video.play().catch(() => { });
-        } else {
-            video.pause();
-        }
-    }, [focus]);
-
-    const scale = 0.94 + focus * 0.06; // 0.94 -> 1.0
-    const blur = (1 - focus) * 6; // up to 6px blur when unfocused
-    const opacity = 0.6 + focus * 0.4; // 0.6 -> 1
-    const dim = 0.55 + focus * 0.45; // 0.55 -> 1.0 brightness, never fully dark
-
     return (
-        <section
-            ref={sectionRef}
-            className="relative bg-white py-16 md:py-20"
-        >
-            <div className="max-w-[1000px] mx-auto px-6 md:px-10 text-center mb-8">
-                <p className="font-mono text-[10px] font-medium text-blue tracking-[0.08em] uppercase mb-3">
+        <section id="walk-mode" className="px-4 py-12 sm:px-8 md:py-16">
+            <div className="mx-auto mb-6 max-w-[1000px] text-center">
+                <p className="mb-3 text-[11px] font-medium tracking-[0.08em] text-neutral-600 uppercase">
                     Walk Mode
                 </p>
-                <h2 className="font-sans text-[2.4rem] md:text-[3.2rem] leading-[1.05] tracking-[-0.02em] text-ink">
+                <h2 className="text-[2.4rem] leading-[1.05] tracking-tight text-neutral-950 md:text-[3.2rem]">
                     See it before it&apos;s built
                 </h2>
             </div>
 
-            <div className="sticky top-[8vh] h-[84vh] flex items-center justify-center px-6">
-                <div
-                    className="relative w-full max-w-[1100px] aspect-[16/9] rounded-[16px] overflow-hidden border border-line-strong shadow-sheetLg bg-[#0E0E10]"
-                    style={{
-                        transform: `scale(${scale})`,
-                        filter: `blur(${blur}px) brightness(${dim})`,
-                        opacity,
-                        transition: "transform 0.05s linear, filter 0.05s linear, opacity 0.05s linear",
-                    }}
-                >
-                    <video
-                        ref={videoRef}
-                        className="absolute inset-0 w-full h-full object-cover"
-                        src="/initial-hero-video.mp4"
-                        muted
-                        loop
-                        playsInline
-                        preload="auto"
-                        aria-label="RoomSketch walk mode — walking through a finished 3D model"
-                    />
+            <div>
+                <div className="walk-video-sticky">
+                    <div ref={frameRef} className="walk-video-frame">
+                        <div
+                            className="walk-video-panel h-full overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-950"
+                            data-focused={focused}
+                        >
+                            <video
+                                ref={videoRef}
+                                className="block h-full w-full object-contain"
+                                src="/initial-hero-video.mp4"
+                                muted
+                                loop
+                                playsInline
+                                controls
+                                preload="none"
+                                aria-label="RoomSketch walk mode — walking through a finished 3D model"
+                            />
+                        </div>
+                    </div>
                 </div>
+                <div className="walk-video-runway" aria-hidden="true" />
             </div>
-
-            {/* Small scroll runway so the sticky video has a little room to focus/unfocus */}
-            <div className="h-[20vh]" aria-hidden="true" />
         </section>
     );
 }

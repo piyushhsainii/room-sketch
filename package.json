@@ -36,7 +36,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^1.24.0",
     "motion": "^12.42.2",
-    "next": "16.1.6",
+    "next": "16.4.6",
     "openai": "^6.27.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -54,7 +54,7 @@
     "@types/react-dom": "^19",
     "@types/three": "^0.183.1",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

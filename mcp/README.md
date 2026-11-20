@@ -21,6 +21,8 @@ MCP edits work without an editor tab being open. Open tabs currently require rel
 
 ## Setup
 
+Generated CLI configuration, documentation, and plugin downloads use `NEXT_PUBLIC_MCP_URL`, defaulting to `https://roomsketch.vercel.app/api/mcp`. This stays public even when the page is viewed on localhost. For local-server testing, explicitly set `NEXT_PUBLIC_MCP_URL=http://localhost:3000/api/mcp` before building. This public setting is embedded at build time; rebuild after changing it. Create tokens on the same account/database as the server you connect to.
+
 1. Install dependencies using the existing repository workflow. If npm reports the pre-existing payment-package/Next.js peer conflict, use `npm install --legacy-peer-deps`. Do not use `--force` to upgrade the application indiscriminately.
 2. Apply `supabase/migrations/202611190002_mcp.sql` to the intended development/staging Supabase environment using your migration workflow. The migration assumes the existing projects table already has the workspace columns. It adds two tables and two service-role-only functions; it does not change existing project policies.
 3. Configure these server environment variables:

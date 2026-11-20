@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { PUBLIC_MCP_ENDPOINT } from '@/mcp/public-endpoint';
 
 type Token = { id: string; name: string; scopes: string[]; expires_at: string; revoked_at: string | null };
 const field = { display: 'block', width: '100%', padding: 10, border: '1px solid #aaa', borderRadius: 6, marginTop: 6 };
@@ -15,7 +16,6 @@ export function TokenManager() {
   const [secret, setSecret] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [origin, setOrigin] = useState('');
   const load = useCallback(async () => {
     try {
       const response = await fetch('/api/mcp/tokens', { cache: 'no-store' });
@@ -24,7 +24,7 @@ export function TokenManager() {
       setTokens(body.tokens);
     } catch (error) { setError(error instanceof Error ? error.message : 'Unable to load connections.'); }
   }, []);
-  useEffect(() => { setOrigin(window.location.origin); void load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   async function create(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(''); setSecret('');
@@ -66,10 +66,10 @@ export function TokenManager() {
     </section>}
     <h2 style={{ fontSize: 22 }}>Connect your client</h2>
     <p style={{ margin: '12px 0' }}>Set ROOMSKETCH_MCP_TOKEN in your local environment to the token above.</p>
-    <p>Codex configuration:</p><pre style={{ whiteSpace: 'pre-wrap', padding: 14, border: '1px solid #aaa', margin: '10px 0' }}>{`[mcp_servers.roomsketch]\nurl = "${origin}/api/mcp"\nbearer_token_env_var = "ROOMSKETCH_MCP_TOKEN"`}</pre>
+    <p>Codex configuration:</p><pre style={{ whiteSpace: 'pre-wrap', padding: 14, border: '1px solid #aaa', margin: '10px 0' }}>{`[mcp_servers.roomsketch]\nurl = "${PUBLIC_MCP_ENDPOINT}"\nbearer_token_env_var = "ROOMSKETCH_MCP_TOKEN"`}</pre>
     <p>Claude Code project configuration (<code>.mcp.json</code>):</p>
     <pre style={{ whiteSpace: 'pre-wrap', padding: 14, border: '1px solid #aaa', margin: '10px 0' }}>{JSON.stringify({ mcpServers: { roomsketch: {
-      type: 'http', url: `${origin}/api/mcp`, headers: { Authorization: 'Bearer ${ROOMSKETCH_MCP_TOKEN}' },
+      type: 'http', url: PUBLIC_MCP_ENDPOINT, headers: { Authorization: 'Bearer ${ROOMSKETCH_MCP_TOKEN}' },
     } } }, null, 2)}</pre>
     <h2 style={{ fontSize: 22, marginTop: 28 }}>Your connections</h2>
     {tokens.length === 0 && <p>No connections yet.</p>}

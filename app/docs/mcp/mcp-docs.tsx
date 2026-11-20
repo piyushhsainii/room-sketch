@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { PUBLIC_MCP_ENDPOINT } from '@/mcp/public-endpoint';
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { BookOpen, Check, ChevronDown, Code2, Copy, Download, ExternalLink, KeyRound, Layers3,
   Menu, MessageSquare, Plug, ShieldCheck, Terminal, X } from 'lucide-react';
@@ -41,17 +42,15 @@ export function McpDocs() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [client, setClient] = useState<'codex' | 'claude'>('codex');
   const [shell, setShell] = useState<'powershell' | 'bash'>('powershell');
-  const [origin, setOrigin] = useState('https://roomsketch.vercel.app');
   const [active, setActive] = useState('overview');
   useEffect(() => {
-    setOrigin(window.location.origin);
     const observer = new IntersectionObserver(entries => {
       for (const entry of entries) if (entry.isIntersecting) setActive(entry.target.id);
     }, { rootMargin: '-100px 0px -65% 0px' });
     for (const [id] of SECTIONS) { const node = document.getElementById(id); if (node) observer.observe(node); }
     return () => observer.disconnect();
   }, []);
-  const endpoint = `${origin}/api/mcp`;
+  const endpoint = PUBLIC_MCP_ENDPOINT;
   function tabKey(event: KeyboardEvent<HTMLButtonElement>) {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
@@ -106,7 +105,7 @@ export function McpDocs() {
         </section>
 
         <section id="cli" className="mcp-section"><div className="mcp-section-heading"><Terminal size={20} /><h2>Connect from your CLI.</h2></div>
-          <p>Set your token in the terminal session you’ll use to start the assistant. The examples use this deployment’s URL.</p>
+          <p>Set your token in the terminal session you’ll use to start the assistant. The examples use the configured public RoomSketch MCP endpoint.</p>
           <div className="mcp-select-row"><label className="mcp-shell-label">Your shell<select aria-label="Your shell" value={shell} onChange={event => setShell(event.target.value as typeof shell)}><option value="powershell">Windows · PowerShell</option><option value="bash">macOS / Linux · Bash or Zsh</option></select><ChevronDown size={14} aria-hidden="true" /></label></div>
           <CodeBlock title={shell === 'powershell' ? 'PowerShell · current session' : 'Bash / Zsh · current session'} code={envCode} />
           <p className="mcp-small">Replace the placeholder with your token. Keep it out of shared files and screenshots. A token configured in one shell is only inherited by applications launched from that environment.</p>

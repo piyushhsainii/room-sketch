@@ -41,7 +41,7 @@ try {
   assert.equal(download.status, 200);
   const zip = await JSZip.loadAsync(await download.arrayBuffer());
   const config = JSON.parse(await zip.file('roomsketch-plugin/.mcp.json').async('string'));
-  assert.equal(config.mcpServers.roomsketch.url, `${origin}/api/mcp`);
+  assert.equal(config.mcpServers.roomsketch.url, process.env.NEXT_PUBLIC_MCP_URL || 'https://roomsketch.vercel.app/api/mcp');
   assert.equal(config.mcpServers.roomsketch.headers.Authorization, 'Bearer ${ROOMSKETCH_MCP_TOKEN}');
   console.log('Built routes passed: MCP auth/origin checks, connection page, public documentation, and downloadable plugin ZIP. No credentials or database writes used.');
 } finally { child.kill(); }
